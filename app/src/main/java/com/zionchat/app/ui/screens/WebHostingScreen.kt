@@ -73,13 +73,6 @@ fun WebHostingScreen(navController: NavController) {
         initialized = true
     }
 
-    LaunchedEffect(initialized, token, projectId, teamId, customDomain, autoDeploy, versionModel) {
-        if (!initialized) return@LaunchedEffect
-        delay(350)
-        repository.setWebHostingConfig(buildConfig())
-        repository.setAppModuleVersionModel(versionModel)
-    }
-
     fun buildConfig(): WebHostingConfig {
         return WebHostingConfig(
             provider = "vercel",
@@ -89,6 +82,13 @@ fun WebHostingScreen(navController: NavController) {
             customDomain = customDomain.trim(),
             autoDeploy = autoDeploy
         )
+    }
+
+    LaunchedEffect(initialized, token, projectId, teamId, customDomain, autoDeploy, versionModel) {
+        if (!initialized) return@LaunchedEffect
+        delay(350)
+        repository.setWebHostingConfig(buildConfig())
+        repository.setAppModuleVersionModel(versionModel)
     }
 
     Column(
