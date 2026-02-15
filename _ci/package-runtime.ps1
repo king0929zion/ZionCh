@@ -24,6 +24,56 @@ if ([string]::IsNullOrWhiteSpace($PackageSuffix)) {
     throw "PackageSuffix is required."
 }
 
+function Ensure-LocalSigningConfig {
+    $hasEnvSigning =
+        -not [string]::IsNullOrWhiteSpace($env:SIGNING_KEYSTORE_PATH) -and
+            -not [string]::IsNullOrWhiteSpace($env:SIGNING_STORE_PASSWORD) -and
+            -not [string]::IsNullOrWhiteSpace($env:SIGNING_KEY_ALIAS) -and
+            -not [string]::IsNullOrWhiteSpace($env:SIGNING_KEY_PASSWORD)
+    if ($hasEnvSigning) {
+        Write-Host "Using signing config from environment."
+        return
+    }
+
+    $keytool = Get-Command keytool -ErrorAction SilentlyContinue
+    if ($null -eq $keytool) {
+        throw "keytool was not found. Install JDK 17+ or provide SIGNING_* environment variables."
+    }
+
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    $signingDir = Join-Path $repoRoot ".tmp\runtime-signing"
+    New-Item -ItemType Directory -Force -Path $signingDir | Out-Null
+    $keystorePath = Join-Path $signingDir "runtime-shell-local.jks"
+    $storePassword = "android"
+    $keyAlias = "androiddebugkey"
+    $keyPassword = "android"
+
+    if (-not (Test-Path $keystorePath)) {
+        Write-Host "Generating local runtime signing keystore..."
+        & $keytool.Source `
+            -genkeypair `
+            -keystore $keystorePath `
+            -storepass $storePassword `
+            -alias $keyAlias `
+            -keypass $keyPassword `
+            -keyalg RSA `
+            -keysize 2048 `
+            -validity 10000 `
+            -dname "CN=Android Runtime,OU=ZionChat,O=ZionChat,L=NA,S=NA,C=US" | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to generate local runtime signing keystore."
+        }
+    }
+
+    $env:SIGNING_KEYSTORE_PATH = (Resolve-Path $keystorePath).Path
+    $env:SIGNING_STORE_PASSWORD = $storePassword
+    $env:SIGNING_KEY_ALIAS = $keyAlias
+    $env:SIGNING_KEY_PASSWORD = $keyPassword
+    Write-Host "Using local signing keystore: $($env:SIGNING_KEYSTORE_PATH)"
+}
+
+Ensure-LocalSigningConfig
+
 $args = @(
     ":runtime:assembleRelease",
     "--stacktrace",

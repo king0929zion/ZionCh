@@ -231,7 +231,7 @@ fun AppsScreen(navController: NavController) {
 
                 item(key = "runtime_shell_required") {
                     RuntimeShellRequiredCard(
-                        packageName = RuntimeShellPlugin.packageName(),
+                        templateLabel = "${RuntimeShellPlugin.packageName()} / ${RuntimeShellPlugin.templateFileName()}",
                         isInstalled = runtimeShellInstalled,
                         onDownload = { openRuntimeShellDownload() },
                         onRefresh = { runtimeShellInstalled = RuntimeShellPlugin.isInstalled(context) }
@@ -390,7 +390,7 @@ fun AppsScreen(navController: NavController) {
 
 @Composable
 private fun RuntimeShellRequiredCard(
-    packageName: String,
+    templateLabel: String,
     isInstalled: Boolean,
     onDownload: () -> Unit,
     onRefresh: () -> Unit
@@ -441,7 +441,7 @@ private fun RuntimeShellRequiredCard(
                 }
             }
             Text(
-                text = stringResource(R.string.runtime_shell_required_subtitle, packageName),
+                text = stringResource(R.string.runtime_shell_required_subtitle, templateLabel),
                 fontSize = 13.sp,
                 color = TextSecondary
             )
@@ -967,7 +967,7 @@ private fun runtimeBuildStatusText(status: String?, errorText: String?): String?
         "in_progress" -> "APK packaging in progress"
         "success" -> "APK ready"
         "failed" -> errorText?.trim()?.takeIf { it.isNotBlank() } ?: "APK packaging failed"
-        "disabled" -> errorText?.trim()?.takeIf { it.isNotBlank() } ?: "Runtime shell plugin is required"
+        "disabled" -> errorText?.trim()?.takeIf { it.isNotBlank() } ?: "Runtime shell template is required"
         "skipped" -> errorText?.trim()?.takeIf { it.isNotBlank() } ?: "APK packaging skipped"
         else -> null
     }

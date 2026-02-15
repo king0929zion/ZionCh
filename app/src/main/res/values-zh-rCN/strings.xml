@@ -127,13 +127,13 @@
     <string name="apps_featured">精选应用</string>
     <string name="apps_empty_saved">还没有已保存应用。请在应用开发卡片中保存后查看。</string>
     <string name="apps_saved_from_chat">来自对话保存</string>
-    <string name="runtime_shell_required_title">需要先安装 Runtime 壳插件</string>
+    <string name="runtime_shell_required_title">需要先下载 Runtime 壳模板</string>
     <string name="runtime_shell_required_section">必装插件</string>
-    <string name="runtime_shell_required_subtitle">使用 App developer 与运行时打包前，请先安装 Runtime 壳（%1$s）。</string>
-    <string name="runtime_shell_download_button">下载壳插件</string>
-    <string name="runtime_shell_check_button">我已安装，重新检测</string>
-    <string name="runtime_shell_required_toast">请先在 Apps 页面安装 Runtime 壳插件。</string>
-    <string name="runtime_shell_download_failed">打开 Runtime 壳下载页失败。</string>
-    <string name="runtime_shell_status_installed">已安装</string>
-    <string name="runtime_shell_status_missing">未安装</string>
+    <string name="runtime_shell_required_subtitle">使用 App developer 与运行时打包前，请先下载 Runtime 壳模板（%1$s），无需安装。</string>
+    <string name="runtime_shell_download_button">下载壳模板</string>
+    <string name="runtime_shell_check_button">我已下载，重新检测</string>
+    <string name="runtime_shell_required_toast">请先在 Apps 页面下载 Runtime 壳模板。</string>
+    <string name="runtime_shell_download_failed">启动 Runtime 壳模板下载失败。</string>
+    <string name="runtime_shell_status_installed">已下载</string>
+    <string name="runtime_shell_status_missing">未下载</string>
 </resources>

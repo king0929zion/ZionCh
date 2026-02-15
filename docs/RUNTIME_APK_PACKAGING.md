@@ -69,7 +69,11 @@ When APP developer triggers packaging, the request now declares:
 - `runtimeShellDownloadUrl`
 
 `runtimeShellPackage` is validated by the bridge in `builtin_shell_plugin` mode.
-Users must install this Runtime shell plugin from Apps before APP developer can run packaging.
+Users only need to download this Runtime shell template from Apps before APP developer can run packaging. Installation is not required.
+The local packager signs generated APKs automatically:
+
+- If `SIGNING_*` variables are provided, it uses your signing config.
+- Otherwise it creates/uses a local debug-style keystore in `.tmp/runtime-signing/`.
 
 ## GitHub Actions packaging
 

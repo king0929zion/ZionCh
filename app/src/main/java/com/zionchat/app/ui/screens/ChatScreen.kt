@@ -430,7 +430,7 @@ fun ChatScreen(navController: NavController) {
         if (!RuntimeShellPlugin.isInstalled(context)) {
             return app.copy(
                 runtimeBuildStatus = "disabled",
-                runtimeBuildError = "Runtime shell plugin is required. Open Apps and install it first.",
+                runtimeBuildError = "Runtime shell template is required. Open Apps and download it first.",
                 runtimeBuildUpdatedAt = System.currentTimeMillis()
             )
         }
@@ -467,7 +467,7 @@ fun ChatScreen(navController: NavController) {
             "in_progress" -> "APK packaging in progress"
             "success" -> "APK is ready"
             "failed" -> errorText?.takeIf { it.isNotBlank() } ?: "APK packaging failed"
-            "disabled" -> errorText?.takeIf { it.isNotBlank() } ?: "Runtime shell plugin is required"
+            "disabled" -> errorText?.takeIf { it.isNotBlank() } ?: "Runtime shell template is required"
             "skipped" -> errorText?.takeIf { it.isNotBlank() } ?: "APK packaging skipped"
             else -> null
         }
@@ -1298,12 +1298,12 @@ fun ChatScreen(navController: NavController) {
                                         pendingPayload.copy(
                                             progress = 0,
                                             status = "error",
-                                            error = "Runtime shell plugin is required. Open Apps and install it first."
+                                            error = "Runtime shell template is required. Open Apps and download it first."
                                         )
                                     updateAssistantTag(pendingTag.id) {
                                         it.copy(content = encodeAppDevTagPayload(payload), status = "error")
                                     }
-                                    roundSummary.append("- app_developer: runtime shell missing\n")
+                                    roundSummary.append("- app_developer: runtime shell template missing\n")
                                     return@forEach
                                 }
 

@@ -36,7 +36,7 @@ class LocalBridgeRuntimePackagingService(
                 if (!RuntimeShellPlugin.isInstalled(appContext)) {
                     return@runCatching app.copy(
                         runtimeBuildStatus = "disabled",
-                        runtimeBuildError = "Runtime shell plugin is required. Install it from Apps page.",
+                        runtimeBuildError = "Runtime shell template is required. Download it from Apps page.",
                         runtimeBuildUpdatedAt = System.currentTimeMillis()
                     )
                 }
@@ -147,7 +147,7 @@ class LocalBridgeRuntimePackagingService(
                 if (!RuntimeShellPlugin.isInstalled(appContext)) {
                     return@runCatching app.copy(
                         runtimeBuildStatus = "disabled",
-                        runtimeBuildError = "Runtime shell plugin is required. Install it from Apps page.",
+                        runtimeBuildError = "Runtime shell template is required. Download it from Apps page.",
                         runtimeBuildUpdatedAt = System.currentTimeMillis()
                     )
                 }

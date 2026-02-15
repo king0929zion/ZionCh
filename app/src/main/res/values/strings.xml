@@ -127,15 +127,15 @@
     <string name="apps_featured">Featured</string>
     <string name="apps_empty_saved">No saved apps yet. Save from the app developer card to see it here.</string>
     <string name="apps_saved_from_chat">Saved from chat</string>
-    <string name="runtime_shell_required_title">Runtime shell plugin required</string>
+    <string name="runtime_shell_required_title">Runtime shell template required</string>
     <string name="runtime_shell_required_section">Required plugin</string>
-    <string name="runtime_shell_required_subtitle">Install runtime shell (%1$s) before using App developer and runtime packaging.</string>
-    <string name="runtime_shell_download_button">Download shell</string>
-    <string name="runtime_shell_check_button">I have installed it</string>
-    <string name="runtime_shell_required_toast">Install Runtime shell plugin first from Apps.</string>
-    <string name="runtime_shell_download_failed">Failed to open Runtime shell download page.</string>
-    <string name="runtime_shell_status_installed">Installed</string>
-    <string name="runtime_shell_status_missing">Not installed</string>
+    <string name="runtime_shell_required_subtitle">Download runtime shell template (%1$s) before using App developer and runtime packaging. No installation required.</string>
+    <string name="runtime_shell_download_button">Download template</string>
+    <string name="runtime_shell_check_button">I have downloaded it</string>
+    <string name="runtime_shell_required_toast">Download Runtime shell template first from Apps.</string>
+    <string name="runtime_shell_download_failed">Failed to start Runtime shell template download.</string>
+    <string name="runtime_shell_status_installed">Downloaded</string>
+    <string name="runtime_shell_status_missing">Not downloaded</string>
 
     <!-- About -->
     <string name="about_title">About</string>
