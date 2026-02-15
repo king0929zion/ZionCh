@@ -55,6 +55,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -515,9 +516,12 @@ fun ChatScreen(navController: NavController) {
                     val runtimeText = runtimeBuildStatusText(persisted.runtimeBuildStatus, persisted.runtimeBuildError)
                     val updatedPayload =
                         existingPayload.copy(
+                            deployUrl = persisted.deployUrl,
                             runtimeStatus = persisted.runtimeBuildStatus.takeIf { it.isNotBlank() },
                             runtimeMessage = runtimeText,
-                            runtimeRunUrl = persisted.runtimeBuildRunUrl
+                            runtimeRunUrl = persisted.runtimeBuildRunUrl,
+                            runtimeArtifactName = persisted.runtimeBuildArtifactName,
+                            runtimeArtifactUrl = persisted.runtimeBuildArtifactUrl
                         )
                     current.copy(
                         content = encodeAppDevTagPayload(updatedPayload),
@@ -1268,7 +1272,13 @@ fun ChatScreen(navController: NavController) {
                                         html = if (mode == "edit") targetSavedApp?.html.orEmpty() else "",
                                         error = null,
                                         sourceAppId = targetSavedApp?.id,
-                                        mode = mode
+                                        mode = mode,
+                                        deployUrl = targetSavedApp?.deployUrl,
+                                        runtimeStatus = targetSavedApp?.runtimeBuildStatus?.takeIf { it.isNotBlank() },
+                                        runtimeMessage = runtimeBuildStatusText(targetSavedApp?.runtimeBuildStatus, targetSavedApp?.runtimeBuildError),
+                                        runtimeRunUrl = targetSavedApp?.runtimeBuildRunUrl,
+                                        runtimeArtifactName = targetSavedApp?.runtimeBuildArtifactName,
+                                        runtimeArtifactUrl = targetSavedApp?.runtimeBuildArtifactUrl
                                     )
                                 val pendingTag =
                                     MessageTag(
@@ -1525,9 +1535,13 @@ fun ChatScreen(navController: NavController) {
                                             error = null,
                                             sourceAppId = persistedApp.id,
                                             mode = parsedSpec.mode,
+                                            deployUrl = persistedApp.deployUrl,
+                                            deployError = deployOutcome.errorText,
                                             runtimeStatus = persistedApp.runtimeBuildStatus.takeIf { it.isNotBlank() },
                                             runtimeMessage = runtimeText,
-                                            runtimeRunUrl = persistedApp.runtimeBuildRunUrl
+                                            runtimeRunUrl = persistedApp.runtimeBuildRunUrl,
+                                            runtimeArtifactName = persistedApp.runtimeBuildArtifactName,
+                                            runtimeArtifactUrl = persistedApp.runtimeBuildArtifactUrl
                                         )
                                     updateAssistantTag(pendingTag.id) {
                                         it.copy(
@@ -2381,9 +2395,13 @@ fun ChatScreen(navController: NavController) {
                                         content =
                                             encodeAppDevTagPayload(
                                                 existingPayload.copy(
+                                                    deployUrl = persistedApp.deployUrl,
+                                                    deployError = deployOutcome.errorText,
                                                     runtimeStatus = persistedApp.runtimeBuildStatus.takeIf { it.isNotBlank() },
                                                     runtimeMessage = runtimeText,
-                                                    runtimeRunUrl = persistedApp.runtimeBuildRunUrl
+                                                    runtimeRunUrl = persistedApp.runtimeBuildRunUrl,
+                                                    runtimeArtifactName = persistedApp.runtimeBuildArtifactName,
+                                                    runtimeArtifactUrl = persistedApp.runtimeBuildArtifactUrl
                                                 )
                                             ),
                                         status = if (persistedApp.runtimeBuildStatus == "failed") "error" else current.status
@@ -2819,15 +2837,20 @@ private fun AppDevToolTagCard(
     }
     val progressFraction = (payload.progress.coerceIn(0, 100) / 100f)
     val runtimeMessage = payload.runtimeMessage?.trim()?.takeIf { it.isNotBlank() }
+    val deployUrl = payload.deployUrl?.trim()?.takeIf { it.isNotBlank() }
+    val artifactUrl = payload.runtimeArtifactUrl?.trim()?.takeIf { it.isNotBlank() }
+    val runtimeBadgeText = appDevRuntimeBadgeText(payload.runtimeStatus)
+    val runtimeBadgeColor = appDevRuntimeBadgeColor(payload.runtimeStatus)
+    val deployBadgeColor = if (deployUrl.isNullOrBlank()) Color(0xFF8E8E93) else Color(0xFF34C759)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
+            .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(Color.White, RoundedCornerShape(18.dp))
             .pressableScale(pressedScale = 0.98f, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -2842,14 +2865,27 @@ private fun AppDevToolTagCard(
 
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                text = payload.name,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Normal,
-                color = Color(0xFF1C1C1E)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = payload.name,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color(0xFF1C1C1E),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Text(
+                    text = "${payload.progress.coerceIn(0, 100)}%",
+                    fontSize = 11.sp,
+                    color = Color(0xFF8E8E93)
+                )
+            }
             Text(
                 text = payload.subtitle,
                 fontSize = 12.sp,
@@ -2857,21 +2893,48 @@ private fun AppDevToolTagCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (!runtimeMessage.isNullOrBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                AppDevStatusPill(
+                    label = "Vercel",
+                    value = if (deployUrl.isNullOrBlank()) "Pending" else "Ready",
+                    tint = deployBadgeColor
+                )
+                AppDevStatusPill(
+                    label = "APK",
+                    value = runtimeBadgeText,
+                    tint = runtimeBadgeColor
+                )
+            }
+            if (!deployUrl.isNullOrBlank()) {
                 Text(
-                    text = runtimeMessage,
+                    text = "Deploy: ${compactUrlForDisplay(deployUrl)}",
                     fontSize = 11.sp,
-                    color =
-                        when (payload.runtimeStatus?.trim()?.lowercase()) {
-                            "failed" -> Color(0xFFFF3B30)
-                            "success" -> Color(0xFF34C759)
-                            else -> Color(0xFF8E8E93)
-                        },
+                    color = Color(0xFF8E8E93),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(modifier = Modifier.height(2.dp))
+            if (!artifactUrl.isNullOrBlank()) {
+                Text(
+                    text = "APK: ${compactUrlForDisplay(artifactUrl)}",
+                    fontSize = 11.sp,
+                    color = Color(0xFF34C759),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (!runtimeMessage.isNullOrBlank()) {
+                Text(
+                    text = runtimeMessage,
+                    fontSize = 11.sp,
+                    color = runtimeBadgeColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2989,12 +3052,83 @@ private fun AppDevTagDetailCard(tag: MessageTag) {
         )
     }
     val html = payload.html.trim()
+    val uriHandler = LocalUriHandler.current
+    val clipboardManager = LocalClipboardManager.current
+    val pipelineSteps = remember(
+        payload.status,
+        payload.progress,
+        payload.html,
+        payload.error,
+        payload.deployUrl,
+        payload.deployError,
+        payload.runtimeStatus,
+        payload.runtimeMessage,
+        payload.runtimeArtifactName,
+        payload.runtimeArtifactUrl
+    ) {
+        buildAppDevPipelineSteps(payload)
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         AppDevToolTagCard(tag = tag, onClick = { })
+
+        Text(
+            text = "Build pipeline",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = TextPrimary
+        )
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            pipelineSteps.forEachIndexed { index, step ->
+                AppDevPipelineStepRow(
+                    index = index + 1,
+                    step = step
+                )
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            color = Color.White
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Links",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary
+                )
+                AppDevLinkRow(
+                    label = "Deploy URL (Vercel)",
+                    url = payload.deployUrl,
+                    placeholder = "Not available yet",
+                    onOpen = { url -> runCatching { uriHandler.openUri(url) } },
+                    onCopy = { url -> clipboardManager.setText(AnnotatedString(url)) }
+                )
+                AppDevLinkRow(
+                    label = "Build status URL",
+                    url = payload.runtimeRunUrl,
+                    placeholder = "Not available yet",
+                    onOpen = { url -> runCatching { uriHandler.openUri(url) } },
+                    onCopy = { url -> clipboardManager.setText(AnnotatedString(url)) }
+                )
+                AppDevLinkRow(
+                    label = "APK download URL",
+                    url = payload.runtimeArtifactUrl,
+                    placeholder = "Not available yet",
+                    onOpen = { url -> runCatching { uriHandler.openUri(url) } },
+                    onCopy = { url -> clipboardManager.setText(AnnotatedString(url)) }
+                )
+            }
+        }
 
         Text(
             text = stringResource(R.string.app_dev_preview_title),
@@ -3055,6 +3189,337 @@ private fun AppDevTagDetailCard(tag: MessageTag) {
             }
         }
     }
+}
+
+private enum class AppDevPipelineState {
+    Pending,
+    Running,
+    Success,
+    Failed
+}
+
+private data class AppDevPipelineStep(
+    val title: String,
+    val description: String,
+    val state: AppDevPipelineState
+)
+
+@Composable
+private fun AppDevStatusPill(
+    label: String,
+    value: String,
+    tint: Color
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(100.dp))
+            .background(tint.copy(alpha = 0.13f), RoundedCornerShape(100.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            color = Color(0xFF6A6A6E)
+        )
+        Text(
+            text = value,
+            fontSize = 10.sp,
+            color = tint,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun AppDevPipelineStepRow(
+    index: Int,
+    step: AppDevPipelineStep
+) {
+    val tint = appDevPipelineTint(step.state)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.White,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(tint.copy(alpha = 0.17f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = index.toString(),
+                    fontSize = 11.sp,
+                    color = tint,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = step.title,
+                        fontSize = 12.sp,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = appDevPipelineStateLabel(step.state),
+                        fontSize = 11.sp,
+                        color = tint
+                    )
+                }
+                Text(
+                    text = step.description,
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppDevLinkRow(
+    label: String,
+    url: String?,
+    placeholder: String,
+    onOpen: (String) -> Unit,
+    onCopy: (String) -> Unit
+) {
+    val normalizedUrl = remember(url) { url?.trim()?.takeIf { it.isNotBlank() } }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = TextSecondary
+        )
+        if (normalizedUrl == null) {
+            Text(
+                text = placeholder,
+                fontSize = 12.sp,
+                color = Color(0xFFB0B0B6)
+            )
+        } else {
+            Text(
+                text = normalizedUrl,
+                fontSize = 12.sp,
+                color = Color(0xFF007AFF),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFF2F2F7), RoundedCornerShape(10.dp))
+                        .pressableScale(pressedScale = 0.97f, onClick = { onOpen(normalizedUrl) })
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Open",
+                        fontSize = 11.sp,
+                        color = TextPrimary
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFF2F2F7), RoundedCornerShape(10.dp))
+                        .pressableScale(pressedScale = 0.97f, onClick = { onCopy(normalizedUrl) })
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Copy",
+                        fontSize = 11.sp,
+                        color = TextPrimary
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun appDevRuntimeBadgeText(status: String?): String {
+    return when (status?.trim()?.lowercase()) {
+        "queued" -> "Queued"
+        "in_progress" -> "Building"
+        "success" -> "Ready"
+        "failed" -> "Failed"
+        "disabled" -> "Disabled"
+        "skipped" -> "Skipped"
+        else -> "Pending"
+    }
+}
+
+private fun appDevRuntimeBadgeColor(status: String?): Color {
+    return when (status?.trim()?.lowercase()) {
+        "success" -> Color(0xFF34C759)
+        "failed", "disabled", "skipped" -> Color(0xFFFF3B30)
+        "queued", "in_progress" -> Color(0xFF007AFF)
+        else -> Color(0xFF8E8E93)
+    }
+}
+
+private fun appDevPipelineStateLabel(state: AppDevPipelineState): String {
+    return when (state) {
+        AppDevPipelineState.Pending -> "Pending"
+        AppDevPipelineState.Running -> "In progress"
+        AppDevPipelineState.Success -> "Done"
+        AppDevPipelineState.Failed -> "Failed"
+    }
+}
+
+private fun appDevPipelineTint(state: AppDevPipelineState): Color {
+    return when (state) {
+        AppDevPipelineState.Pending -> Color(0xFF8E8E93)
+        AppDevPipelineState.Running -> Color(0xFF007AFF)
+        AppDevPipelineState.Success -> Color(0xFF34C759)
+        AppDevPipelineState.Failed -> Color(0xFFFF3B30)
+    }
+}
+
+private fun buildAppDevPipelineSteps(payload: AppDevTagPayload): List<AppDevPipelineStep> {
+    val status = payload.status.trim().lowercase()
+    val progress = payload.progress.coerceIn(0, 100)
+    val runtimeStatus = payload.runtimeStatus?.trim()?.lowercase().orEmpty()
+    val runtimeMessage = payload.runtimeMessage?.trim().orEmpty()
+    val htmlReady = payload.html.trim().isNotBlank()
+    val deployUrl = payload.deployUrl?.trim()?.takeIf { it.isNotBlank() }
+    val deployError = payload.deployError?.trim()?.takeIf { it.isNotBlank() }
+    val artifactUrl = payload.runtimeArtifactUrl?.trim()?.takeIf { it.isNotBlank() }
+    val artifactName = payload.runtimeArtifactName?.trim()?.takeIf { it.isNotBlank() }
+
+    val generateState =
+        when {
+            htmlReady -> AppDevPipelineState.Success
+            status == "running" -> AppDevPipelineState.Running
+            status == "error" -> AppDevPipelineState.Failed
+            else -> AppDevPipelineState.Pending
+        }
+    val generateDescription =
+        when (generateState) {
+            AppDevPipelineState.Success -> "HTML app generated ($progress%)"
+            AppDevPipelineState.Running -> "Generating HTML ($progress%)"
+            AppDevPipelineState.Failed -> payload.error?.trim()?.takeIf { it.isNotBlank() } ?: "HTML generation failed"
+            AppDevPipelineState.Pending -> "Waiting to start"
+        }
+
+    val deployState =
+        when {
+            deployUrl != null -> AppDevPipelineState.Success
+            deployError != null -> AppDevPipelineState.Failed
+            generateState == AppDevPipelineState.Running -> AppDevPipelineState.Running
+            generateState == AppDevPipelineState.Success -> AppDevPipelineState.Pending
+            else -> AppDevPipelineState.Pending
+        }
+    val deployDescription =
+        when (deployState) {
+            AppDevPipelineState.Success -> compactUrlForDisplay(deployUrl.orEmpty())
+            AppDevPipelineState.Failed -> deployError ?: "Vercel deploy failed"
+            AppDevPipelineState.Running -> "Will deploy after HTML generation"
+            AppDevPipelineState.Pending -> "Waiting for deploy URL"
+        }
+
+    val packageState =
+        when (runtimeStatus) {
+            "queued", "in_progress" -> AppDevPipelineState.Running
+            "success" -> AppDevPipelineState.Success
+            "failed", "disabled", "skipped" -> AppDevPipelineState.Failed
+            else -> if (deployUrl != null) AppDevPipelineState.Pending else AppDevPipelineState.Pending
+        }
+    val packageDescription =
+        runtimeMessage.ifBlank {
+            when (packageState) {
+                AppDevPipelineState.Success -> "APK packaging finished"
+                AppDevPipelineState.Running -> "APK packaging in progress"
+                AppDevPipelineState.Failed -> "APK packaging failed"
+                AppDevPipelineState.Pending -> "Waiting for packaging trigger"
+            }
+        }
+
+    val artifactState =
+        when {
+            artifactUrl != null -> AppDevPipelineState.Success
+            runtimeStatus == "queued" || runtimeStatus == "in_progress" -> AppDevPipelineState.Running
+            runtimeStatus == "failed" || runtimeStatus == "disabled" || runtimeStatus == "skipped" -> AppDevPipelineState.Failed
+            runtimeStatus == "success" -> AppDevPipelineState.Running
+            deployUrl != null -> AppDevPipelineState.Pending
+            else -> AppDevPipelineState.Pending
+        }
+    val artifactDescription =
+        when (artifactState) {
+            AppDevPipelineState.Success -> artifactName ?: compactUrlForDisplay(artifactUrl.orEmpty())
+            AppDevPipelineState.Running -> "Waiting for APK artifact"
+            AppDevPipelineState.Failed -> runtimeMessage.ifBlank { "APK artifact unavailable" }
+            AppDevPipelineState.Pending -> "Waiting for build artifact URL"
+        }
+
+    return listOf(
+        AppDevPipelineStep(
+            title = "Generate HTML app",
+            description = compactStatusText(generateDescription, "HTML generation"),
+            state = generateState
+        ),
+        AppDevPipelineStep(
+            title = "Deploy to Vercel",
+            description = compactStatusText(deployDescription, "Vercel deploy"),
+            state = deployState
+        ),
+        AppDevPipelineStep(
+            title = "Build APK",
+            description = compactStatusText(packageDescription, "Runtime packaging"),
+            state = packageState
+        ),
+        AppDevPipelineStep(
+            title = "Provide APK download",
+            description = compactStatusText(artifactDescription, "APK download"),
+            state = artifactState
+        )
+    )
+}
+
+private fun compactStatusText(raw: String, fallback: String): String {
+    val text = raw.trim().replace(Regex("\\s+"), " ")
+    return text.ifBlank { fallback }.take(140)
+}
+
+private fun compactUrlForDisplay(raw: String): String {
+    val value = raw.trim()
+    if (value.isBlank()) return ""
+    val parsed = runCatching { Uri.parse(value) }.getOrNull()
+    val host = parsed?.host?.trim().orEmpty()
+    val path = parsed?.encodedPath?.trim().orEmpty()
+    val compact =
+        if (host.isNotBlank()) {
+            buildString {
+                append(host)
+                if (path.isNotBlank() && path != "/") append(path)
+            }
+        } else {
+            value.removePrefix("https://").removePrefix("http://")
+        }
+    return compact.take(96)
 }
 
 @Composable
@@ -4586,9 +5051,13 @@ private data class AppDevTagPayload(
     val error: String? = null,
     val sourceAppId: String? = null,
     val mode: String = "create",
+    val deployUrl: String? = null,
+    val deployError: String? = null,
     val runtimeStatus: String? = null,
     val runtimeMessage: String? = null,
-    val runtimeRunUrl: String? = null
+    val runtimeRunUrl: String? = null,
+    val runtimeArtifactName: String? = null,
+    val runtimeArtifactUrl: String? = null
 )
 
 private data class PlannedMcpToolCall(
@@ -4781,6 +5250,18 @@ private fun parseAppDevTagPayload(
     val error = json?.get("error")?.takeIf { it.isJsonPrimitive }?.asString?.trim()?.takeIf { it.isNotBlank() }
     val sourceAppId = json?.get("sourceAppId")?.takeIf { it.isJsonPrimitive }?.asString?.trim()?.takeIf { it.isNotBlank() }
     val mode = json?.get("mode")?.takeIf { it.isJsonPrimitive }?.asString?.trim()?.takeIf { it.isNotBlank() } ?: "create"
+    val deployUrl =
+        json?.get("deployUrl")
+            ?.takeIf { it.isJsonPrimitive }
+            ?.asString
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    val deployError =
+        json?.get("deployError")
+            ?.takeIf { it.isJsonPrimitive }
+            ?.asString
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
     val runtimeStatus =
         json?.get("runtimeStatus")
             ?.takeIf { it.isJsonPrimitive }
@@ -4800,6 +5281,18 @@ private fun parseAppDevTagPayload(
             ?.asString
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+    val runtimeArtifactName =
+        json?.get("runtimeArtifactName")
+            ?.takeIf { it.isJsonPrimitive }
+            ?.asString
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    val runtimeArtifactUrl =
+        json?.get("runtimeArtifactUrl")
+            ?.takeIf { it.isJsonPrimitive }
+            ?.asString
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
     val compactDescription = compactAppDescription(descriptionRaw, subtitleRaw)
     val compactSubtitle = compactAppDescription(subtitleRaw, compactDescription)
     return AppDevTagPayload(
@@ -4814,9 +5307,13 @@ private fun parseAppDevTagPayload(
         error = error,
         sourceAppId = sourceAppId,
         mode = mode,
+        deployUrl = deployUrl,
+        deployError = deployError,
         runtimeStatus = runtimeStatus,
         runtimeMessage = runtimeMessage,
-        runtimeRunUrl = runtimeRunUrl
+        runtimeRunUrl = runtimeRunUrl,
+        runtimeArtifactName = runtimeArtifactName,
+        runtimeArtifactUrl = runtimeArtifactUrl
     )
 }
 
