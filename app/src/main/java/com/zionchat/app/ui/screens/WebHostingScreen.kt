@@ -18,6 +18,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +41,7 @@ import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.Surface
 import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -69,6 +71,13 @@ fun WebHostingScreen(navController: NavController) {
         autoDeploy = config.autoDeploy
         versionModel = appVersionModel
         initialized = true
+    }
+
+    LaunchedEffect(initialized, token, projectId, teamId, customDomain, autoDeploy, versionModel) {
+        if (!initialized) return@LaunchedEffect
+        delay(350)
+        repository.setWebHostingConfig(buildConfig())
+        repository.setAppModuleVersionModel(versionModel)
     }
 
     fun buildConfig(): WebHostingConfig {

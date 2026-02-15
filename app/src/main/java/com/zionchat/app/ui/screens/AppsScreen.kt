@@ -1,5 +1,10 @@
 package com.zionchat.app.ui.screens
 
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.graphics.Color as AndroidColor
 import android.widget.Toast
 import android.webkit.ConsoleMessage
@@ -36,6 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -154,13 +160,30 @@ fun AppsScreen(navController: NavController) {
     }
 
     DisposableEffect(lifecycleOwner, context) {
+        val appContext = context.applicationContext
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 runtimeShellInstalled = RuntimeShellPlugin.isInstalled(context)
             }
         }
+        val receiver =
+            object : BroadcastReceiver() {
+                override fun onReceive(context: android.content.Context?, intent: Intent?) {
+                    if (intent?.action == DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
+                        runtimeShellInstalled = RuntimeShellPlugin.isInstalled(appContext)
+                    }
+                }
+            }
         lifecycleOwner.lifecycle.addObserver(observer)
+        val intentFilter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            appContext.registerReceiver(receiver, intentFilter, android.content.Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            appContext.registerReceiver(receiver, intentFilter)
+        }
         onDispose {
+            runCatching { appContext.unregisterReceiver(receiver) }
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
@@ -426,18 +449,34 @@ private fun RuntimeShellRequiredCard(
                             color = if (isInstalled) Color.Black else Color.Black,
                             shape = RoundedCornerShape(999.dp)
                         )
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Text(
-                        text =
-                            stringResource(
-                                if (isInstalled) R.string.runtime_shell_status_installed
-                                else R.string.runtime_shell_status_missing
-                            ),
-                        fontSize = 11.sp,
-                        color = if (isInstalled) Color.Black else Color.White
-                    )
+                    Row(
+                        modifier = Modifier.widthIn(max = 130.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(
+                                    if (isInstalled) Color.Black else Color.White,
+                                    CircleShape
+                                )
+                        )
+                        Text(
+                            text =
+                                stringResource(
+                                    if (isInstalled) R.string.runtime_shell_status_installed
+                                    else R.string.runtime_shell_status_missing
+                                ),
+                            fontSize = 11.sp,
+                            color = if (isInstalled) Color.Black else Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
             Text(

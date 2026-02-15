@@ -13,7 +13,10 @@ object RuntimeShellPlugin {
     private const val fallbackDownloadUrl =
         "https://github.com/king0929zion/core/releases/latest/download/runtime-release-unsigned.apk"
     private const val fallbackTemplateFileName = "runtime-shell-template.apk"
-    private const val minTemplateSizeBytes = 128 * 1024L
+    private const val minTemplateSizeBytes = 4 * 1024L
+    private const val prefsName = "runtime_shell_template"
+    private const val keyDownloadId = "download_id"
+    private const val keyTemplateReady = "template_ready"
 
     fun packageName(): String {
         return BuildConfig.RUNTIME_SHELL_PLUGIN_PACKAGE.trim().ifBlank { fallbackPackageName }
@@ -41,8 +44,36 @@ object RuntimeShellPlugin {
     }
 
     fun isInstalled(context: Context): Boolean {
-        val file = templateFile(context) ?: return false
-        return file.exists() && file.isFile && file.length() >= minTemplateSizeBytes
+        val readyByFile = templateFile(context)?.let(::isValidTemplateFile) == true
+        if (readyByFile) {
+            markTemplateReady(context, true)
+            return true
+        }
+
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+        val downloadId = getSavedDownloadId(context)
+        if (manager != null && downloadId > 0L) {
+            val query = DownloadManager.Query().setFilterById(downloadId)
+            runCatching {
+                manager.query(query)?.use { cursor ->
+                    if (!cursor.moveToFirst()) return@use
+                    val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                    if (statusIndex < 0) return@use
+                    val status = cursor.getInt(statusIndex)
+                    when (status) {
+                        DownloadManager.STATUS_SUCCESSFUL -> {
+                            markTemplateReady(context, true)
+                            return true
+                        }
+                        DownloadManager.STATUS_FAILED -> {
+                            markTemplateReady(context, false)
+                        }
+                    }
+                }
+            }
+        }
+
+        return downloadId > 0L && isTemplateMarkedReady(context)
     }
 
     fun openDownloadPage(context: Context): Boolean {
@@ -78,7 +109,9 @@ object RuntimeShellPlugin {
 
         return runCatching {
             templateFile(context)?.takeIf { it.exists() }?.delete()
-            manager.enqueue(request)
+            val downloadId = manager.enqueue(request)
+            saveDownloadId(context, downloadId)
+            markTemplateReady(context, false)
             true
         }.getOrElse { false }
     }
@@ -89,5 +122,28 @@ object RuntimeShellPlugin {
                 .trim('_')
                 .ifBlank { fallbackTemplateFileName }
         return if (normalized.endsWith(".apk", ignoreCase = true)) normalized else "$normalized.apk"
+    }
+
+    private fun isValidTemplateFile(file: File): Boolean {
+        return file.exists() && file.isFile && file.length() >= minTemplateSizeBytes
+    }
+
+    private fun prefs(context: Context) =
+        context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+
+    private fun getSavedDownloadId(context: Context): Long {
+        return prefs(context).getLong(keyDownloadId, -1L)
+    }
+
+    private fun saveDownloadId(context: Context, downloadId: Long) {
+        prefs(context).edit().putLong(keyDownloadId, downloadId).apply()
+    }
+
+    private fun isTemplateMarkedReady(context: Context): Boolean {
+        return prefs(context).getBoolean(keyTemplateReady, false)
+    }
+
+    private fun markTemplateReady(context: Context, ready: Boolean) {
+        prefs(context).edit().putBoolean(keyTemplateReady, ready).apply()
     }
 }

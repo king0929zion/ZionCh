@@ -134,8 +134,8 @@
     <string name="runtime_shell_check_button">I have downloaded it</string>
     <string name="runtime_shell_required_toast">Download Runtime shell template first from Apps.</string>
     <string name="runtime_shell_download_failed">Failed to start Runtime shell template download.</string>
-    <string name="runtime_shell_status_installed">Downloaded</string>
-    <string name="runtime_shell_status_missing">Not downloaded</string>
+    <string name="runtime_shell_status_installed">Ready</string>
+    <string name="runtime_shell_status_missing">Missing</string>
 
     <!-- About -->
     <string name="about_title">About</string>
