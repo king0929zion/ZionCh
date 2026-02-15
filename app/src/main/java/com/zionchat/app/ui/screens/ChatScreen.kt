@@ -388,8 +388,19 @@ fun ChatScreen(navController: NavController) {
 
     suspend fun deploySavedAppIfEnabled(app: SavedApp): DeployOutcome {
         val hostingConfig = repository.getWebHostingConfig()
-        if (!hostingConfig.autoDeploy || hostingConfig.token.isBlank()) {
-            return DeployOutcome(app = app, errorText = null, deployedNow = false)
+        if (!hostingConfig.autoDeploy) {
+            return DeployOutcome(
+                app = app,
+                errorText = "Auto deploy is off. Enable it in Web hosting.",
+                deployedNow = false
+            )
+        }
+        if (hostingConfig.token.isBlank()) {
+            return DeployOutcome(
+                app = app,
+                errorText = "Missing Vercel token in Web hosting settings.",
+                deployedNow = false
+            )
         }
         return webHostingService.deployApp(
             appId = app.id,
@@ -2839,9 +2850,7 @@ private fun AppDevToolTagCard(
     val runtimeMessage = payload.runtimeMessage?.trim()?.takeIf { it.isNotBlank() }
     val deployUrl = payload.deployUrl?.trim()?.takeIf { it.isNotBlank() }
     val artifactUrl = payload.runtimeArtifactUrl?.trim()?.takeIf { it.isNotBlank() }
-    val runtimeBadgeText = appDevRuntimeBadgeText(payload.runtimeStatus)
-    val runtimeBadgeColor = appDevRuntimeBadgeColor(payload.runtimeStatus)
-    val deployBadgeColor = if (deployUrl.isNullOrBlank()) Color(0xFF8E8E93) else Color(0xFF34C759)
+    val runtimeStatusColor = appDevRuntimeBadgeColor(payload.runtimeStatus)
 
     Row(
         modifier = Modifier
@@ -2893,21 +2902,6 @@ private fun AppDevToolTagCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                AppDevStatusPill(
-                    label = "Vercel",
-                    value = if (deployUrl.isNullOrBlank()) "Pending" else "Ready",
-                    tint = deployBadgeColor
-                )
-                AppDevStatusPill(
-                    label = "APK",
-                    value = runtimeBadgeText,
-                    tint = runtimeBadgeColor
-                )
-            }
             if (!deployUrl.isNullOrBlank()) {
                 Text(
                     text = "Deploy: ${compactUrlForDisplay(deployUrl)}",
@@ -2930,7 +2924,7 @@ private fun AppDevToolTagCard(
                 Text(
                     text = runtimeMessage,
                     fontSize = 11.sp,
-                    color = runtimeBadgeColor,
+                    color = runtimeStatusColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -3051,10 +3045,9 @@ private fun AppDevTagDetailCard(tag: MessageTag) {
             fallbackStatus = tag.status
         )
     }
-    val html = payload.html.trim()
     val uriHandler = LocalUriHandler.current
     val clipboardManager = LocalClipboardManager.current
-    val pipelineSteps = remember(
+    val bubbles = remember(
         payload.status,
         payload.progress,
         payload.html,
@@ -3066,7 +3059,7 @@ private fun AppDevTagDetailCard(tag: MessageTag) {
         payload.runtimeArtifactName,
         payload.runtimeArtifactUrl
     ) {
-        buildAppDevPipelineSteps(payload)
+        buildAppDevProgressBubbles(payload)
     }
 
     Column(
@@ -3076,115 +3069,18 @@ private fun AppDevTagDetailCard(tag: MessageTag) {
         AppDevToolTagCard(tag = tag, onClick = { })
 
         Text(
-            text = "Build pipeline",
+            text = "Build updates",
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             color = TextPrimary
         )
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            pipelineSteps.forEachIndexed { index, step ->
-                AppDevPipelineStepRow(
-                    index = index + 1,
-                    step = step
-                )
-            }
-        }
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            color = Color.White
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = "Links",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary
-                )
-                AppDevLinkRow(
-                    label = "Deploy URL (Vercel)",
-                    url = payload.deployUrl,
-                    placeholder = "Not available yet",
+            bubbles.forEach { bubble ->
+                AppDevProgressBubbleRow(
+                    bubble = bubble,
                     onOpen = { url -> runCatching { uriHandler.openUri(url) } },
                     onCopy = { url -> clipboardManager.setText(AnnotatedString(url)) }
-                )
-                AppDevLinkRow(
-                    label = "Build status URL",
-                    url = payload.runtimeRunUrl,
-                    placeholder = "Not available yet",
-                    onOpen = { url -> runCatching { uriHandler.openUri(url) } },
-                    onCopy = { url -> clipboardManager.setText(AnnotatedString(url)) }
-                )
-                AppDevLinkRow(
-                    label = "APK download URL",
-                    url = payload.runtimeArtifactUrl,
-                    placeholder = "Not available yet",
-                    onOpen = { url -> runCatching { uriHandler.openUri(url) } },
-                    onCopy = { url -> clipboardManager.setText(AnnotatedString(url)) }
-                )
-            }
-        }
-
-        Text(
-            text = stringResource(R.string.app_dev_preview_title),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = TextPrimary
-        )
-
-        payload.runtimeMessage?.trim()?.takeIf { it.isNotBlank() }?.let { runtimeText ->
-            Text(
-                text = runtimeText,
-                fontSize = 13.sp,
-                color =
-                    when (payload.runtimeStatus?.trim()?.lowercase()) {
-                        "failed" -> Color(0xFFFF3B30)
-                        "success" -> Color(0xFF34C759)
-                        else -> TextSecondary
-                    }
-            )
-        }
-
-        if (html.isBlank()) {
-            Text(
-                text = payload.error?.ifBlank { null }
-                    ?: stringResource(R.string.app_dev_preview_unavailable),
-                fontSize = 13.sp,
-                color = TextSecondary
-            )
-        } else {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(360.dp),
-                shape = RoundedCornerShape(14.dp),
-                color = Color.White
-            ) {
-                AndroidView(
-                    factory = { context ->
-                        WebView(context).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.allowFileAccess = false
-                            settings.allowContentAccess = false
-                            webViewClient = WebViewClient()
-                            webChromeClient = WebChromeClient()
-                        }
-                    },
-                    update = { webView ->
-                        webView.loadDataWithBaseURL(
-                            null,
-                            html,
-                            "text/html",
-                            "utf-8",
-                            null
-                        )
-                    }
                 )
             }
         }
@@ -3204,172 +3100,197 @@ private data class AppDevPipelineStep(
     val state: AppDevPipelineState
 )
 
-@Composable
-private fun AppDevStatusPill(
-    label: String,
-    value: String,
-    tint: Color
-) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(100.dp))
-            .background(tint.copy(alpha = 0.13f), RoundedCornerShape(100.dp))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            fontSize = 10.sp,
-            color = Color(0xFF6A6A6E)
-        )
-        Text(
-            text = value,
-            fontSize = 10.sp,
-            color = tint,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-}
+private data class AppDevProgressBubble(
+    val text: String,
+    val state: AppDevPipelineState,
+    val alignRight: Boolean,
+    val urlLabel: String? = null,
+    val url: String? = null
+)
 
 @Composable
-private fun AppDevPipelineStepRow(
-    index: Int,
-    step: AppDevPipelineStep
-) {
-    val tint = appDevPipelineTint(step.state)
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = Color.White,
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(22.dp)
-                    .clip(CircleShape)
-                    .background(tint.copy(alpha = 0.17f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = index.toString(),
-                    fontSize = 11.sp,
-                    color = tint,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = step.title,
-                        fontSize = 12.sp,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = appDevPipelineStateLabel(step.state),
-                        fontSize = 11.sp,
-                        color = tint
-                    )
-                }
-                Text(
-                    text = step.description,
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AppDevLinkRow(
-    label: String,
-    url: String?,
-    placeholder: String,
+private fun AppDevProgressBubbleRow(
+    bubble: AppDevProgressBubble,
     onOpen: (String) -> Unit,
     onCopy: (String) -> Unit
 ) {
-    val normalizedUrl = remember(url) { url?.trim()?.takeIf { it.isNotBlank() } }
-    Column(
+    val tint = appDevPipelineTint(bubble.state)
+    val isOutgoing = bubble.alignRight
+    val bubbleColor = if (isOutgoing) Color(0xFF0A84FF) else Color.White
+    val textColor = if (isOutgoing) Color.White else TextPrimary
+    val statusColor = if (isOutgoing) Color.White.copy(alpha = 0.84f) else tint
+    val normalizedUrl = remember(bubble.url) { bubble.url?.trim()?.takeIf { it.isNotBlank() } }
+
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = if (isOutgoing) Arrangement.End else Arrangement.Start
     ) {
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = TextSecondary
-        )
-        if (normalizedUrl == null) {
-            Text(
-                text = placeholder,
-                fontSize = 12.sp,
-                color = Color(0xFFB0B0B6)
-            )
-        } else {
-            Text(
-                text = normalizedUrl,
-                fontSize = 12.sp,
-                color = Color(0xFF007AFF),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFFF2F2F7), RoundedCornerShape(10.dp))
-                        .pressableScale(pressedScale = 0.97f, onClick = { onOpen(normalizedUrl) })
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
+        Column(
+            modifier = Modifier.fillMaxWidth(0.92f),
+            horizontalAlignment = if (isOutgoing) Alignment.End else Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Surface(
+                color = bubbleColor,
+                shape = RoundedCornerShape(
+                    topStart = 18.dp,
+                    topEnd = 18.dp,
+                    bottomStart = if (isOutgoing) 18.dp else 6.dp,
+                    bottomEnd = if (isOutgoing) 6.dp else 18.dp
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Text(
-                        text = "Open",
+                        text = bubble.text,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        color = textColor
+                    )
+                    Text(
+                        text = appDevPipelineStateLabel(bubble.state),
                         fontSize = 11.sp,
-                        color = TextPrimary
+                        color = statusColor
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFFF2F2F7), RoundedCornerShape(10.dp))
-                        .pressableScale(pressedScale = 0.97f, onClick = { onCopy(normalizedUrl) })
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                ) {
+            }
+
+            if (!normalizedUrl.isNullOrBlank()) {
+                bubble.urlLabel?.let { label ->
                     Text(
-                        text = "Copy",
+                        text = label,
                         fontSize = 11.sp,
-                        color = TextPrimary
+                        color = TextSecondary
                     )
+                }
+                Text(
+                    text = normalizedUrl,
+                    fontSize = 12.sp,
+                    color = Color(0xFF007AFF),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF2F2F7), RoundedCornerShape(10.dp))
+                            .pressableScale(pressedScale = 0.97f, onClick = { onOpen(normalizedUrl) })
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Open",
+                            fontSize = 11.sp,
+                            color = TextPrimary
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF2F2F7), RoundedCornerShape(10.dp))
+                            .pressableScale(pressedScale = 0.97f, onClick = { onCopy(normalizedUrl) })
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Copy",
+                            fontSize = 11.sp,
+                            color = TextPrimary
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-private fun appDevRuntimeBadgeText(status: String?): String {
-    return when (status?.trim()?.lowercase()) {
-        "queued" -> "Queued"
-        "in_progress" -> "Building"
-        "success" -> "Ready"
-        "failed" -> "Failed"
-        "disabled" -> "Disabled"
-        "skipped" -> "Skipped"
-        else -> "Pending"
+private fun buildAppDevProgressBubbles(payload: AppDevTagPayload): List<AppDevProgressBubble> {
+    val steps = buildAppDevPipelineSteps(payload)
+    val generateStep = steps.getOrNull(0)
+    val deployStep = steps.getOrNull(1)
+    val packageStep = steps.getOrNull(2)
+    val artifactStep = steps.getOrNull(3)
+    val deployUrl = payload.deployUrl?.trim()?.takeIf { it.isNotBlank() }
+    val runUrl = payload.runtimeRunUrl?.trim()?.takeIf { it.isNotBlank() }
+    val artifactUrl = payload.runtimeArtifactUrl?.trim()?.takeIf { it.isNotBlank() }
+    val bubbles = mutableListOf<AppDevProgressBubble>()
+
+    generateStep?.let { step ->
+        val text =
+            when (step.state) {
+                AppDevPipelineState.Pending -> "画板刚铺开，代码小队正在集合。"
+                AppDevPipelineState.Running -> "我在写代码中，像素和组件正在排队（${payload.progress.coerceIn(0, 100)}%）。"
+                AppDevPipelineState.Success -> "代码已经出炉，页面主结构跑起来了。"
+                AppDevPipelineState.Failed -> "这轮写代码踩坑了：${compactStatusText(step.description, "HTML generation failed")}"
+            }
+        bubbles += AppDevProgressBubble(text = text, state = step.state, alignRight = step.state == AppDevPipelineState.Success)
     }
+
+    deployStep?.let { step ->
+        val text =
+            when (step.state) {
+                AppDevPipelineState.Pending -> "下一步把它推到 Vercel，正在等发射窗口。"
+                AppDevPipelineState.Running -> "正在和 Vercel 握手，马上拿公开地址。"
+                AppDevPipelineState.Success -> "Vercel 部署成功，公网地址拿到了。"
+                AppDevPipelineState.Failed -> "部署环节卡住了：${compactStatusText(step.description, "Vercel deploy failed")}"
+            }
+        bubbles +=
+            AppDevProgressBubble(
+                text = text,
+                state = step.state,
+                alignRight = step.state == AppDevPipelineState.Success,
+                urlLabel = if (deployUrl != null) "Deploy URL (Vercel)" else null,
+                url = deployUrl
+            )
+    }
+
+    packageStep?.let { step ->
+        val text =
+            when (step.state) {
+                AppDevPipelineState.Pending -> "部署完成后就启动 APK 打包机。"
+                AppDevPipelineState.Running -> "APK 正在焊接中，状态已开始更新。"
+                AppDevPipelineState.Success -> "APK 打包完成，正在准备下载出口。"
+                AppDevPipelineState.Failed -> "打包环节出现问题：${compactStatusText(step.description, "Runtime packaging failed")}"
+            }
+        bubbles +=
+            AppDevProgressBubble(
+                text = text,
+                state = step.state,
+                alignRight = step.state == AppDevPipelineState.Success,
+                urlLabel = if (runUrl != null) "Build status URL" else null,
+                url = runUrl
+            )
+    }
+
+    artifactStep?.let { step ->
+        val text =
+            when (step.state) {
+                AppDevPipelineState.Pending -> "下载链接正在路上，马上到。"
+                AppDevPipelineState.Running -> "成品快好了，我正在盯着最后一步。"
+                AppDevPipelineState.Success -> "成品 APK 已到手，点下面就能下载。"
+                AppDevPipelineState.Failed -> "这次没有拿到可下载 APK：${compactStatusText(step.description, "Artifact unavailable")}"
+            }
+        bubbles +=
+            AppDevProgressBubble(
+                text = text,
+                state = step.state,
+                alignRight = step.state == AppDevPipelineState.Success,
+                urlLabel = if (artifactUrl != null) "APK download URL" else null,
+                url = artifactUrl
+            )
+    }
+
+    if (artifactStep?.state == AppDevPipelineState.Success && artifactUrl != null) {
+        bubbles +=
+            AppDevProgressBubble(
+                text = "闭环完成：部署和打包都跑通了，安装包可以直接拿走。",
+                state = AppDevPipelineState.Success,
+                alignRight = true
+            )
+    }
+
+    return bubbles
 }
 
 private fun appDevRuntimeBadgeColor(status: String?): Color {

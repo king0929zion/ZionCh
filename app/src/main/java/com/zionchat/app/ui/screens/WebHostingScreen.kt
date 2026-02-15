@@ -61,17 +61,7 @@ fun WebHostingScreen(navController: NavController) {
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
     var isValidating by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf<String?>(null) }
-    var initialized by rememberSaveable { mutableStateOf(false) }
-
-    if (!initialized) {
-        token = config.token
-        projectId = config.projectId
-        teamId = config.teamId
-        customDomain = config.customDomain
-        autoDeploy = config.autoDeploy
-        versionModel = appVersionModel
-        initialized = true
-    }
+    var initialized by remember { mutableStateOf(false) }
 
     fun buildConfig(): WebHostingConfig {
         return WebHostingConfig(
@@ -82,6 +72,17 @@ fun WebHostingScreen(navController: NavController) {
             customDomain = customDomain.trim(),
             autoDeploy = autoDeploy
         )
+    }
+
+    LaunchedEffect(config, appVersionModel, initialized) {
+        if (initialized) return@LaunchedEffect
+        token = config.token
+        projectId = config.projectId
+        teamId = config.teamId
+        customDomain = config.customDomain
+        autoDeploy = config.autoDeploy
+        versionModel = appVersionModel
+        initialized = true
     }
 
     LaunchedEffect(initialized, token, projectId, teamId, customDomain, autoDeploy, versionModel) {
