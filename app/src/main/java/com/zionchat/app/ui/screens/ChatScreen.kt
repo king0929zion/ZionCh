@@ -2007,22 +2007,10 @@ fun ChatScreen(navController: NavController) {
                                 showToolMenu = false
                                 showThinkingSheet = false
                                 thinkingSheetText = null
-                                val clickedTag =
-                                    localMessages.firstOrNull { it.id == messageId }
-                                        ?.tags
-                                        .orEmpty()
-                                        .firstOrNull { it.id == tagId }
-                                if (clickedTag?.kind == "app_dev") {
-                                    tagSheetMessageId = null
-                                    tagSheetTagId = null
-                                    appWorkspaceMessageId = messageId
-                                    appWorkspaceTagId = tagId
-                                } else {
-                                    appWorkspaceMessageId = null
-                                    appWorkspaceTagId = null
-                                    tagSheetMessageId = messageId
-                                    tagSheetTagId = tagId
-                                }
+                                appWorkspaceMessageId = null
+                                appWorkspaceTagId = null
+                                tagSheetMessageId = messageId
+                                tagSheetTagId = tagId
                             },
                             userBubbleColor = accentPalette.bubbleColor,
                             userBubbleSecondaryColor = accentPalette.bubbleColorSecondary,

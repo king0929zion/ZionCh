@@ -18,6 +18,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -83,6 +84,16 @@ fun WebHostingScreen(navController: NavController) {
         autoDeploy = config.autoDeploy
         versionModel = appVersionModel
         initialized = true
+    }
+
+    DisposableEffect(initialized, token, projectId, teamId, customDomain, autoDeploy, versionModel) {
+        onDispose {
+            if (!initialized) return@onDispose
+            scope.launch {
+                repository.setWebHostingConfig(buildConfig())
+                repository.setAppModuleVersionModel(versionModel)
+            }
+        }
     }
 
     LaunchedEffect(initialized, token, projectId, teamId, customDomain, autoDeploy, versionModel) {
