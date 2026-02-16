@@ -5,7 +5,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
+import android.view.View
 import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -2759,7 +2761,7 @@ private fun AppDevToolTagCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 360.dp)
+                .widthIn(max = 408.dp)
                 .shadow(
                     elevation = 3.dp,
                     shape = RoundedCornerShape(16.dp),
@@ -2769,16 +2771,16 @@ private fun AppDevToolTagCard(
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color.White, RoundedCornerShape(16.dp))
                 .border(width = 1.dp, color = Color(0xFFF3F4F6), shape = RoundedCornerShape(16.dp))
-                .padding(horizontal = 20.dp, vertical = 20.dp)
+                .padding(horizontal = 20.dp, vertical = 14.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.Top
             ) {
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
+                        .size(58.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(flowingIconBrush, RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
@@ -2800,30 +2802,30 @@ private fun AppDevToolTagCard(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 64.dp),
+                        .heightIn(min = 58.dp),
                     verticalArrangement = Arrangement.Center
                 ) {
                     if (showSkeleton) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(0.92f)
-                                .height(16.dp)
+                                .height(14.dp)
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(skeletonBrush)
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(0.75f)
-                                .height(16.dp)
+                                .height(14.dp)
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(skeletonBrush)
                         )
                     } else {
                         Text(
                             text = payload.name,
-                            fontSize = 20.sp,
-                            lineHeight = 22.sp,
+                            fontSize = 19.sp,
+                            lineHeight = 21.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF111827),
                             maxLines = 1,
@@ -2833,7 +2835,7 @@ private fun AppDevToolTagCard(
                         Text(
                             text = payload.subtitle.ifBlank { payload.description }.ifBlank { "AI-powered HTML generator with real-time preview" },
                             fontSize = 13.sp,
-                            lineHeight = 18.sp,
+                            lineHeight = 17.sp,
                             color = Color(0xFF6B7280),
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
@@ -2842,7 +2844,7 @@ private fun AppDevToolTagCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -3044,9 +3046,17 @@ private fun AppDevWorkspaceScreen(
                 fallbackStatus = tag.status
             )
         }
-    var showCode by remember(tag.id) { mutableStateOf(false) }
     val html = remember(payload.html) { normalizeGeneratedHtmlDraft(payload.html) }.trim()
     val isRunning = payload.status.equals("running", ignoreCase = true)
+    var showCode by remember(tag.id) { mutableStateOf(isRunning || html.isBlank()) }
+    var userToggledTab by remember(tag.id) { mutableStateOf(false) }
+
+    LaunchedEffect(isRunning, html, userToggledTab) {
+        if (!userToggledTab) {
+            // Default tab policy: coding while generating, preview after completed.
+            showCode = isRunning || html.isBlank()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -3109,21 +3119,39 @@ private fun AppDevWorkspaceScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (!showCode) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
-                            .pressableScale(pressedScale = 0.97f, onClick = { showCode = false })
+                            .pressableScale(
+                                pressedScale = 0.97f,
+                                onClick = {
+                                    if (isRunning) return@pressableScale
+                                    userToggledTab = true
+                                    showCode = false
+                                }
+                            )
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "Preview",
                             fontSize = 12.sp,
-                            color = if (!showCode) TextPrimary else TextSecondary
+                            color =
+                                when {
+                                    isRunning -> TextSecondary.copy(alpha = 0.55f)
+                                    !showCode -> TextPrimary
+                                    else -> TextSecondary
+                                }
                         )
                     }
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (showCode) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
-                            .pressableScale(pressedScale = 0.97f, onClick = { showCode = true })
+                            .pressableScale(
+                                pressedScale = 0.97f,
+                                onClick = {
+                                    userToggledTab = true
+                                    showCode = true
+                                }
+                            )
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -3168,6 +3196,8 @@ private fun AppDevWorkspaceScreen(
                                 val key = payload.sourceAppId?.trim().orEmpty().ifBlank { "draft" }
                                 "https://workspace-app.zionchat.local/app/$key/"
                             }
+                        val contentSignature =
+                            remember(workspaceBaseUrl, html) { "$workspaceBaseUrl:${html.hashCode()}" }
                         AndroidView(
                             modifier = Modifier.fillMaxSize(),
                             factory = { context ->
@@ -3177,18 +3207,39 @@ private fun AppDevWorkspaceScreen(
                                     settings.databaseEnabled = true
                                     settings.allowFileAccess = false
                                     settings.allowContentAccess = false
+                                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                                    settings.mediaPlaybackRequiresUserGesture = false
+                                    settings.useWideViewPort = true
+                                    settings.loadWithOverviewMode = true
+                                    settings.javaScriptCanOpenWindowsAutomatically = true
+                                    settings.setSupportZoom(true)
+                                    settings.builtInZoomControls = true
+                                    settings.displayZoomControls = false
+                                    settings.cacheMode = WebSettings.LOAD_DEFAULT
+                                    settings.textZoom = 100
+                                    overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                                     webViewClient = WebViewClient()
                                     webChromeClient = WebChromeClient()
                                 }
                             },
                             update = { webView ->
-                                webView.loadDataWithBaseURL(
-                                    workspaceBaseUrl,
-                                    html,
-                                    "text/html",
-                                    "utf-8",
-                                    null
-                                )
+                                if (webView.tag != contentSignature) {
+                                    webView.tag = contentSignature
+                                    webView.loadDataWithBaseURL(
+                                        workspaceBaseUrl,
+                                        html,
+                                        "text/html",
+                                        "utf-8",
+                                        null
+                                    )
+                                }
+                            },
+                            onRelease = { webView ->
+                                webView.stopLoading()
+                                webView.loadUrl("about:blank")
+                                webView.clearHistory()
+                                webView.removeAllViews()
+                                webView.destroy()
                             }
                         )
                     }
@@ -3204,16 +3255,34 @@ private fun AppDevCodeSurface(
     error: String?,
     isRunning: Boolean
 ) {
-    val codeText = remember(html) { prettyFormatHtmlForCodeView(html) }
+    val codeText =
+        remember(html, isRunning) {
+            val normalized = normalizeGeneratedHtmlDraft(html)
+            if (normalized.isBlank()) {
+                ""
+            } else if (isRunning) {
+                // Stream phase prioritizes low-latency updates.
+                normalized
+            } else {
+                prettyFormatHtmlForCodeView(normalized)
+            }
+        }
     val scrollState = rememberScrollState()
     val horizontalState = rememberScrollState()
-    val lineCount = remember(codeText) { codeText.lines().size.coerceAtLeast(1) }
+    val lineCount = remember(codeText) { codeText.count { it == '\n' } + 1 }
     val lineNumberText = remember(lineCount) {
         buildString {
             for (i in 1..lineCount) {
                 append(i)
                 if (i != lineCount) append('\n')
             }
+        }
+    }
+
+    LaunchedEffect(codeText, isRunning) {
+        if (isRunning && codeText.isNotBlank()) {
+            // Keep viewport near newest streamed chunks for a terminal-like coding flow.
+            scrollState.scrollTo(scrollState.maxValue)
         }
     }
 
