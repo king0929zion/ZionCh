@@ -107,7 +107,6 @@ import com.zionchat.app.ui.components.BottomFadeScrim
 import com.zionchat.app.ui.components.TopFadeScrim
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
-import com.zionchat.app.ui.screens.chat.stripMarkdownCodeFences
 import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.TextPrimary
@@ -1372,6 +1371,17 @@ private fun parseCssColorFromJs(jsValue: String?): Color? {
     }
 
     return runCatching { Color(AndroidColor.parseColor(raw)) }.getOrNull()
+}
+
+private fun stripMarkdownCodeFences(text: String): String {
+    var trimmed = text.trim()
+    if (trimmed.startsWith("```")) {
+        trimmed = trimmed.substringAfter('\n', trimmed).trim()
+    }
+    if (trimmed.endsWith("```")) {
+        trimmed = trimmed.dropLast(3).trim()
+    }
+    return trimmed.trim()
 }
 
 private data class ResolvedAppDeveloperModelForAutoFix(
