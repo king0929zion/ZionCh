@@ -942,7 +942,12 @@ class AppRepository(context: Context) {
             if (matchIndex >= 0) {
                 val existing = savedApps[matchIndex]
                 val htmlChanged = existing.html != sanitizedIncoming.html
-                val deployUrl = sanitizedIncoming.deployUrl ?: existing.deployUrl
+                val deployUrl =
+                    when {
+                        sanitizedIncoming.deployUrl != null -> sanitizedIncoming.deployUrl
+                        htmlChanged -> null
+                        else -> existing.deployUrl
+                    }
                 val versionCode =
                     when {
                         sanitizedIncoming.versionCode > existing.versionCode -> sanitizedIncoming.versionCode
@@ -967,6 +972,7 @@ class AppRepository(context: Context) {
                         sanitizedIncoming.runtimeBuildVersionCode != null ||
                         sanitizedIncoming.runtimeBuildVersionModel != null ||
                         sanitizedIncoming.runtimeBuildUpdatedAt != null
+                val clearRuntimeMeta = htmlChanged && !hasRuntimeUpdate
                 val updated =
                     existing.copy(
                         sourceTagId = sanitizedIncoming.sourceTagId ?: existing.sourceTagId,
@@ -974,17 +980,72 @@ class AppRepository(context: Context) {
                         description = sanitizedIncoming.description,
                         html = sanitizedIncoming.html,
                         deployUrl = deployUrl,
-                        runtimeBuildStatus = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildStatus else existing.runtimeBuildStatus,
-                        runtimeBuildRequestId = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildRequestId else existing.runtimeBuildRequestId,
-                        runtimeBuildRunId = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildRunId else existing.runtimeBuildRunId,
-                        runtimeBuildRunUrl = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildRunUrl else existing.runtimeBuildRunUrl,
-                        runtimeBuildArtifactName = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildArtifactName else existing.runtimeBuildArtifactName,
-                        runtimeBuildArtifactUrl = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildArtifactUrl else existing.runtimeBuildArtifactUrl,
-                        runtimeBuildError = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildError else existing.runtimeBuildError,
-                        runtimeBuildVersionName = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildVersionName else existing.runtimeBuildVersionName,
-                        runtimeBuildVersionCode = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildVersionCode else existing.runtimeBuildVersionCode,
-                        runtimeBuildVersionModel = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildVersionModel else existing.runtimeBuildVersionModel,
-                        runtimeBuildUpdatedAt = if (hasRuntimeUpdate) sanitizedIncoming.runtimeBuildUpdatedAt else existing.runtimeBuildUpdatedAt,
+                        runtimeBuildStatus =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildStatus
+                                clearRuntimeMeta -> ""
+                                else -> existing.runtimeBuildStatus
+                            },
+                        runtimeBuildRequestId =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildRequestId
+                                clearRuntimeMeta -> null
+                                else -> existing.runtimeBuildRequestId
+                            },
+                        runtimeBuildRunId =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildRunId
+                                clearRuntimeMeta -> null
+                                else -> existing.runtimeBuildRunId
+                            },
+                        runtimeBuildRunUrl =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildRunUrl
+                                clearRuntimeMeta -> null
+                                else -> existing.runtimeBuildRunUrl
+                            },
+                        runtimeBuildArtifactName =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildArtifactName
+                                clearRuntimeMeta -> null
+                                else -> existing.runtimeBuildArtifactName
+                            },
+                        runtimeBuildArtifactUrl =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildArtifactUrl
+                                clearRuntimeMeta -> null
+                                else -> existing.runtimeBuildArtifactUrl
+                            },
+                        runtimeBuildError =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildError
+                                clearRuntimeMeta -> null
+                                else -> existing.runtimeBuildError
+                            },
+                        runtimeBuildVersionName =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildVersionName
+                                clearRuntimeMeta -> null
+                                else -> existing.runtimeBuildVersionName
+                            },
+                        runtimeBuildVersionCode =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildVersionCode
+                                clearRuntimeMeta -> null
+                                else -> existing.runtimeBuildVersionCode
+                            },
+                        runtimeBuildVersionModel =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildVersionModel
+                                clearRuntimeMeta -> null
+                                else -> existing.runtimeBuildVersionModel
+                            },
+                        runtimeBuildUpdatedAt =
+                            when {
+                                hasRuntimeUpdate -> sanitizedIncoming.runtimeBuildUpdatedAt
+                                clearRuntimeMeta -> null
+                                else -> existing.runtimeBuildUpdatedAt
+                            },
                         versionCode = versionCode,
                         versionName = versionName,
                         updatedAt = now

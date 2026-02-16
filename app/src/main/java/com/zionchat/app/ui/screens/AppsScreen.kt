@@ -219,11 +219,6 @@ fun AppsScreen(navController: NavController) {
             AppsTopBar(
                 onBack = { navController.popBackStack() },
                 onAdd = {
-                    if (!runtimeShellInstalled) {
-                        notifyRuntimeShellRequired()
-                        openRuntimeShellDownload()
-                        return@AppsTopBar
-                    }
                     navController.navigate("chat")
                 }
             )
@@ -303,11 +298,6 @@ fun AppsScreen(navController: NavController) {
             app = app,
             onDismiss = { selectedSavedApp = null },
             onRequestEdit = { request ->
-                if (!runtimeShellInstalled) {
-                    notifyRuntimeShellRequired()
-                    openRuntimeShellDownload()
-                    return@SavedAppPreviewDialog
-                }
                 repository.enqueueAppAutomationTask(
                     AppAutomationTask(
                         mode = "edit",
@@ -321,11 +311,6 @@ fun AppsScreen(navController: NavController) {
                 navController.navigate("chat")
             },
             onRequestAutoFix = { issue ->
-                if (!runtimeShellInstalled) {
-                    notifyRuntimeShellRequired()
-                    openRuntimeShellDownload()
-                    return@SavedAppPreviewDialog
-                }
                 repository.enqueueAppAutomationTask(
                     AppAutomationTask(
                         mode = "debug_fix",
