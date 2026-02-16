@@ -1380,7 +1380,7 @@ fun ChatScreen(navController: NavController) {
                                 var lastProgressUpdateAtMs = 0L
                                 var lastDraftUpdateAtMs = 0L
                                 fun updateAppDevDraft(rawDraft: String) {
-                                    val draft = stripMarkdownCodeFences(rawDraft).trim()
+                                    val draft = normalizeGeneratedHtmlDraft(rawDraft)
                                     if (draft.length < 40) return
                                     val now = System.currentTimeMillis()
                                     if (now - lastDraftUpdateAtMs < 170L) return
@@ -2697,113 +2697,268 @@ private fun AppDevToolTagCard(
             fallbackStatus = tag.status
         )
     }
-    val progressFraction = (payload.progress.coerceIn(0, 100) / 100f)
+    val statusLower = payload.status.trim().lowercase()
+    val hasHtml = payload.html.trim().isNotBlank()
+    val isCompleted = statusLower == "success" && hasHtml
+    val showSkeleton = !isCompleted && statusLower != "error"
+
     val iconTransition = rememberInfiniteTransition(label = "app_dev_icon_flow")
     val iconShift by iconTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 220f,
-        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 4200, easing = LinearEasing)),
+        targetValue = 300f,
+        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 8000, easing = LinearEasing)),
         label = "app_dev_icon_flow_shift"
+    )
+    val skeletonShift by iconTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 420f,
+        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 2000, easing = LinearEasing)),
+        label = "app_dev_skeleton_shift"
+    )
+    val sparkleAlpha by iconTransition.animateFloat(
+        initialValue = 0.62f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "app_dev_sparkle_alpha"
     )
     val flowingIconBrush = remember(iconShift) {
         Brush.linearGradient(
             colors = listOf(
-                Color(0xFF2563EB),
-                Color(0xFF7C3AED),
-                Color(0xFF059669),
-                Color(0xFFEA580C),
-                Color(0xFF2563EB)
+                Color(0xFF1E40AF),
+                Color(0xFF6D28D9),
+                Color(0xFF15803D),
+                Color(0xFFC2410C),
+                Color(0xFF1E40AF)
             ),
-            start = Offset(iconShift - 220f, 0f),
-            end = Offset(iconShift, 220f)
+            start = Offset(iconShift - 300f, 0f),
+            end = Offset(iconShift, 300f)
+        )
+    }
+    val skeletonBrush = remember(skeletonShift) {
+        Brush.linearGradient(
+            colors = listOf(
+                Color(0xFFE5E7EB),
+                Color(0xFFF3F4F6),
+                Color(0xFFE5E7EB)
+            ),
+            start = Offset(skeletonShift - 420f, 0f),
+            end = Offset(skeletonShift, 0f)
         )
     }
 
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color.White, RoundedCornerShape(18.dp))
-            .pressableScale(pressedScale = 0.98f, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .pressableScale(pressedScale = 0.985f, onClick = onClick),
+        contentAlignment = Alignment.CenterStart
     ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(flowingIconBrush, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                AppDevRingGlyph(
-                    modifier = Modifier.size(24.dp),
-                    color = Color.White
-                )
-            }
-        }
-
         Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 360.dp)
+                .shadow(
+                    elevation = 3.dp,
+                    shape = RoundedCornerShape(16.dp),
+                    ambientColor = Color.Black.copy(alpha = 0.08f),
+                    spotColor = Color.Black.copy(alpha = 0.10f)
+                )
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .border(width = 1.dp, color = Color(0xFFF3F4F6), shape = RoundedCornerShape(16.dp))
+                .padding(horizontal = 20.dp, vertical = 20.dp)
         ) {
-            Text(
-                text = payload.name,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Normal,
-                color = Color(0xFF1C1C1E)
-            )
-            Text(
-                text = payload.subtitle,
-                fontSize = 12.sp,
-                color = Color(0xFF8E8E93),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color(0xFFE5E5EA), RoundedCornerShape(3.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Top
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(progressFraction)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color(0xFF1C1C1E), RoundedCornerShape(3.dp))
-                )
-            }
-        }
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(flowingIconBrush, RoundedCornerShape(16.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AppDevRingGlyph(
+                        modifier = Modifier.size(24.dp),
+                        color = Color.White
+                    )
+                    Text(
+                        text = "✦",
+                        color = Color.White.copy(alpha = sparkleAlpha),
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = (-6).dp, y = 2.dp)
+                    )
+                }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (isTagRunning(tag)) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    strokeWidth = 1.8.dp,
-                    color = Color(0xFF8E8E93)
-                )
-            } else {
-                Icon(
-                    imageVector = AppIcons.ChevronRight,
-                    contentDescription = null,
-                    tint = Color(0xFFC7C7CC),
-                    modifier = Modifier.size(20.dp)
-                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 64.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    if (showSkeleton) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.92f)
+                                .height(16.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(skeletonBrush)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.75f)
+                                .height(16.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(skeletonBrush)
+                        )
+                    } else {
+                        Text(
+                            text = payload.name,
+                            fontSize = 20.sp,
+                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF111827),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = payload.subtitle.ifBlank { payload.description }.ifBlank { "AI-powered HTML generator with real-time preview" },
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            color = Color(0xFF6B7280),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (showSkeleton) {
+                    Box(
+                        modifier = Modifier
+                            .widthIn(min = 136.dp, max = 136.dp)
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(skeletonBrush)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF111827), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Preview",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color.Transparent, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isCompleted) {
+                        DownloadOutlineGlyph(
+                            modifier = Modifier.size(22.dp),
+                            tint = Color(0xFF4B5563)
+                        )
+                    } else {
+                        EyeOutlineGlyph(
+                            modifier = Modifier.size(22.dp),
+                            tint = if (isTagRunning(tag)) Color(0xFF9CA3AF) else Color(0xFF6B7280)
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun EyeOutlineGlyph(
+    modifier: Modifier = Modifier,
+    tint: Color
+) {
+    Canvas(modifier = modifier) {
+        val stroke = (size.minDimension * 0.10f).coerceAtLeast(1.2f)
+        drawOval(
+            color = tint,
+            topLeft = Offset(size.width * 0.08f, size.height * 0.24f),
+            size = Size(size.width * 0.84f, size.height * 0.52f),
+            style = Stroke(width = stroke)
+        )
+        drawCircle(
+            color = tint,
+            radius = size.minDimension * 0.14f,
+            center = Offset(size.width / 2f, size.height / 2f),
+            style = Stroke(width = stroke * 0.86f)
+        )
+    }
+}
+
+@Composable
+private fun DownloadOutlineGlyph(
+    modifier: Modifier = Modifier,
+    tint: Color
+) {
+    Canvas(modifier = modifier) {
+        val stroke = (size.minDimension * 0.10f).coerceAtLeast(1.2f)
+        val centerX = size.width / 2f
+        val startY = size.height * 0.18f
+        val arrowY = size.height * 0.62f
+        drawLine(
+            color = tint,
+            start = Offset(centerX, startY),
+            end = Offset(centerX, arrowY),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(centerX, arrowY),
+            end = Offset(size.width * 0.35f, size.height * 0.47f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(centerX, arrowY),
+            end = Offset(size.width * 0.65f, size.height * 0.47f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.24f, size.height * 0.80f),
+            end = Offset(size.width * 0.76f, size.height * 0.80f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
     }
 }
 
@@ -2890,7 +3045,7 @@ private fun AppDevWorkspaceScreen(
             )
         }
     var showCode by remember(tag.id) { mutableStateOf(false) }
-    val html = payload.html.trim()
+    val html = remember(payload.html) { normalizeGeneratedHtmlDraft(payload.html) }.trim()
     val isRunning = payload.status.equals("running", ignoreCase = true)
 
     Box(
@@ -3105,7 +3260,7 @@ private fun AppDevCodeSurface(
 }
 
 private fun prettyFormatHtmlForCodeView(raw: String): String {
-    val clean = stripMarkdownCodeFences(raw).trim()
+    val clean = normalizeGeneratedHtmlDraft(raw).trim()
     if (clean.isBlank()) return ""
     val tokens = clean
         .replace("><", ">\n<")
@@ -5066,13 +5221,115 @@ private suspend fun reviseHtmlAppFromPrompt(
 }
 
 private fun normalizeGeneratedHtml(raw: String): String {
-    val cleaned = stripMarkdownCodeFences(raw).trim()
-    if (cleaned.isBlank()) error("Generated HTML is empty.")
+    val normalized = normalizeGeneratedHtmlCandidate(raw, wrapIfNeeded = true)
+    if (normalized.isBlank()) error("Generated HTML is empty.")
+    return normalized
+}
+
+private fun normalizeGeneratedHtmlDraft(raw: String): String {
+    return normalizeGeneratedHtmlCandidate(raw, wrapIfNeeded = false)
+}
+
+private fun normalizeGeneratedHtmlCandidate(raw: String, wrapIfNeeded: Boolean): String {
+    val extractedPayload = extractGeneratedHtmlPayload(raw)
+    val decoded = decodeEscapedHtmlSequences(extractedPayload)
+    val normalizedNewline = decoded.replace("\r\n", "\n").replace("\r", "\n").trim()
+    if (normalizedNewline.isBlank()) return ""
+
+    val htmlSegment = extractHtmlDocumentSegment(normalizedNewline)
+    val cleaned = stripMarkdownCodeFences(htmlSegment).trim()
+    if (cleaned.isBlank()) return ""
+
     val lower = cleaned.lowercase()
-    return when {
-        lower.startsWith("<!doctype html") || lower.contains("<html") -> cleaned
-        else -> "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n<title>Generated App</title>\n</head>\n<body>\n$cleaned\n</body>\n</html>"
+    if (lower.startsWith("<!doctype html") || lower.contains("<html")) {
+        return cleaned
     }
+
+    if (!wrapIfNeeded) return cleaned
+
+    return "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n<title>Generated App</title>\n</head>\n<body>\n$cleaned\n</body>\n</html>"
+}
+
+private fun extractGeneratedHtmlPayload(raw: String): String {
+    val stripped = stripMarkdownCodeFences(raw).trim()
+    if (stripped.isBlank()) return ""
+
+    val parsed = runCatching { JsonParser.parseString(stripped) }.getOrNull()
+    if (parsed == null) return stripped
+
+    if (parsed.isJsonPrimitive && parsed.asJsonPrimitive.isString) {
+        return parsed.asString
+    }
+    if (parsed.isJsonObject) {
+        val obj = parsed.asJsonObject
+        val keys = listOf("html", "code", "content", "result", "output")
+        keys.forEach { key ->
+            val value = obj.get(key)
+            if (value != null && value.isJsonPrimitive) {
+                val text = value.asString.trim()
+                if (text.isNotBlank()) return text
+            }
+        }
+    }
+    return stripped
+}
+
+private fun decodeEscapedHtmlSequences(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return ""
+
+    if (trimmed.startsWith("\"") && trimmed.endsWith("\"") && trimmed.length >= 2) {
+        val decodedQuoted =
+            runCatching { JsonParser.parseString(trimmed) }
+                .getOrNull()
+                ?.takeIf { it.isJsonPrimitive }
+                ?.asString
+                ?.trim()
+        if (!decodedQuoted.isNullOrBlank()) return decodedQuoted
+    }
+
+    val looksEscaped =
+        trimmed.contains("\\n") ||
+            trimmed.contains("\\r") ||
+            trimmed.contains("\\t") ||
+            trimmed.contains("\\u003", ignoreCase = true) ||
+            trimmed.contains("\\\"") ||
+            trimmed.contains("\\/")
+    if (!looksEscaped) return trimmed
+
+    return trimmed
+        .replace(Regex("\\\\u003[cC]"), "<")
+        .replace(Regex("\\\\u003[eE]"), ">")
+        .replace(Regex("\\\\u0026"), "&")
+        .replace("\\n", "\n")
+        .replace("\\r", "\r")
+        .replace("\\t", "\t")
+        .replace("\\/", "/")
+        .replace("\\\"", "\"")
+        .trim()
+}
+
+private fun extractHtmlDocumentSegment(raw: String): String {
+    val source = raw.trim()
+    if (source.isBlank()) return ""
+
+    val lower = source.lowercase()
+    val doctypeIndex = lower.indexOf("<!doctype html")
+    val htmlIndex = lower.indexOf("<html")
+    val start =
+        when {
+            doctypeIndex >= 0 -> doctypeIndex
+            htmlIndex >= 0 -> htmlIndex
+            else -> -1
+        }
+    if (start < 0) return source
+
+    val closingTag = "</html>"
+    val end = lower.lastIndexOf(closingTag)
+    if (end > start) {
+        return source.substring(start, end + closingTag.length).trim()
+    }
+    return source.substring(start).trim()
 }
 
 private fun buildMcpCallSignature(call: PlannedMcpToolCall): String {
