@@ -1,15 +1,18 @@
 package com.zionchat.app.ui.screens
 
+import android.app.DownloadManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Environment
 import android.util.Base64
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -161,6 +164,7 @@ fun ChatScreen(navController: NavController) {
     val tagSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var appWorkspaceMessageId by remember { mutableStateOf<String?>(null) }
     var appWorkspaceTagId by remember { mutableStateOf<String?>(null) }
+    var appDevDownloadBusyIds by remember { mutableStateOf(setOf<String>()) }
 
     BackHandler(enabled = !appWorkspaceTagId.isNullOrBlank()) {
         appWorkspaceMessageId = null
@@ -541,6 +545,241 @@ fun ChatScreen(navController: NavController) {
                         status = if (persisted.runtimeBuildStatus == "failed") "error" else current.status
                     )
                 }
+            }
+        }
+    }
+
+    fun downloadApkToDevice(
+        artifactUrl: String,
+        suggestedName: String,
+        fallbackAppName: String
+    ): Boolean {
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager ?: return false
+        val uri = runCatching { Uri.parse(artifactUrl.trim()) }.getOrNull() ?: return false
+        val rawName =
+            suggestedName.trim().takeIf { it.isNotBlank() }
+                ?: buildString {
+                    append(
+                        fallbackAppName
+                            .trim()
+                            .ifBlank { "zionchat-app" }
+                            .replace(Regex("[^a-zA-Z0-9._-]+"), "_")
+                            .trim('_')
+                            .ifBlank { "zionchat-app" }
+                            .take(64)
+                    )
+                    append("-")
+                    append(System.currentTimeMillis())
+                }
+        val fileName = if (rawName.endsWith(".apk", ignoreCase = true)) rawName else "$rawName.apk"
+        return runCatching {
+            val request =
+                DownloadManager.Request(uri)
+                    .setTitle(fileName)
+                    .setDescription("ZionChat APK download")
+                    .setMimeType("application/vnd.android.package-archive")
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setAllowedOverMetered(true)
+                    .setAllowedOverRoaming(true)
+                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+            manager.enqueue(request)
+            true
+        }.getOrDefault(false)
+    }
+
+    fun handleAppDevTagDownload(conversationId: String?, messageId: String, tag: MessageTag) {
+        val convoId = conversationId?.trim().orEmpty()
+        if (convoId.isBlank()) {
+            Toast.makeText(context, "Conversation is unavailable.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val initialPayload =
+            parseAppDevTagPayload(
+                content = tag.content,
+                fallbackName = tag.title.ifBlank { "App development" },
+                fallbackStatus = tag.status
+            )
+        val appId = initialPayload.sourceAppId?.trim().orEmpty()
+        if (appId.isBlank()) {
+            Toast.makeText(context, "App is not ready for APK download yet.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (appDevDownloadBusyIds.contains(appId)) {
+            Toast.makeText(context, "APK packaging is already running.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        scope.launch {
+            appDevDownloadBusyIds = appDevDownloadBusyIds + appId
+            try {
+                suspend fun updateTagRuntime(saved: SavedApp, statusOverride: String? = null, messageOverride: String? = null) {
+                    val runtimeText = messageOverride ?: runtimeBuildStatusText(
+                        statusOverride ?: saved.runtimeBuildStatus,
+                        saved.runtimeBuildError
+                    )
+                    repository.updateMessageTag(
+                        conversationId = convoId,
+                        messageId = messageId,
+                        tagId = tag.id
+                    ) { current ->
+                        val existingPayload =
+                            parseAppDevTagPayload(
+                                content = current.content,
+                                fallbackName = current.title.ifBlank { initialPayload.name },
+                                fallbackStatus = current.status
+                            )
+                        val updatedPayload =
+                            existingPayload.copy(
+                                sourceAppId = saved.id,
+                                deployUrl = saved.deployUrl,
+                                deployError = null,
+                                runtimeStatus = (statusOverride ?: saved.runtimeBuildStatus).takeIf { it.isNotBlank() },
+                                runtimeMessage = runtimeText,
+                                runtimeRunUrl = saved.runtimeBuildRunUrl,
+                                runtimeArtifactName = saved.runtimeBuildArtifactName,
+                                runtimeArtifactUrl = saved.runtimeBuildArtifactUrl
+                            )
+                        current.copy(content = encodeAppDevTagPayload(updatedPayload), status = current.status)
+                    }
+                }
+
+                var savedApp =
+                    repository.savedAppsFlow.first().firstOrNull { it.id == appId }
+                        ?: run {
+                            Toast.makeText(context, "Saved app was not found.", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
+
+                val existingArtifact = savedApp.runtimeBuildArtifactUrl?.trim().orEmpty()
+                if (existingArtifact.isNotBlank()) {
+                    val downloaded =
+                        downloadApkToDevice(
+                            artifactUrl = existingArtifact,
+                            suggestedName = savedApp.runtimeBuildArtifactName.orEmpty(),
+                            fallbackAppName = savedApp.name
+                        )
+                    if (downloaded) {
+                        updateTagRuntime(savedApp, statusOverride = "success", messageOverride = "APK download started")
+                        Toast.makeText(context, "APK download started.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Failed to start APK download.", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
+                updateTagRuntime(savedApp, statusOverride = "queued", messageOverride = "Preparing APK packaging")
+
+                val deployUrlReady =
+                    savedApp.deployUrl?.trim()?.takeIf { it.isNotBlank() }
+                        ?: run {
+                            val deployOutcome = deploySavedAppIfEnabled(savedApp)
+                            savedApp = repository.upsertSavedApp(deployOutcome.app) ?: deployOutcome.app
+                            if (!deployOutcome.errorText.isNullOrBlank()) {
+                                updateTagRuntime(
+                                    savedApp,
+                                    statusOverride = "failed",
+                                    messageOverride = deployOutcome.errorText
+                                )
+                                Toast.makeText(context, deployOutcome.errorText, Toast.LENGTH_SHORT).show()
+                                return@launch
+                            }
+                            savedApp.deployUrl?.trim()?.takeIf { it.isNotBlank() }
+                        }
+                if (deployUrlReady.isNullOrBlank()) {
+                    updateTagRuntime(savedApp, statusOverride = "failed", messageOverride = "Deploy URL is missing.")
+                    Toast.makeText(context, "Deploy URL is missing.", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                val versionModel = repository.appModuleVersionModelFlow.first().coerceAtLeast(1)
+                val triggered =
+                    runtimePackagingService
+                        .triggerRuntimePackaging(
+                            app = savedApp,
+                            deployUrl = deployUrlReady,
+                            versionModel = versionModel
+                        )
+                        .getOrElse { throwable ->
+                            savedApp.copy(
+                                runtimeBuildStatus = "failed",
+                                runtimeBuildError =
+                                    throwable.message?.trim()?.takeIf { it.isNotBlank() }
+                                        ?: "Runtime packaging failed",
+                                runtimeBuildVersionModel = versionModel,
+                                runtimeBuildUpdatedAt = System.currentTimeMillis()
+                            )
+                        }
+                savedApp = repository.upsertSavedApp(triggered) ?: triggered
+                updateTagRuntime(savedApp)
+
+                suspend fun tryDownloadCurrentArtifact(): Boolean {
+                    val artifactUrl = savedApp.runtimeBuildArtifactUrl?.trim().orEmpty()
+                    if (artifactUrl.isBlank()) return false
+                    val downloaded =
+                        downloadApkToDevice(
+                            artifactUrl = artifactUrl,
+                            suggestedName = savedApp.runtimeBuildArtifactName.orEmpty(),
+                            fallbackAppName = savedApp.name
+                        )
+                    if (downloaded) {
+                        updateTagRuntime(savedApp, statusOverride = "success", messageOverride = "APK download started")
+                        Toast.makeText(context, "APK download started.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Failed to start APK download.", Toast.LENGTH_SHORT).show()
+                    }
+                    return downloaded
+                }
+
+                if (savedApp.runtimeBuildStatus.equals("success", ignoreCase = true)) {
+                    if (!tryDownloadCurrentArtifact()) {
+                        Toast.makeText(context, "APK artifact URL is missing.", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+                if (savedApp.runtimeBuildStatus.equals("failed", ignoreCase = true)) {
+                    Toast.makeText(
+                        context,
+                        savedApp.runtimeBuildError?.ifBlank { null } ?: "APK packaging failed.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@launch
+                }
+
+                if (savedApp.runtimeBuildStatus.equals("queued", ignoreCase = true) ||
+                    savedApp.runtimeBuildStatus.equals("in_progress", ignoreCase = true)
+                ) {
+                    Toast.makeText(context, "APK packaging started, checking status...", Toast.LENGTH_SHORT).show()
+                    repeat(30) {
+                        delay(4000)
+                        val synced =
+                            runtimePackagingService
+                                .syncRuntimePackaging(savedApp)
+                                .getOrElse { return@repeat }
+                        if (synced != savedApp) {
+                            savedApp = repository.upsertSavedApp(synced) ?: synced
+                            updateTagRuntime(savedApp)
+                        }
+                        when (savedApp.runtimeBuildStatus.trim().lowercase()) {
+                            "success" -> {
+                                if (!tryDownloadCurrentArtifact()) {
+                                    Toast.makeText(context, "APK artifact URL is missing.", Toast.LENGTH_SHORT).show()
+                                }
+                                return@launch
+                            }
+                            "failed", "disabled", "skipped" -> {
+                                Toast.makeText(
+                                    context,
+                                    savedApp.runtimeBuildError?.ifBlank { null } ?: "APK packaging failed.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                return@launch
+                            }
+                        }
+                    }
+                    Toast.makeText(context, "APK packaging is still running. Please try download again soon.", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                appDevDownloadBusyIds = appDevDownloadBusyIds - appId
             }
         }
     }
@@ -1972,6 +2211,15 @@ fun ChatScreen(navController: NavController) {
                                     tagSheetTagId = tagId
                                 }
                             },
+                            onDownloadAppDevTag = { messageId, tag ->
+                                hideKeyboardIfNeeded(force = true)
+                                showToolMenu = false
+                                handleAppDevTagDownload(
+                                    conversationId = effectiveConversationId,
+                                    messageId = messageId,
+                                    tag = tag
+                                )
+                            },
                             userBubbleColor = accentPalette.bubbleColor,
                             userBubbleSecondaryColor = accentPalette.bubbleColorSecondary,
                             userBubbleTextColor = accentPalette.bubbleTextColor,
@@ -2368,6 +2616,7 @@ fun MessageItem(
     showToolbar: Boolean = true,
     onShowReasoning: (String) -> Unit,
     onShowTag: (messageId: String, tagId: String) -> Unit,
+    onDownloadAppDevTag: (messageId: String, tag: MessageTag) -> Unit = { _, _ -> },
     userBubbleColor: Color = UserMessageBubble,
     userBubbleSecondaryColor: Color? = null,
     userBubbleTextColor: Color = TextPrimary,
@@ -2543,7 +2792,8 @@ fun MessageItem(
                             MessageTagRow(
                                 tag = tag,
                                 messageId = message.id,
-                                onShowTag = onShowTag
+                                onShowTag = onShowTag,
+                                onDownloadAppDevTag = onDownloadAppDevTag
                             )
                         }
                     }
@@ -2559,7 +2809,8 @@ fun MessageItem(
                 MessageTagRow(
                     tag = tag,
                     messageId = message.id,
-                    onShowTag = onShowTag
+                    onShowTag = onShowTag,
+                    onDownloadAppDevTag = onDownloadAppDevTag
                 )
             }
 
@@ -2620,12 +2871,14 @@ fun MessageItem(
 private fun MessageTagRow(
     tag: MessageTag,
     messageId: String,
-    onShowTag: (messageId: String, tagId: String) -> Unit
+    onShowTag: (messageId: String, tagId: String) -> Unit,
+    onDownloadAppDevTag: (messageId: String, tag: MessageTag) -> Unit
 ) {
     if (tag.kind == "app_dev") {
         AppDevToolTagCard(
             tag = tag,
-            onClick = { onShowTag(messageId, tag.id) }
+            onClick = { onShowTag(messageId, tag.id) },
+            onDownloadClick = { onDownloadAppDevTag(messageId, tag) }
         )
         return
     }
@@ -2690,7 +2943,8 @@ private fun MessageTagRow(
 @Composable
 private fun AppDevToolTagCard(
     tag: MessageTag,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDownloadClick: () -> Unit
 ) {
     val payload = remember(tag.content, tag.title, tag.status) {
         parseAppDevTagPayload(
@@ -2703,6 +2957,7 @@ private fun AppDevToolTagCard(
     val hasHtml = payload.html.trim().isNotBlank()
     val isCompleted = statusLower == "success" && hasHtml
     val showSkeleton = !isCompleted && statusLower != "error"
+    val runtimeBusy = payload.runtimeStatus == "queued" || payload.runtimeStatus == "in_progress"
 
     val iconTransition = rememberInfiniteTransition(label = "app_dev_icon_flow")
     val iconShift by iconTransition.animateFloat(
@@ -2881,10 +3136,21 @@ private fun AppDevToolTagCard(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(Color.Transparent, CircleShape),
+                        .background(Color.Transparent, CircleShape)
+                        .pressableScale(
+                            enabled = isCompleted && !runtimeBusy,
+                            pressedScale = 0.95f,
+                            onClick = onDownloadClick
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isCompleted) {
+                    if (runtimeBusy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = Color(0xFF6B7280)
+                        )
+                    } else if (isCompleted) {
                         DownloadOutlineGlyph(
                             modifier = Modifier.size(22.dp),
                             tint = Color(0xFF4B5563)
