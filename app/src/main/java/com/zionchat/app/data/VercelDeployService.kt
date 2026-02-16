@@ -1,6 +1,7 @@
 package com.zionchat.app.data
 
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,7 +13,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.util.concurrent.TimeUnit
 
 class VercelDeployService : WebHostingService {
-    private val gson = Gson()
+    private val gson = GsonBuilder().serializeNulls().create()
     private val jsonMediaType = "application/json".toMediaType()
     private val client: OkHttpClient =
         OkHttpClient.Builder()
@@ -66,11 +67,7 @@ class VercelDeployService : WebHostingService {
                             "data" to content
                         )
                     ),
-                    "projectSettings" to mapOf(
-                        "framework" to null,
-                        "buildCommand" to null,
-                        "outputDirectory" to null
-                    )
+                    "projectSettings" to buildProjectSettings()
                 )
 
                 val projectId = config.projectId.trim()
@@ -80,7 +77,6 @@ class VercelDeployService : WebHostingService {
 
                 val urlBuilder =
                     "https://api.vercel.com/v13/deployments".toHttpUrl().newBuilder()
-                        .addQueryParameter("forceNew", "0")
                 val teamId = config.teamId.trim()
                 if (teamId.isNotBlank()) {
                     urlBuilder.addQueryParameter("teamId", teamId)
@@ -99,7 +95,7 @@ class VercelDeployService : WebHostingService {
                 client.newCall(request).execute().use { response ->
                     val raw = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
-                        error("HTTP ${response.code}: $raw")
+                        error("HTTP ${response.code}: ${parseVercelError(raw)}")
                     }
                     parseDeploymentUrl(raw)
                 }
@@ -142,5 +138,40 @@ class VercelDeployService : WebHostingService {
         }
         return "https://$trimmed"
     }
-}
 
+    private fun buildProjectSettings(): Map<String, Any?> {
+        return mapOf(
+            "framework" to "other",
+            "buildCommand" to null,
+            "devCommand" to null,
+            "installCommand" to null,
+            "outputDirectory" to null,
+            "rootDirectory" to null
+        )
+    }
+
+    private fun parseVercelError(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return "Empty error payload"
+
+        val json = runCatching { JsonParser.parseString(trimmed).asJsonObject }.getOrNull()
+            ?: return trimmed
+
+        val nestedError = json.get("error")?.takeIf { it.isJsonObject }?.asJsonObject
+        val code = nestedError.stringValue("code") ?: json.stringValue("code").orEmpty()
+        val message = nestedError.stringValue("message") ?: json.stringValue("message").orEmpty()
+
+        return when {
+            code.isNotBlank() && message.isNotBlank() -> "$code: $message"
+            message.isNotBlank() -> message
+            code.isNotBlank() -> code
+            else -> trimmed
+        }
+    }
+
+    private fun JsonObject?.stringValue(key: String): String? {
+        val node = this?.get(key) ?: return null
+        if (!node.isJsonPrimitive) return null
+        return node.asString?.trim()?.takeIf { it.isNotBlank() }
+    }
+}

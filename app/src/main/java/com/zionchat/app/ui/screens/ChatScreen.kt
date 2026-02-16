@@ -3102,11 +3102,9 @@ private fun AppDevProgressBubbleRow(
     onOpen: (String) -> Unit,
     onCopy: (String) -> Unit
 ) {
-    val tint = appDevPipelineTint(bubble.state)
     val isOutgoing = bubble.alignRight
     val bubbleColor = if (isOutgoing) Color(0xFF0A84FF) else Color.White
     val textColor = if (isOutgoing) Color.White else TextPrimary
-    val statusColor = if (isOutgoing) Color.White.copy(alpha = 0.84f) else tint
     val normalizedUrl = remember(bubble.url) { bubble.url?.trim()?.takeIf { it.isNotBlank() } }
 
     Row(
@@ -3136,11 +3134,6 @@ private fun AppDevProgressBubbleRow(
                         fontSize = 13.sp,
                         lineHeight = 19.sp,
                         color = textColor
-                    )
-                    Text(
-                        text = appDevPipelineStateLabel(bubble.state),
-                        fontSize = 11.sp,
-                        color = statusColor
                     )
                 }
             }
@@ -3207,21 +3200,28 @@ private fun buildAppDevProgressBubbles(payload: AppDevTagPayload): List<AppDevPr
     generateStep?.let { step ->
         val text =
             when (step.state) {
-                AppDevPipelineState.Pending -> "画板刚铺开，代码小队正在集合。"
-                AppDevPipelineState.Running -> "我在写代码中，像素和组件正在排队（${payload.progress.coerceIn(0, 100)}%）。"
-                AppDevPipelineState.Success -> "代码已经出炉，页面主结构跑起来了。"
-                AppDevPipelineState.Failed -> "这轮写代码踩坑了：${compactStatusText(step.description, "HTML generation failed")}"
+                AppDevPipelineState.Pending -> "任务已接收，正在准备页面骨架。"
+                AppDevPipelineState.Running -> "正在编写 HTML 与样式，当前进度 ${payload.progress.coerceIn(0, 100)}%。"
+                AppDevPipelineState.Success -> "代码阶段完成，页面结构已经生成。"
+                AppDevPipelineState.Failed -> "代码生成失败：${compactStatusText(step.description, "HTML generation failed")}"
             }
         bubbles += AppDevProgressBubble(text = text, state = step.state, alignRight = step.state == AppDevPipelineState.Success)
     }
 
-    deployStep?.let { step ->
+    val shouldShowDeploy =
+        deployStep != null && (
+            deployStep.state != AppDevPipelineState.Pending ||
+                generateStep?.state == AppDevPipelineState.Success
+            )
+
+    if (shouldShowDeploy) {
+        val step = deployStep ?: return bubbles
         val text =
             when (step.state) {
-                AppDevPipelineState.Pending -> "下一步把它推到 Vercel，正在等发射窗口。"
-                AppDevPipelineState.Running -> "正在和 Vercel 握手，马上拿公开地址。"
-                AppDevPipelineState.Success -> "Vercel 部署成功，公网地址拿到了。"
-                AppDevPipelineState.Failed -> "部署环节卡住了：${compactStatusText(step.description, "Vercel deploy failed")}"
+                AppDevPipelineState.Pending -> "代码已准备好，正在排队部署到 Vercel。"
+                AppDevPipelineState.Running -> "正在部署到 Vercel，准备生成公网访问地址。"
+                AppDevPipelineState.Success -> "Vercel 部署成功，公网地址已可用。"
+                AppDevPipelineState.Failed -> "Vercel 部署失败：${compactStatusText(step.description, "Vercel deploy failed")}"
             }
         bubbles +=
             AppDevProgressBubble(
@@ -3233,13 +3233,20 @@ private fun buildAppDevProgressBubbles(payload: AppDevTagPayload): List<AppDevPr
             )
     }
 
-    packageStep?.let { step ->
+    val shouldShowPackage =
+        packageStep != null && (
+            packageStep.state != AppDevPipelineState.Pending ||
+                deployStep?.state == AppDevPipelineState.Success
+            )
+
+    if (shouldShowPackage) {
+        val step = packageStep ?: return bubbles
         val text =
             when (step.state) {
-                AppDevPipelineState.Pending -> "部署完成后就启动 APK 打包机。"
-                AppDevPipelineState.Running -> "APK 正在焊接中，状态已开始更新。"
-                AppDevPipelineState.Success -> "APK 打包完成，正在准备下载出口。"
-                AppDevPipelineState.Failed -> "打包环节出现问题：${compactStatusText(step.description, "Runtime packaging failed")}"
+                AppDevPipelineState.Pending -> "部署地址已就绪，准备触发 APK 打包。"
+                AppDevPipelineState.Running -> "APK 正在构建中，状态同步已启动。"
+                AppDevPipelineState.Success -> "APK 构建完成，正在整理下载产物。"
+                AppDevPipelineState.Failed -> "APK 打包失败：${compactStatusText(step.description, "Runtime packaging failed")}"
             }
         bubbles +=
             AppDevProgressBubble(
@@ -3251,13 +3258,20 @@ private fun buildAppDevProgressBubbles(payload: AppDevTagPayload): List<AppDevPr
             )
     }
 
-    artifactStep?.let { step ->
+    val shouldShowArtifact =
+        artifactStep != null && (
+            artifactUrl != null ||
+                packageStep?.state == AppDevPipelineState.Success
+            )
+
+    if (shouldShowArtifact) {
+        val step = artifactStep ?: return bubbles
         val text =
             when (step.state) {
-                AppDevPipelineState.Pending -> "下载链接正在路上，马上到。"
-                AppDevPipelineState.Running -> "成品快好了，我正在盯着最后一步。"
-                AppDevPipelineState.Success -> "成品 APK 已到手，点下面就能下载。"
-                AppDevPipelineState.Failed -> "这次没有拿到可下载 APK：${compactStatusText(step.description, "Artifact unavailable")}"
+                AppDevPipelineState.Pending -> "进入产物阶段，等待生成 APK 下载链接。"
+                AppDevPipelineState.Running -> "正在收集安装包产物，马上输出下载地址。"
+                AppDevPipelineState.Success -> "APK 下载链接已生成，可以直接下载。"
+                AppDevPipelineState.Failed -> "APK 产物获取失败：${compactStatusText(step.description, "Artifact unavailable")}"
             }
         bubbles +=
             AppDevProgressBubble(
@@ -3287,24 +3301,6 @@ private fun appDevRuntimeBadgeColor(status: String?): Color {
         "failed", "disabled", "skipped" -> Color(0xFFFF3B30)
         "queued", "in_progress" -> Color(0xFF007AFF)
         else -> Color(0xFF8E8E93)
-    }
-}
-
-private fun appDevPipelineStateLabel(state: AppDevPipelineState): String {
-    return when (state) {
-        AppDevPipelineState.Pending -> "Pending"
-        AppDevPipelineState.Running -> "In progress"
-        AppDevPipelineState.Success -> "Done"
-        AppDevPipelineState.Failed -> "Failed"
-    }
-}
-
-private fun appDevPipelineTint(state: AppDevPipelineState): Color {
-    return when (state) {
-        AppDevPipelineState.Pending -> Color(0xFF8E8E93)
-        AppDevPipelineState.Running -> Color(0xFF007AFF)
-        AppDevPipelineState.Success -> Color(0xFF34C759)
-        AppDevPipelineState.Failed -> Color(0xFFFF3B30)
     }
 }
 
@@ -3338,15 +3334,14 @@ private fun buildAppDevPipelineSteps(payload: AppDevTagPayload): List<AppDevPipe
         when {
             deployUrl != null -> AppDevPipelineState.Success
             deployError != null -> AppDevPipelineState.Failed
-            generateState == AppDevPipelineState.Running -> AppDevPipelineState.Running
-            generateState == AppDevPipelineState.Success -> AppDevPipelineState.Pending
+            generateState == AppDevPipelineState.Success -> AppDevPipelineState.Running
             else -> AppDevPipelineState.Pending
         }
     val deployDescription =
         when (deployState) {
             AppDevPipelineState.Success -> compactUrlForDisplay(deployUrl.orEmpty())
             AppDevPipelineState.Failed -> deployError ?: "Vercel deploy failed"
-            AppDevPipelineState.Running -> "Will deploy after HTML generation"
+            AppDevPipelineState.Running -> "Vercel deployment in progress"
             AppDevPipelineState.Pending -> "Waiting for deploy URL"
         }
 

@@ -20,13 +20,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +43,7 @@ import com.zionchat.app.ui.theme.Surface
 import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @Composable
@@ -50,8 +51,6 @@ fun WebHostingScreen(navController: NavController) {
     val repository = LocalAppRepository.current
     val hostingService = LocalWebHostingService.current
     val scope = rememberCoroutineScope()
-    val config by repository.webHostingConfigFlow.collectAsState(initial = WebHostingConfig())
-    val appVersionModel by repository.appModuleVersionModelFlow.collectAsState(initial = 1)
 
     var token by rememberSaveable { mutableStateOf("") }
     var projectId by rememberSaveable { mutableStateOf("") }
@@ -75,23 +74,27 @@ fun WebHostingScreen(navController: NavController) {
         )
     }
 
-    LaunchedEffect(config, appVersionModel, initialized) {
-        if (initialized) return@LaunchedEffect
-        token = config.token
-        projectId = config.projectId
-        teamId = config.teamId
-        customDomain = config.customDomain
-        autoDeploy = config.autoDeploy
-        versionModel = appVersionModel
+    val latestConfig by rememberUpdatedState(newValue = buildConfig())
+    val latestVersionModel by rememberUpdatedState(newValue = versionModel.coerceAtLeast(1))
+
+    LaunchedEffect(Unit) {
+        val persistedConfig = repository.getWebHostingConfig()
+        val persistedVersionModel = repository.appModuleVersionModelFlow.first().coerceAtLeast(1)
+        token = persistedConfig.token
+        projectId = persistedConfig.projectId
+        teamId = persistedConfig.teamId
+        customDomain = persistedConfig.customDomain
+        autoDeploy = persistedConfig.autoDeploy
+        versionModel = persistedVersionModel
         initialized = true
     }
 
-    DisposableEffect(initialized, token, projectId, teamId, customDomain, autoDeploy, versionModel) {
+    DisposableEffect(Unit) {
         onDispose {
             if (!initialized) return@onDispose
             scope.launch {
-                repository.setWebHostingConfig(buildConfig())
-                repository.setAppModuleVersionModel(versionModel)
+                repository.setWebHostingConfig(latestConfig)
+                repository.setAppModuleVersionModel(latestVersionModel)
             }
         }
     }
