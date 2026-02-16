@@ -42,7 +42,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.item
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -361,20 +360,25 @@ fun AppsScreen(navController: NavController) {
                 if (savedApps.isEmpty()) {
                     EmptyDesktopState(onCreate = { navController.navigate("chat") })
                 } else {
+                    val desktopEntries = remember(savedApps) { listOf<SavedApp?>(null) + savedApps }
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(4),
                         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 28.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp)
                     ) {
-                        item(key = "desktop_create_tile") {
-                            CreateAppDesktopTile(onClick = { navController.navigate("chat") })
-                        }
-                        items(items = savedApps, key = { it.id }) { app ->
-                            SavedAppDesktopTile(
-                                app = app,
-                                onClick = { selectedSavedApp = app }
-                            )
+                        items(
+                            items = desktopEntries,
+                            key = { app -> app?.id ?: "desktop_create_tile" }
+                        ) { app ->
+                            if (app == null) {
+                                CreateAppDesktopTile(onClick = { navController.navigate("chat") })
+                            } else {
+                                SavedAppDesktopTile(
+                                    app = app,
+                                    onClick = { selectedSavedApp = app }
+                                )
+                            }
                         }
                     }
                 }
