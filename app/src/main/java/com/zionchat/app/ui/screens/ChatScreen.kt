@@ -37,8 +37,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.FileDownload
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,7 +56,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -1955,10 +1952,23 @@ fun ChatScreen(navController: NavController) {
                                 showToolMenu = false
                                 showThinkingSheet = false
                                 thinkingSheetText = null
-                                appWorkspaceMessageId = null
-                                appWorkspaceTagId = null
-                                tagSheetMessageId = messageId
-                                tagSheetTagId = tagId
+                                val clickedTag =
+                                    localMessages
+                                        .firstOrNull { it.id == messageId }
+                                        ?.tags
+                                        .orEmpty()
+                                        .firstOrNull { it.id == tagId }
+                                if (clickedTag?.kind == "app_dev") {
+                                    tagSheetMessageId = null
+                                    tagSheetTagId = null
+                                    appWorkspaceMessageId = messageId
+                                    appWorkspaceTagId = tagId
+                                } else {
+                                    appWorkspaceMessageId = null
+                                    appWorkspaceTagId = null
+                                    tagSheetMessageId = messageId
+                                    tagSheetTagId = tagId
+                                }
                             },
                             userBubbleColor = accentPalette.bubbleColor,
                             userBubbleSecondaryColor = accentPalette.bubbleColorSecondary,
@@ -2234,8 +2244,6 @@ fun ChatScreen(navController: NavController) {
                         ) {
                             if (tag.kind == "mcp") {
                                 McpTagDetailCard(tag = tag)
-                            } else if (tag.kind == "app_dev") {
-                                AppDevTagDetailCard(tag = tag)
                             } else {
                                 MarkdownText(
                                     markdown = tag.content,
@@ -2276,79 +2284,6 @@ fun ChatScreen(navController: NavController) {
                     onDismiss = {
                         appWorkspaceMessageId = null
                         appWorkspaceTagId = null
-                    },
-                    onUpdate = { updatedPayload ->
-                        val convoId = effectiveConversationId?.trim().orEmpty()
-                        val messageId = appWorkspaceMessageId?.trim().orEmpty()
-                        val tagId = appWorkspaceTagId?.trim().orEmpty()
-                        if (convoId.isBlank() || messageId.isBlank() || tagId.isBlank()) return@AppDevWorkspaceScreen
-                        scope.launch {
-                            repository.updateMessageTag(
-                                conversationId = convoId,
-                                messageId = messageId,
-                                tagId = tagId
-                            ) { current ->
-                                current.copy(
-                                    title = updatedPayload.name,
-                                    content = encodeAppDevTagPayload(updatedPayload),
-                                    status = updatedPayload.status
-                                )
-                            }
-                        }
-                    },
-                    onSave = { payload ->
-                        val tagId = appWorkspaceTagId?.trim().orEmpty()
-                        scope.launch {
-                            val baseSavedApp =
-                                com.zionchat.app.data.SavedApp(
-                                    id = payload.sourceAppId ?: java.util.UUID.randomUUID().toString(),
-                                    sourceTagId = tagId.takeIf { it.isNotBlank() },
-                                    name = payload.name,
-                                    description = payload.description.ifBlank { payload.subtitle },
-                                    html = payload.html
-                                )
-                            val persistedApp =
-                                repository.upsertSavedApp(
-                                    baseSavedApp,
-                                    note = "Manual save from workspace"
-                                ) ?: baseSavedApp
-
-                            val convoId = effectiveConversationId?.trim().orEmpty()
-                            val messageId = appWorkspaceMessageId?.trim().orEmpty()
-                            if (convoId.isNotBlank() && messageId.isNotBlank() && tagId.isNotBlank()) {
-                                repository.updateMessageTag(
-                                    conversationId = convoId,
-                                    messageId = messageId,
-                                    tagId = tagId
-                                ) { current ->
-                                    val existingPayload =
-                                        parseAppDevTagPayload(
-                                            content = current.content,
-                                            fallbackName = current.title.ifBlank { "App development" },
-                                            fallbackStatus = current.status
-                                        )
-                                    current.copy(
-                                        content =
-                                            encodeAppDevTagPayload(
-                                                existingPayload.copy(
-                                                    sourceAppId = persistedApp.id,
-                                                    html = persistedApp.html,
-                                                    progress = 100,
-                                                    status = "success",
-                                                    deployUrl = null,
-                                                    deployError = null,
-                                                    runtimeStatus = null,
-                                                    runtimeMessage = null,
-                                                    runtimeRunUrl = null,
-                                                    runtimeArtifactName = null,
-                                                    runtimeArtifactUrl = null
-                                                )
-                                            ),
-                                        status = "success"
-                                    )
-                                }
-                            }
-                        }
                     }
                 )
             }
@@ -2762,220 +2697,110 @@ private fun AppDevToolTagCard(
             fallbackStatus = tag.status
         )
     }
-    val status = payload.status.trim().lowercase()
-    val isCompleted = status == "success" && payload.html.isNotBlank()
-    val isFailed = status == "error" || status == "failed"
-    val progress = payload.progress.coerceIn(0, 100)
-
-    val shimmerTransition = rememberInfiniteTransition(label = "app_dev_skeleton_shimmer")
-    val shimmerShift by shimmerTransition.animateFloat(
+    val progressFraction = (payload.progress.coerceIn(0, 100) / 100f)
+    val iconTransition = rememberInfiniteTransition(label = "app_dev_icon_flow")
+    val iconShift by iconTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 720f,
-        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 1800, easing = LinearEasing)),
-        label = "app_dev_skeleton_shift"
+        targetValue = 220f,
+        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 4200, easing = LinearEasing)),
+        label = "app_dev_icon_flow_shift"
     )
-    val skeletonBrush = remember(shimmerShift) {
-        Brush.linearGradient(
-            colors = listOf(Color(0xFFE5E7EB), Color(0xFFF3F4F6), Color(0xFFE5E7EB)),
-            start = Offset(shimmerShift - 260f, 0f),
-            end = Offset(shimmerShift, 0f)
-        )
-    }
-
-    val gradientTransition = rememberInfiniteTransition(label = "app_dev_card_gradient")
-    val gradientShift by gradientTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 420f,
-        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 8000, easing = LinearEasing)),
-        label = "app_dev_gradient_shift"
-    )
-    val deepGradientBrush = remember(gradientShift) {
+    val flowingIconBrush = remember(iconShift) {
         Brush.linearGradient(
             colors = listOf(
-                Color(0xFF1E40AF),
-                Color(0xFF6D28D9),
-                Color(0xFF15803D),
-                Color(0xFFC2410C),
-                Color(0xFF1E40AF)
+                Color(0xFF2563EB),
+                Color(0xFF7C3AED),
+                Color(0xFF059669),
+                Color(0xFFEA580C),
+                Color(0xFF2563EB)
             ),
-            start = Offset(gradientShift, 0f),
-            end = Offset(gradientShift + 220f, 220f)
+            start = Offset(iconShift - 220f, 0f),
+            end = Offset(iconShift, 220f)
         )
     }
 
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White, RoundedCornerShape(18.dp))
             .pressableScale(pressedScale = 0.98f, onClick = onClick)
-            .border(1.dp, Color(0xFFF3F4F6), RoundedCornerShape(22.dp)),
-        shape = RoundedCornerShape(22.dp),
-        color = Color.White,
-        shadowElevation = if (isCompleted) 8.dp else 2.dp,
-        tonalElevation = 0.dp
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape),
+            contentAlignment = Alignment.Center
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.Top
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(flowingIconBrush, CircleShape),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(deepGradientBrush),
-                    contentAlignment = Alignment.Center
-                ) {
-                    AppDevRingGlyph(
-                        modifier = Modifier.size(28.dp),
-                        color = Color.White
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = 4.dp, y = (-4).dp)
-                            .size(12.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.88f))
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(top = 2.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (isCompleted || isFailed) {
-                        Text(
-                            text = payload.name,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF111827),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text =
-                                when {
-                                    isFailed -> payload.error?.trim().orEmpty().ifBlank { "HTML generation failed" }
-                                    else -> payload.subtitle.ifBlank { "AI-powered HTML generator with real-time preview" }
-                                },
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            color = if (isFailed) Color(0xFFB91C1C) else Color(0xFF6B7280),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .height(14.dp)
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(skeletonBrush)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.75f)
-                                .height(14.dp)
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(skeletonBrush)
-                        )
-                    }
-                }
+                AppDevRingGlyph(
+                    modifier = Modifier.size(24.dp),
+                    color = Color.White
+                )
             }
+        }
 
-            Row(
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
+        ) {
+            Text(
+                text = payload.name,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Normal,
+                color = Color(0xFF1C1C1E)
+            )
+            Text(
+                text = payload.subtitle,
+                fontSize = 12.sp,
+                color = Color(0xFF8E8E93),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 22.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFFE5E5EA), RoundedCornerShape(3.dp))
             ) {
-                when {
-                    isCompleted -> {
-                        Box(
-                            modifier = Modifier
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF111827), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 20.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Preview",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color.White
-                            )
-                        }
-                    }
-
-                    isFailed -> {
-                        Box(
-                            modifier = Modifier
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFFFEE2E2), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Retry",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color(0xFFB91C1C)
-                            )
-                        }
-                    }
-
-                    else -> {
-                        Box(
-                            modifier = Modifier
-                                .height(36.dp)
-                                .width(140.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(skeletonBrush)
-                        )
-                    }
-                }
-
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFF3F4F6), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isCompleted) {
-                        Icon(
-                            imageVector = Icons.Outlined.FileDownload,
-                            contentDescription = null,
-                            tint = Color(0xFF111827),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Outlined.Visibility,
-                            contentDescription = null,
-                            tint = Color(0xFF9CA3AF),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
+                        .fillMaxHeight()
+                        .fillMaxWidth(progressFraction)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0xFF1C1C1E), RoundedCornerShape(3.dp))
+                )
             }
+        }
 
-            if (!isCompleted && !isFailed) {
-                Text(
-                    text = "Generating HTML... $progress%",
-                    fontSize = 11.sp,
-                    color = Color(0xFF9CA3AF),
-                    modifier = Modifier.padding(top = 10.dp, start = 2.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (isTagRunning(tag)) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 1.8.dp,
+                    color = Color(0xFF8E8E93)
+                )
+            } else {
+                Icon(
+                    imageVector = AppIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = Color(0xFFC7C7CC),
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -3051,216 +2876,22 @@ private fun McpTagDetailCard(tag: MessageTag) {
 }
 
 @Composable
-private fun AppDevTagDetailCard(tag: MessageTag) {
-    val payload = remember(tag.content, tag.title, tag.status) {
-        parseAppDevTagPayload(
-            content = tag.content,
-            fallbackName = tag.title.ifBlank { "App development" },
-            fallbackStatus = tag.status
-        )
-    }
-    val uriHandler = LocalUriHandler.current
-    val clipboardManager = LocalClipboardManager.current
-    val bubbles = remember(
-        payload.status,
-        payload.progress,
-        payload.html,
-        payload.error,
-        payload.deployUrl,
-        payload.deployError,
-        payload.runtimeStatus,
-        payload.runtimeMessage,
-        payload.runtimeArtifactName,
-        payload.runtimeArtifactUrl
-    ) {
-        buildAppDevProgressBubbles(payload)
-    }
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        AppDevToolTagCard(tag = tag, onClick = { })
-
-        Text(
-            text = "Generation updates",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = TextPrimary
-        )
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            bubbles.forEach { bubble ->
-                AppDevProgressBubbleRow(
-                    bubble = bubble,
-                    onOpen = { url -> runCatching { uriHandler.openUri(url) } },
-                    onCopy = { url -> clipboardManager.setText(AnnotatedString(url)) }
-                )
-            }
-        }
-    }
-}
-
-private enum class AppDevPipelineState {
-    Pending,
-    Running,
-    Success,
-    Failed
-}
-
-private data class AppDevProgressBubble(
-    val text: String,
-    val state: AppDevPipelineState,
-    val alignRight: Boolean,
-    val urlLabel: String? = null,
-    val url: String? = null
-)
-
-@Composable
-private fun AppDevProgressBubbleRow(
-    bubble: AppDevProgressBubble,
-    onOpen: (String) -> Unit,
-    onCopy: (String) -> Unit
-) {
-    val isOutgoing = bubble.alignRight
-    val bubbleColor = if (isOutgoing) Color(0xFF0A84FF) else Color.White
-    val textColor = if (isOutgoing) Color.White else TextPrimary
-    val normalizedUrl = remember(bubble.url) { bubble.url?.trim()?.takeIf { it.isNotBlank() } }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isOutgoing) Arrangement.End else Arrangement.Start
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(0.92f),
-            horizontalAlignment = if (isOutgoing) Alignment.End else Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Surface(
-                color = bubbleColor,
-                shape = RoundedCornerShape(
-                    topStart = 18.dp,
-                    topEnd = 18.dp,
-                    bottomStart = if (isOutgoing) 18.dp else 6.dp,
-                    bottomEnd = if (isOutgoing) 6.dp else 18.dp
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    Text(
-                        text = bubble.text,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp,
-                        color = textColor
-                    )
-                }
-            }
-
-            if (!normalizedUrl.isNullOrBlank()) {
-                bubble.urlLabel?.let { label ->
-                    Text(
-                        text = label,
-                        fontSize = 11.sp,
-                        color = TextSecondary
-                    )
-                }
-                Text(
-                    text = normalizedUrl,
-                    fontSize = 12.sp,
-                    color = Color(0xFF007AFF),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFF2F2F7), RoundedCornerShape(10.dp))
-                            .pressableScale(pressedScale = 0.97f, onClick = { onOpen(normalizedUrl) })
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "Open",
-                            fontSize = 11.sp,
-                            color = TextPrimary
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFF2F2F7), RoundedCornerShape(10.dp))
-                            .pressableScale(pressedScale = 0.97f, onClick = { onCopy(normalizedUrl) })
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "Copy",
-                            fontSize = 11.sp,
-                            color = TextPrimary
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun buildAppDevProgressBubbles(payload: AppDevTagPayload): List<AppDevProgressBubble> {
-    val status = payload.status.trim().lowercase()
-    val progress = payload.progress.coerceIn(0, 100)
-    val htmlReady = payload.html.trim().isNotBlank()
-    val state =
-        when {
-            htmlReady || status == "success" -> AppDevPipelineState.Success
-            status == "error" || status == "failed" -> AppDevPipelineState.Failed
-            status == "running" -> AppDevPipelineState.Running
-            else -> AppDevPipelineState.Pending
-        }
-    val text =
-        when (state) {
-            AppDevPipelineState.Pending -> "任务已创建，等待开始生成 HTML。"
-            AppDevPipelineState.Running -> "正在生成 HTML 代码与样式，当前进度 ${progress}%。"
-            AppDevPipelineState.Success -> "HTML 代码已生成并保存到 Apps。"
-            AppDevPipelineState.Failed ->
-                "代码生成失败：${compactStatusText(payload.error.orEmpty(), "HTML generation failed")}"
-        }
-
-    val bubbles = mutableListOf<AppDevProgressBubble>()
-    bubbles += AppDevProgressBubble(text = text, state = state, alignRight = state == AppDevPipelineState.Success)
-    if (state == AppDevPipelineState.Success) {
-        bubbles +=
-            AppDevProgressBubble(
-                text = "点击卡片可查看详情并继续编辑代码。",
-                state = AppDevPipelineState.Success,
-                alignRight = true
-            )
-    }
-    return bubbles
-}
-
-private fun compactStatusText(raw: String, fallback: String): String {
-    val text = raw.trim().replace(Regex("\\s+"), " ")
-    return text.ifBlank { fallback }.take(140)
-}
-
-@Composable
 private fun AppDevWorkspaceScreen(
     tag: MessageTag,
-    onDismiss: () -> Unit,
-    onUpdate: (AppDevTagPayload) -> Unit,
-    onSave: (AppDevTagPayload) -> Unit
+    onDismiss: () -> Unit
 ) {
     BackHandler(onBack = onDismiss)
-    var payload by remember(tag.id, tag.content, tag.status) {
-        mutableStateOf(
+    val payload =
+        remember(tag.id, tag.content, tag.status) {
             parseAppDevTagPayload(
                 content = tag.content,
                 fallbackName = tag.title.ifBlank { "App development" },
                 fallbackStatus = tag.status
             )
-        )
-    }
+        }
+    var showCode by remember(tag.id) { mutableStateOf(false) }
+    val html = payload.html.trim()
+    val isRunning = payload.status.equals("running", ignoreCase = true)
 
     Box(
         modifier = Modifier
@@ -3311,35 +2942,42 @@ private fun AppDevWorkspaceScreen(
                     )
                 }
 
-                Box(
+                Row(
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Surface, CircleShape)
-                        .pressableScale(
-                            enabled = payload.html.isNotBlank(),
-                            pressedScale = 0.95f
-                        ) {
-                            if (payload.html.isBlank()) return@pressableScale
-                            val savedPayload =
-                                payload.copy(
-                                    subtitle = compactAppDescription(payload.description, payload.subtitle),
-                                    status = "success",
-                                    progress = 100,
-                                    error = null
-                                )
-                            payload = savedPayload
-                            onUpdate(savedPayload)
-                            onSave(savedPayload)
-                        },
-                    contentAlignment = Alignment.Center
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Surface, RoundedCornerShape(12.dp))
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = AppIcons.Check,
-                        contentDescription = null,
-                        tint = if (payload.html.isBlank()) TextSecondary else TextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (!showCode) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
+                            .pressableScale(pressedScale = 0.97f, onClick = { showCode = false })
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Preview",
+                            fontSize = 12.sp,
+                            color = if (!showCode) TextPrimary else TextSecondary
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (showCode) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
+                            .pressableScale(pressedScale = 0.97f, onClick = { showCode = true })
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Code",
+                            fontSize = 12.sp,
+                            color = if (showCode) TextPrimary else TextSecondary
+                        )
+                    }
                 }
             }
 
@@ -3350,13 +2988,11 @@ private fun AppDevWorkspaceScreen(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                val html = payload.html.trim()
-                val isRunning = payload.status.equals("running", ignoreCase = true)
-                if (isRunning) {
+                if (showCode || isRunning) {
                     AppDevCodeSurface(
                         html = html,
                         error = payload.error,
-                        isRunning = true
+                        isRunning = isRunning
                     )
                 } else {
                     if (html.isBlank()) {

@@ -568,8 +568,6 @@ private fun SavedAppRow(
     app: SavedApp,
     onClick: () -> Unit
 ) {
-    val runtimeStatusText = runtimeBuildStatusText(app.runtimeBuildStatus, app.runtimeBuildError)
-    val runtimeStatusColor = runtimeBuildStatusColor(app.runtimeBuildStatus)
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val pressedBackground by animateColorAsState(
@@ -620,15 +618,6 @@ private fun SavedAppRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (!runtimeStatusText.isNullOrBlank()) {
-                Text(
-                    text = runtimeStatusText,
-                    fontSize = 12.sp,
-                    color = runtimeStatusColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
         Icon(
             imageVector = AppIcons.ChevronRight,
@@ -686,8 +675,6 @@ private fun SavedAppPreviewDialog(
         if (chromeColor.luminance() < 0.45f) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.08f)
     val controlsTint =
         if (chromeColor.luminance() < 0.45f) Color.White else TextPrimary
-    val runtimeStatusText = runtimeBuildStatusText(app.runtimeBuildStatus, app.runtimeBuildError)
-    val runtimeStatusColor = runtimeBuildStatusColor(app.runtimeBuildStatus)
     val reportIssue = rememberUpdatedState<(String) -> Unit> { raw ->
         val normalized = raw.trim().replace(Regex("\\s+"), " ").take(480)
         if (normalized.isBlank()) return@rememberUpdatedState
@@ -875,22 +862,11 @@ private fun SavedAppPreviewDialog(
                     .background(controlsBackground, RoundedCornerShape(12.dp))
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "${app.versionName.ifBlank { "v${app.versionCode}" }} • $versionCount versions",
-                        color = controlsTint,
-                        fontSize = 12.sp
-                    )
-                    if (!runtimeStatusText.isNullOrBlank()) {
-                        Text(
-                            text = runtimeStatusText,
-                            color = if (runtimeStatusColor == TextSecondary) controlsTint else runtimeStatusColor,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
+                Text(
+                    text = "${app.versionName.ifBlank { "v${app.versionCode}" }} • $versionCount versions",
+                    color = controlsTint,
+                    fontSize = 12.sp
+                )
             }
 
             if (versionCount > 1) {
@@ -982,27 +958,6 @@ private fun SavedAppPreviewDialog(
                 }
             }
         )
-    }
-}
-
-private fun runtimeBuildStatusText(status: String?, errorText: String?): String? {
-    return when (status?.trim()?.lowercase()) {
-        "queued" -> "APK packaging queued"
-        "in_progress" -> "APK packaging in progress"
-        "success" -> "APK ready"
-        "failed" -> errorText?.trim()?.takeIf { it.isNotBlank() } ?: "APK packaging failed"
-        "disabled" -> errorText?.trim()?.takeIf { it.isNotBlank() } ?: "Runtime shell template is required"
-        "skipped" -> errorText?.trim()?.takeIf { it.isNotBlank() } ?: "APK packaging skipped"
-        else -> null
-    }
-}
-
-private fun runtimeBuildStatusColor(status: String?): Color {
-    return when (status?.trim()?.lowercase()) {
-        "success" -> Color(0xFF34C759)
-        "failed" -> Color(0xFFFF3B30)
-        "queued", "in_progress" -> Color(0xFF007AFF)
-        else -> TextSecondary
     }
 }
 
