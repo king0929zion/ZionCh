@@ -1477,21 +1477,19 @@ private suspend fun resolveAppDeveloperModelForAutoFix(
         error("No model configured for APP developer.")
     }
     val preferredModelKey = repository.defaultAppBuilderModelIdFlow.first()?.trim().orEmpty()
+    if (preferredModelKey.isBlank()) {
+        error("App Development model is not configured. Set it in Settings → Default model.")
+    }
     val selectedModel =
-        if (preferredModelKey.isNotBlank()) {
-            modelPool.firstOrNull { it.id == preferredModelKey }
-                ?: modelPool.firstOrNull { extractRemoteModelId(it.id) == preferredModelKey }
-                ?: modelPool.first()
-        } else {
-            modelPool.first()
-        }
+        modelPool.firstOrNull { it.id == preferredModelKey }
+            ?: modelPool.firstOrNull { extractRemoteModelId(it.id) == preferredModelKey }
+            ?: error("Configured App Development model was not found. Re-select it in Settings → Default model.")
     val providers = repository.providersFlow.first()
     val providerRaw =
         selectedModel.providerId?.let { providerId -> providers.firstOrNull { it.id == providerId } }
-            ?: providers.firstOrNull()
-            ?: error("No provider configured for APP developer.")
+            ?: error("Configured App Development model provider is missing.")
     if (providerRaw.apiUrl.isBlank() || providerRaw.apiKey.isBlank()) {
-        error("App developer provider is not configured.")
+        error("Configured App Development model provider is not configured.")
     }
     val provider = providerAuthManager.ensureValidProvider(providerRaw)
     return ResolvedAppDeveloperModelForAutoFix(
@@ -1517,9 +1515,12 @@ private suspend fun reviseHtmlForAutoFix(
     if (report.isBlank()) error("Bug report is empty.")
 
     val systemPrompt =
-        "You are APP developer model. Fix the provided HTML app and return ONLY one complete updated HTML document. " +
-            "Do not output markdown fences. Keep unaffected behavior unchanged. " +
-            "All UI interactions must be real and functional."
+        buildAppDeveloperSystemPrompt(
+            additionalInstructions =
+                "You are APP developer model. Fix the provided HTML app and return ONLY one complete updated HTML document. " +
+                    "Do not output markdown fences. Keep unaffected behavior unchanged. " +
+                    "All UI interactions must be real and functional."
+        )
     val userPrompt =
         buildString {
             appendLine("Please fix runtime errors for this app.")

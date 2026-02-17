@@ -68,7 +68,7 @@ fun DefaultModelScreen(navController: NavController) {
 
     var selectorType by remember { mutableStateOf<DefaultModelType?>(null) }
 
-    val selectedMap = remember(chatModelId, visionModelId, imageModelId, titleModelId) {
+    val selectedMap = remember(chatModelId, visionModelId, imageModelId, titleModelId, appBuilderModelId) {
         mapOf(
             DefaultModelType.CHAT to chatModelId,
             DefaultModelType.VISION to visionModelId,
@@ -121,6 +121,14 @@ fun DefaultModelScreen(navController: NavController) {
                 color = TextSecondary,
                 modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 24.dp)
             )
+            if (appBuilderModelId.isNullOrBlank()) {
+                Text(
+                    text = "APP developer requires App Development model. Set it before generating or fixing apps.",
+                    fontSize = 13.sp,
+                    color = Color(0xFFB45309),
+                    modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
         }
