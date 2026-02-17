@@ -74,6 +74,13 @@ fun AddProviderScreen(
     val editingProviderId = remember(activeProviderId, matchedPresetProvider?.id) {
         activeProviderId ?: matchedPresetProvider?.id ?: UUID.randomUUID().toString()
     }
+    val normalizedType = selectedType.trim().lowercase()
+    val isGrok2ApiProvider = remember(normalizedType, normalizedPresetId) {
+        normalizedType == "grok2api" || normalizedPresetId == "grok2api"
+    }
+    val credentialLabel = if (isGrok2ApiProvider) "Token" else "API Key"
+    val credentialPlaceholder = if (isGrok2ApiProvider) "Enter Grok token" else "Enter API key"
+    val apiUrlPlaceholder = if (isGrok2ApiProvider) "http://127.0.0.1:8000/v1" else "https://api.example.com/v1"
 
     LaunchedEffect(editingProvider?.id) {
         editingProvider?.let {
@@ -272,43 +279,60 @@ fun AddProviderScreen(
                                 .background(GrayLighter, RoundedCornerShape(20.dp))
                         )
 
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            TypeOption(
-                                text = "OpenAI",
-                                selected = selectedType == "openai",
-                                onClick = { selectedType = "openai" },
-                                modifier = Modifier.weight(1f),
-                                backdrop = typeBackdrop
-                            )
-                            TypeOption(
-                                text = "Anthropic",
-                                selected = selectedType == "anthropic",
-                                onClick = { selectedType = "anthropic" },
-                                modifier = Modifier.weight(1f),
-                                backdrop = typeBackdrop
-                            )
-                            TypeOption(
-                                text = "Google",
-                                selected = selectedType == "google",
-                                onClick = { selectedType = "google" },
-                                modifier = Modifier.weight(1f),
-                                backdrop = typeBackdrop
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                TypeOption(
+                                    text = "OpenAI",
+                                    selected = selectedType == "openai",
+                                    onClick = { selectedType = "openai" },
+                                    modifier = Modifier.weight(1f),
+                                    backdrop = typeBackdrop
+                                )
+                                TypeOption(
+                                    text = "Anthropic",
+                                    selected = selectedType == "anthropic",
+                                    onClick = { selectedType = "anthropic" },
+                                    modifier = Modifier.weight(1f),
+                                    backdrop = typeBackdrop
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                TypeOption(
+                                    text = "Google",
+                                    selected = selectedType == "google",
+                                    onClick = { selectedType = "google" },
+                                    modifier = Modifier.weight(1f),
+                                    backdrop = typeBackdrop
+                                )
+                                TypeOption(
+                                    text = "Grok",
+                                    selected = selectedType == "grok2api",
+                                    onClick = { selectedType = "grok2api" },
+                                    modifier = Modifier.weight(1f),
+                                    backdrop = typeBackdrop
+                                )
+                            }
                         }
                     }
                 }
 
                 // API Key
                 FormField(
-                    label = "API Key",
+                    label = credentialLabel,
                     value = apiKey,
                     onValueChange = { apiKey = it },
-                    placeholder = "Enter API key"
+                    placeholder = credentialPlaceholder
                 )
 
                 // API URL
@@ -316,7 +340,7 @@ fun AddProviderScreen(
                     label = "API URL",
                     value = apiUrl,
                     onValueChange = { apiUrl = it },
-                    placeholder = "https://api.example.com/v1"
+                    placeholder = apiUrlPlaceholder
                 )
 
                 // Models Section

@@ -150,6 +150,13 @@ val DEFAULT_PROVIDER_PRESETS: List<ProviderPreset> = listOf(
         iconAsset = "hunyuan-color.svg"
     ),
     ProviderPreset(
+        id = "grok2api",
+        name = "Grok2API",
+        type = "grok2api",
+        apiUrl = "http://127.0.0.1:8000/v1",
+        iconAsset = "grok.svg"
+    ),
+    ProviderPreset(
         id = "xai",
         name = "xAI",
         type = "openai",
@@ -163,6 +170,7 @@ fun findProviderPreset(presetId: String?): ProviderPreset? {
     if (rawId.isBlank()) return null
     val id = when (rawId.lowercase()) {
         "bytedance" -> "doubao"
+        "grok" -> "grok2api"
         else -> rawId
     }
     return DEFAULT_PROVIDER_PRESETS.firstOrNull { it.id == id }
@@ -186,6 +194,7 @@ private fun computeAIIconAssetByName(name: String): String? {
         PATTERN_GMI.containsMatchIn(lowerName) -> "gmi.svg"
         PATTERN_NVIDIA.containsMatchIn(lowerName) -> "nvidia-color.svg"
         PATTERN_KIMI.containsMatchIn(lowerName) -> "kimi-color.svg"
+        PATTERN_GROK.containsMatchIn(lowerName) -> "grok.svg"
         PATTERN_OPENAI.containsMatchIn(lowerName) -> "openai.svg"
         PATTERN_ANTHROPIC.containsMatchIn(lowerName) -> "anthropic.svg"
         PATTERN_GEMINI.containsMatchIn(lowerName) -> "gemini-color.svg"
@@ -211,6 +220,7 @@ private val PATTERN_MODELSCOPE = Regex("modelscope")
 private val PATTERN_GMI = Regex("\\bgmi\\b|gmi-serving")
 private val PATTERN_NVIDIA = Regex("nvidia")
 private val PATTERN_KIMI = Regex("\\bkimi\\b")
+private val PATTERN_GROK = Regex("grok")
 private val PATTERN_OPENAI = Regex("(gpt|openai|o\\d)")
 private val PATTERN_ANTHROPIC = Regex("anthropic|claude")
 private val PATTERN_GEMINI = Regex("(gemini|nano-banana)")

@@ -254,7 +254,7 @@ fun SettingsScreen(navController: NavController) {
                         onClick = { navController.navigate("model_services") }
                     )
                     SettingsItem(
-                        icon = { Icon(AppIcons.Search, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        icon = { Icon(AppIcons.Globe, null, Modifier.size(22.dp), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_search),
                         showChevron = true,
                         showDivider = true,

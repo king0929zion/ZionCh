@@ -48,6 +48,7 @@ import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.data.HttpHeader
 import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.isCodexProvider
+import com.zionchat.app.data.isGrok2ApiProvider
 import com.zionchat.app.ui.components.BottomFadeScrim
 import com.zionchat.app.ui.components.EditableHeader
 import com.zionchat.app.ui.components.HeadersEditorCard
@@ -79,7 +80,7 @@ fun ModelConfigScreen(
         if (pid.isBlank()) null else providers.firstOrNull { it.id == pid }
     }
     val supportsThinkingDepth = remember(provider?.id, provider?.apiUrl, provider?.type, provider?.presetId) {
-        provider?.isCodexProvider() == true
+        provider?.isCodexProvider() == true || provider?.isGrok2ApiProvider() == true
     }
 
     var modelName by remember(existingModel?.id) { mutableStateOf(existingModel?.displayName.orEmpty()) }

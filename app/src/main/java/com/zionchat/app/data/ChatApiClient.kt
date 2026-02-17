@@ -371,6 +371,7 @@ class ChatApiClient {
             val type = provider.type.trim().lowercase()
             when {
                 isCodex(provider) -> runCatching { listCodexModels(provider, extraHeaders) }
+                isGrok2Api(provider) -> runCatching { listGrok2ApiModels(provider, extraHeaders) }
                 type == "antigravity" -> runCatching { listAntigravityModels(provider, extraHeaders) }
                 type == "gemini-cli" -> runCatching { listGeminiCliModels(provider, extraHeaders) }
                 else ->
@@ -624,7 +625,7 @@ class ChatApiClient {
             isCodex(provider) -> codexResponsesStream(provider, modelId, messages, extraHeaders, reasoningEffort, conversationId)
             type == "antigravity" -> antigravityStream(provider, modelId, messages, extraHeaders)
             type == "gemini-cli" -> geminiCliStream(provider, modelId, messages, extraHeaders)
-            else -> openAIChatCompletionsStream(provider, modelId, messages, extraHeaders)
+            else -> openAIChatCompletionsStream(provider, modelId, messages, extraHeaders, reasoningEffort)
         }
     }
 
@@ -632,17 +633,21 @@ class ChatApiClient {
         provider: ProviderConfig,
         modelId: String,
         messages: List<Message>,
-        extraHeaders: List<HttpHeader>
+        extraHeaders: List<HttpHeader>,
+        reasoningEffort: String? = null
     ): Flow<ChatStreamDelta> = flow {
         val url = provider.apiUrl.trimEnd('/') + "/chat/completions"
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
-        val body = gson.toJson(
-            mapOf(
+        val payload =
+            linkedMapOf<String, Any>(
                 "model" to modelId,
                 "messages" to toOpenAIChatMessages(messages),
                 "stream" to true
             )
-        )
+        if (isGrok2Api(provider)) {
+            normalizeReasoningEffort(reasoningEffort)?.let { payload["reasoning_effort"] = it }
+        }
+        val body = gson.toJson(payload)
         val requestBuilder = Request.Builder().url(url)
 
         applyHeaders(requestBuilder, effectiveHeaders)
@@ -1184,6 +1189,35 @@ class ChatApiClient {
         }
     }
 
+    private fun listGrok2ApiModels(provider: ProviderConfig, extraHeaders: List<HttpHeader>): List<String> {
+        val url = provider.apiUrl.trimEnd('/') + "/models"
+        val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
+        val requestBuilder =
+            Request.Builder()
+                .url(url)
+                .get()
+
+        applyHeaders(requestBuilder, effectiveHeaders)
+        if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
+            requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
+        }
+        requestBuilder.header("Accept", "application/json")
+
+        val remoteModels =
+            runCatching {
+                client.newCall(requestBuilder.build()).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) return@use emptyList<String>()
+                    parseModelIdsFromJson(raw)
+                }
+            }.getOrElse { emptyList() }
+
+        return (remoteModels + GROK2API_DEFAULT_MODELS)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
     /**
      * 图片生成 - 使用 DALL-E 或其他文生图模型
      */
@@ -1265,6 +1299,24 @@ class ChatApiClient {
                 "gpt-5-codex-mini",
                 "gpt-5"
             )
+        private val GROK2API_DEFAULT_MODELS =
+            listOf(
+                "grok-3",
+                "grok-3-mini",
+                "grok-3-thinking",
+                "grok-4",
+                "grok-4-mini",
+                "grok-4-thinking",
+                "grok-4-heavy",
+                "grok-4.1-mini",
+                "grok-4.1-fast",
+                "grok-4.1-expert",
+                "grok-4.1-thinking",
+                "grok-4.20-beta",
+                "grok-imagine-1.0",
+                "grok-imagine-1.0-edit",
+                "grok-imagine-1.0-video"
+            )
     }
 
     private data class CodexModelMeta(
@@ -1286,6 +1338,21 @@ class ChatApiClient {
         if (provider.oauthProvider?.trim()?.equals("codex", ignoreCase = true) == true) return true
         if (provider.apiUrl.contains("/backend-api/codex", ignoreCase = true)) return true
         return false
+    }
+
+    private fun isGrok2Api(provider: ProviderConfig): Boolean {
+        if (provider.type.trim().equals("grok2api", ignoreCase = true)) return true
+        if (provider.presetId?.trim()?.equals("grok2api", ignoreCase = true) == true) return true
+        if (provider.apiUrl.contains("grok2api", ignoreCase = true)) return true
+        return false
+    }
+
+    private fun normalizeReasoningEffort(value: String?): String? {
+        val normalized = value?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
+        return when (normalized) {
+            "none", "minimal", "low", "medium", "high", "xhigh" -> normalized
+            else -> null
+        }
     }
 
     private fun normalizeCodexBaseUrl(provider: ProviderConfig): String {

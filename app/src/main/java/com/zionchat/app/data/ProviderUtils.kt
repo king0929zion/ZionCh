@@ -8,3 +8,9 @@ fun ProviderConfig.isCodexProvider(): Boolean {
     return false
 }
 
+fun ProviderConfig.isGrok2ApiProvider(): Boolean {
+    if (type.trim().equals("grok2api", ignoreCase = true)) return true
+    if (presetId?.trim()?.equals("grok2api", ignoreCase = true) == true) return true
+    if (apiUrl.contains("grok2api", ignoreCase = true)) return true
+    return false
+}
