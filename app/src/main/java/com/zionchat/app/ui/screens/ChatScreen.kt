@@ -3597,6 +3597,32 @@ private fun AppDevCodeSurface(
 private fun prettyFormatHtmlForCodeView(raw: String): String {
     val clean = normalizeGeneratedHtmlDraft(raw).trim()
     if (clean.isBlank()) return ""
+
+    // Script/style heavy pages are easy to corrupt with naive token splitting.
+    // For those cases, keep original line structure to avoid broken indentation.
+    if (Regex("(?is)<\\s*(script|style|pre|textarea)\\b").containsMatchIn(clean)) {
+        return clean
+    }
+
+    val openTagNameRegex = Regex("^<\\s*([A-Za-z][A-Za-z0-9:_-]*)\\b")
+    val voidTags =
+        setOf(
+            "area",
+            "base",
+            "br",
+            "col",
+            "embed",
+            "hr",
+            "img",
+            "input",
+            "link",
+            "meta",
+            "param",
+            "source",
+            "track",
+            "wbr"
+        )
+
     val tokens = clean
         .replace("><", ">\n<")
         .lines()
@@ -3605,27 +3631,38 @@ private fun prettyFormatHtmlForCodeView(raw: String): String {
     val sb = StringBuilder()
     var indent = 0
     tokens.forEach { token ->
-        val closeTag = token.startsWith("</")
-        val selfClosing =
-            token.endsWith("/>") ||
-                token.startsWith("<!DOCTYPE", ignoreCase = true) ||
-                token.startsWith("<!--") ||
-                token.startsWith("<meta", ignoreCase = true) ||
-                token.startsWith("<link", ignoreCase = true) ||
-                token.startsWith("<br", ignoreCase = true) ||
-                token.startsWith("<hr", ignoreCase = true) ||
-                token.startsWith("<img", ignoreCase = true) ||
-                token.startsWith("<input", ignoreCase = true)
+        val trimmedToken = token.trim()
+        val lowerToken = trimmedToken.lowercase()
+        val closeTag = lowerToken.startsWith("</")
+
         if (closeTag) indent = (indent - 1).coerceAtLeast(0)
         repeat(indent) { sb.append("  ") }
-        sb.append(token)
+        sb.append(trimmedToken)
         sb.append('\n')
+
+        val openMatch = openTagNameRegex.find(trimmedToken)
+        val tagName = openMatch?.groupValues?.getOrNull(1)?.lowercase().orEmpty()
+        val selfClosing = trimmedToken.endsWith("/>")
+        val isDoctypeOrComment = lowerToken.startsWith("<!") || lowerToken.startsWith("<?")
+        val isVoid = tagName in voidTags
+        val remainder =
+            if (openMatch != null && openMatch.range.last + 1 < trimmedToken.length) {
+                trimmedToken.substring(openMatch.range.last + 1)
+            } else {
+                ""
+            }
+        val hasInlineCloseForSameTag =
+            tagName.isNotBlank() &&
+                Regex("</\\s*${Regex.escape(tagName)}\\s*>", RegexOption.IGNORE_CASE).containsMatchIn(remainder)
+
         val openTag =
-            token.startsWith("<") &&
-                !token.startsWith("</") &&
-                !token.startsWith("<!") &&
+            openMatch != null &&
+                !closeTag &&
+                !isDoctypeOrComment &&
                 !selfClosing &&
-                token.contains('>')
+                !isVoid &&
+                !hasInlineCloseForSameTag
+
         if (openTag) indent += 1
     }
     return sb.toString().trimEnd()
