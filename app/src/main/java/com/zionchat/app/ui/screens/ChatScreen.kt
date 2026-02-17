@@ -88,6 +88,7 @@ import com.zionchat.app.data.HttpHeader
 import com.zionchat.app.data.Message
 import com.zionchat.app.data.MessageAttachment
 import com.zionchat.app.data.MessageTag
+import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.McpClient
 import com.zionchat.app.data.McpConfig
 import com.zionchat.app.data.McpToolCall
@@ -150,12 +151,14 @@ fun ChatScreen(navController: NavController) {
     val focusManager = LocalFocusManager.current
     var showToolMenu by remember { mutableStateOf(false) }
     var showMcpToolPicker by remember { mutableStateOf(false) }
+    var showChatModelPicker by remember { mutableStateOf(false) }
     var selectedTool by remember { mutableStateOf<String?>(null) }
     var selectedMcpToolKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var draftMcpToolKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var mcpToolPickerLoading by remember { mutableStateOf(false) }
     var mcpToolPickerError by remember { mutableStateOf<String?>(null) }
     val mcpToolPickerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val chatModelPickerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var messageText by remember { mutableStateOf("") }
     var imageAttachments by remember { mutableStateOf<List<PendingImageAttachment>>(emptyList()) }
     var inputFieldFocused by remember { mutableStateOf(false) }
@@ -178,6 +181,9 @@ fun ChatScreen(navController: NavController) {
     BackHandler(enabled = showToolMenu) {
         showToolMenu = false
     }
+    BackHandler(enabled = showChatModelPicker) {
+        showChatModelPicker = false
+    }
     BackHandler(enabled = showMcpToolPicker) {
         showMcpToolPicker = false
     }
@@ -198,6 +204,8 @@ fun ChatScreen(navController: NavController) {
 
     val conversations by repository.conversationsFlow.collectAsState(initial = emptyList())
     val currentConversationId by repository.currentConversationIdFlow.collectAsState(initial = null)
+    val providers by repository.providersFlow.collectAsState(initial = emptyList())
+    val models by repository.modelsFlow.collectAsState(initial = emptyList())
     val nickname by repository.nicknameFlow.collectAsState(initial = "")
     val avatarUri by repository.avatarUriFlow.collectAsState(initial = "")
     val customInstructions by repository.customInstructionsFlow.collectAsState(initial = "")
@@ -212,6 +220,7 @@ fun ChatScreen(navController: NavController) {
     val enabledMcpServers = remember(mcpList) { mcpList.filter { it.enabled } }
     val mcpToolPickerItems = remember(enabledMcpServers) { buildMcpToolPickerItems(enabledMcpServers) }
     val mcpToolPickerAllKeys = remember(mcpToolPickerItems) { mcpToolPickerItems.map { it.key }.toSet() }
+    val chatModelGroups = remember(providers, models) { groupEnabledModelsByProvider(providers, models) }
     var lastAutoDispatchedTaskId by remember { mutableStateOf<String?>(null) }
 
     // Avoid IME restore loops on cold start/resume.
@@ -2501,6 +2510,7 @@ fun ChatScreen(navController: NavController) {
                                 scope.launch { drawerState.open() }
                             }
                         },
+                        onChatModelClick = { showChatModelPicker = true },
                         onNewChatClick = ::startNewChat
                     )
                 }
@@ -2621,6 +2631,37 @@ fun ChatScreen(navController: NavController) {
                             }
                         },
                         onDismiss = { showMcpToolPicker = false }
+                    )
+                }
+            }
+
+            if (showChatModelPicker) {
+                ModalBottomSheet(
+                    onDismissRequest = { showChatModelPicker = false },
+                    sheetState = chatModelPickerState,
+                    containerColor = Surface,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    dragHandle = { AppSheetDragHandle(backgroundColor = Surface) }
+                ) {
+                    ChatModelPickerSheetContent(
+                        groupedModels = chatModelGroups,
+                        selectedModelId = defaultChatModelId,
+                        onSelectModel = { model ->
+                            scope.launch {
+                                repository.setDefaultChatModelId(model.id)
+                            }
+                            showChatModelPicker = false
+                            Toast.makeText(
+                                context,
+                                "默认对话模型已切换为 ${model.displayName}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        onOpenDefaultModelSettings = {
+                            showChatModelPicker = false
+                            navController.navigate("default_model")
+                        },
+                        onDismiss = { showChatModelPicker = false }
                     )
                 }
             }
@@ -4357,6 +4398,7 @@ fun SidebarMenuItem(
 @Composable
 fun TopNavBar(
     onMenuClick: () -> Unit,
+    onChatModelClick: () -> Unit,
     onNewChatClick: () -> Unit
 ) {
     Row(
@@ -4405,16 +4447,31 @@ fun TopNavBar(
                 modifier = Modifier
                     .height(42.dp)
                     .shadow(elevation = 8.dp, shape = RoundedCornerShape(21.dp), clip = false, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.08f))
+                    .clip(RoundedCornerShape(21.dp))
                     .background(Surface, RoundedCornerShape(21.dp))
+                    .pressableScale(pressedScale = 0.97f, onClick = onChatModelClick)
                     .padding(horizontal = 20.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "ChatGPT",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = TextPrimary
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ChatGPT",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary
+                    )
+                    Icon(
+                        imageVector = AppIcons.ChevronRight,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier
+                            .size(14.dp)
+                            .graphicsLayer { rotationZ = 90f }
+                    )
+                }
             }
         }
 
@@ -4834,6 +4891,141 @@ private fun McpToolPickerSheetContent(
                 enabled = !loading && selectedCount > 0
             ) {
                 Text(text = stringResource(R.string.chat_mcp_picker_confirm, selectedCount))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatModelPickerSheetContent(
+    groupedModels: List<Pair<String, List<ModelConfig>>>,
+    selectedModelId: String?,
+    onSelectModel: (ModelConfig) -> Unit,
+    onOpenDefaultModelSettings: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val flatModels = remember(groupedModels) { groupedModels.flatMap { it.second } }
+    val selectedModelName = remember(flatModels, selectedModelId) {
+        val selected = flatModels.firstOrNull { model ->
+            isSameStoredOrRemoteModelId(model.id, selectedModelId)
+        }
+        selected?.displayName
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 260.dp, max = 640.dp)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = "快速切换默认对话模型",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "当前默认：${selectedModelName ?: "未设置"}",
+            fontSize = 13.sp,
+            color = TextSecondary
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (groupedModels.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = true),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "暂无可用模型，请先在设置中启用模型。",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(onClick = onOpenDefaultModelSettings) {
+                    Text("前往默认模型设置")
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f, fill = true),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                groupedModels.forEach { (providerName, providerModels) ->
+                    item(key = "chat_model_provider_$providerName") {
+                        Text(
+                            text = providerName,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
+                        )
+                    }
+                    items(
+                        items = providerModels,
+                        key = { model -> model.id }
+                    ) { model ->
+                        val selected = isSameStoredOrRemoteModelId(model.id, selectedModelId)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .pressableScale(
+                                    pressedScale = 0.985f,
+                                    onClick = { onSelectModel(model) }
+                                )
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = model.displayName,
+                                    fontSize = 14.sp,
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = extractRemoteModelId(model.id),
+                                    fontSize = 12.sp,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Icon(
+                                imageVector = AppIcons.Check,
+                                contentDescription = null,
+                                tint = TextPrimary,
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .alpha(if (selected) 1f else 0f)
+                            )
+                        }
+                        Divider(color = GrayLight.copy(alpha = 0.7f))
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onOpenDefaultModelSettings) {
+                Text(text = "更多设置")
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.common_cancel))
             }
         }
     }
@@ -5506,6 +5698,34 @@ private data class McpToolPickerItem(
     val toolName: String,
     val description: String
 )
+
+private fun groupEnabledModelsByProvider(
+    providers: List<ProviderConfig>,
+    models: List<ModelConfig>
+): List<Pair<String, List<ModelConfig>>> {
+    if (models.isEmpty()) return emptyList()
+    val providerNameById = providers.associateBy({ it.id }, { it.name })
+    return models
+        .filter { it.enabled }
+        .groupBy { model ->
+            model.providerId?.let { providerId ->
+                providerNameById[providerId]
+            } ?: "Other"
+        }
+        .toList()
+        .sortedBy { it.first }
+        .map { (providerName, providerModels) ->
+            providerName to providerModels.sortedBy { it.displayName.lowercase() }
+        }
+}
+
+private fun isSameStoredOrRemoteModelId(lhs: String?, rhs: String?): Boolean {
+    val left = lhs?.trim().orEmpty()
+    val right = rhs?.trim().orEmpty()
+    if (left.isBlank() || right.isBlank()) return false
+    if (left == right) return true
+    return extractRemoteModelId(left) == extractRemoteModelId(right)
+}
 
 private data class PlannedMcpToolCall(
     val serverId: String,
