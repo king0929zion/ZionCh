@@ -1611,7 +1611,7 @@ fun ChatScreen(navController: NavController) {
                                             progress = 0,
                                             status = "error",
                                             error =
-                                                "Invalid arguments. Use create mode with name/description/style/features, or edit mode with target app + editRequest."
+                                                "Invalid arguments. app_developer now accepts only: name + description."
                                         )
                                     updateAssistantTag(pendingTag.id) {
                                         it.copy(content = encodeAppDevTagPayload(payload), status = "error")
@@ -5304,55 +5304,169 @@ private fun parseAppDevToolSpec(arguments: Map<String, Any?>): AppDevToolSpec? {
         }.distinct().take(12)
     }
 
-    val modeRaw = anyString("mode", "operation", "intent", "action")
-    val mode =
-        when (modeRaw.trim().lowercase()) {
-            "edit", "update", "revise", "modify", "refactor", "patch" -> "edit"
-            else -> "create"
+    fun normalizeMetaKey(raw: String): String {
+        return raw
+            .trim()
+            .lowercase()
+            .replace(" ", "")
+            .replace("_", "")
+            .replace("-", "")
+    }
+
+    fun splitFeatureCandidates(text: String): List<String> {
+        return text
+            .split('\n', ',', '，', ';', '；', '、', '|')
+            .map { it.trim().trimStart('-', '*', '•', '·') }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(12)
+    }
+
+    fun inferFeaturesFromDescription(text: String): List<String> {
+        val bullets =
+            Regex("(?m)^\\s*(?:[-*•·]|\\d+[\\.)、])\\s*(.+)$")
+                .findAll(text)
+                .mapNotNull { it.groupValues.getOrNull(1)?.trim()?.takeIf { value -> value.isNotBlank() } }
+                .toList()
+        if (bullets.isNotEmpty()) return bullets.take(12)
+
+        val lineChunks =
+            text.lines()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .flatMap { line ->
+                    line.split('。', '.', '！', '!', '；', ';', '？', '?')
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() }
+                }
+        if (lineChunks.isNotEmpty()) {
+            return lineChunks
+                .map { it.take(120) }
+                .distinct()
+                .take(12)
         }
-    val name = normalizeAppDisplayName(anyString("name", "title", "appName", "app_name"))
-    val description = anyString("description", "desc", "summary")
-    val style = anyString("style", "theme", "visualStyle", "design")
-    val targetAppId = anyString("targetAppId", "target_app_id", "appId", "existingAppId", "sourceAppId")
-    val targetAppName = anyString("targetAppName", "target_app_name", "existingAppName", "appToEdit", "editAppName")
-    val editRequest =
+        return emptyList()
+    }
+
+    val nameRaw = anyString("name", "title", "appName", "app_name")
+    val rawDescription =
+        anyString(
+            "description",
+            "detail",
+            "details",
+            "spec",
+            "requirements",
+            "request",
+            "instruction",
+            "prompt",
+            "desc",
+            "summary"
+        )
+    val name = normalizeAppDisplayName(nameRaw)
+    if (name.isBlank() || rawDescription.isBlank()) return null
+
+    var modeRaw = anyString("mode", "operation", "intent", "action")
+    var targetAppId = anyString("targetAppId", "target_app_id", "appId", "existingAppId", "sourceAppId")
+    var targetAppName = anyString("targetAppName", "target_app_name", "existingAppName", "appToEdit", "editAppName")
+    var editRequest =
         anyString("editRequest", "request", "updateRequest", "changeRequest", "instruction", "prompt")
             .ifBlank { anyString("details", "detail", "scope", "requirement") }
-    val features =
-        anyStringList("features", "requirements", "specs", "functionalities")
-            .ifEmpty {
-                anyString("details", "detail", "scope", "requirement")
-                    .takeIf { it.isNotBlank() }
-                    ?.split('\n', ',', ';', '|')
-                    ?.map { it.trim() }
-                    ?.filter { it.isNotBlank() }
-                    .orEmpty()
+    var style = anyString("style", "theme", "visualStyle", "design")
+
+    val explicitFeatures = anyStringList("features", "requirements", "specs", "functionalities")
+    val parsedFeatures = mutableListOf<String>()
+    val keptDescriptionLines = mutableListOf<String>()
+    val metaLineRegex = Regex("^\\s*([A-Za-z0-9_\\-\\u4e00-\\u9fa5 ]{2,36})\\s*[:：]\\s*(.+)$")
+
+    rawDescription
+        .replace("\r\n", "\n")
+        .replace('\r', '\n')
+        .lines()
+        .forEach { lineRaw ->
+            val line = lineRaw.trim()
+            if (line.isBlank()) return@forEach
+
+            val meta = metaLineRegex.matchEntire(line)
+            if (meta == null) {
+                keptDescriptionLines += line
+                return@forEach
             }
 
+            val key = normalizeMetaKey(meta.groupValues[1])
+            val value = meta.groupValues[2].trim()
+            if (value.isBlank()) {
+                keptDescriptionLines += line
+                return@forEach
+            }
+
+            when (key) {
+                "mode", "operation", "intent", "action", "模式", "操作", "意图" -> modeRaw = value
+                "targetappid", "appid", "existingappid", "sourceappid", "目标应用id", "应用id" -> targetAppId = value
+                "targetappname", "existingappname", "apptoedit", "editappname", "目标应用名", "应用名" -> targetAppName = value
+                "editrequest", "request", "updaterequest", "changerequest", "instruction", "prompt", "修改需求", "编辑需求", "修复需求", "更新需求", "请求" ->
+                    editRequest = value
+                "style", "theme", "visualstyle", "design", "风格", "样式", "主题", "设计" -> style = value
+                "features", "requirements", "specs", "functionalities", "功能", "特性", "需求", "细节" ->
+                    parsedFeatures += splitFeatureCandidates(value)
+                else -> keptDescriptionLines += line
+            }
+        }
+
+    val cleanedDescription =
+        keptDescriptionLines.joinToString("\n")
+            .trim()
+            .ifBlank { rawDescription.trim() }
+            .take(3000)
+    if (cleanedDescription.isBlank()) return null
+
+    var mode =
+        when (modeRaw.trim().lowercase()) {
+            "edit", "update", "revise", "modify", "refactor", "patch", "fix", "debug_fix", "修复", "编辑", "修改", "更新", "优化" -> "edit"
+            else -> "create"
+        }
+    if (mode == "create") {
+        val hasEditHints =
+            editRequest.isNotBlank() ||
+                targetAppId.isNotBlank() ||
+                targetAppName.isNotBlank() ||
+                Regex("(?i)\\b(edit|update|revise|modify|refactor|patch|fix|debug)\\b").containsMatchIn(cleanedDescription) ||
+                Regex("(编辑|修改|更新|优化|重构|修复)").containsMatchIn(cleanedDescription)
+        if (hasEditHints) mode = "edit"
+    }
+
+    val features =
+        (explicitFeatures + parsedFeatures + inferFeaturesFromDescription(cleanedDescription))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(12)
+
     if (mode == "edit") {
-        if (editRequest.isBlank()) return null
+        val effectiveEditRequest = editRequest.trim().ifBlank { cleanedDescription }
+        if (effectiveEditRequest.isBlank()) return null
         return AppDevToolSpec(
-            mode = mode,
-            name = name.take(80),
-            description = description.take(260),
-            style = style.take(120),
-            features = features.take(10),
-            targetAppId = targetAppId.takeIf { it.isNotBlank() }?.take(120),
+            mode = "edit",
+            name = normalizeAppDisplayName(name).take(80),
+            description = cleanedDescription.take(1200),
+            style = style.take(180),
+            features = features.ifEmpty { splitFeatureCandidates(effectiveEditRequest) }.take(12),
+            targetAppId = targetAppId.takeIf { it.isNotBlank() }?.take(160),
             targetAppName = targetAppName.takeIf { it.isNotBlank() }?.take(80),
-            editRequest = editRequest.take(800)
+            editRequest = effectiveEditRequest.take(1600)
         )
     }
 
-    if (name.isBlank() || description.isBlank() || style.isBlank() || features.isEmpty()) return null
+    val createFeatures = features.ifEmpty { listOf(cleanedDescription.take(140)) }
     return AppDevToolSpec(
-        mode = mode,
+        mode = "create",
         name = normalizeAppDisplayName(name).take(80),
-        description = description.take(260),
-        style = style.take(120),
-        features = features.take(10),
-        targetAppId = targetAppId.takeIf { it.isNotBlank() }?.take(120),
+        description = cleanedDescription.take(1800),
+        style = style.take(180),
+        features = createFeatures.take(12),
+        targetAppId = targetAppId.takeIf { it.isNotBlank() }?.take(160),
         targetAppName = targetAppName.takeIf { it.isNotBlank() }?.take(80),
-        editRequest = editRequest.takeIf { it.isNotBlank() }?.take(800)
+        editRequest = editRequest.takeIf { it.isNotBlank() }?.take(1600)
     )
 }
 
@@ -5584,15 +5698,20 @@ private fun buildAppGenerationUserPrompt(
         appendLine("Build one HTML app with these specs:")
         append("Name: ")
         appendLine(spec.name)
-        append("Description: ")
+        appendLine("Detailed description:")
         appendLine(spec.description)
-        append("Style: ")
-        appendLine(spec.style)
-        appendLine("Features:")
-        spec.features.forEachIndexed { index, feature ->
-            append(index + 1)
-            append(". ")
-            appendLine(feature)
+        if (spec.style.isNotBlank()) {
+            appendLine()
+            append("Extracted style hint: ")
+            appendLine(spec.style)
+        }
+        if (spec.features.isNotEmpty()) {
+            appendLine("Extracted feature checklist:")
+            spec.features.forEachIndexed { index, feature ->
+                append(index + 1)
+                append(". ")
+                appendLine(feature)
+            }
         }
         appendLine()
         appendLine("Hard requirements:")
@@ -6307,21 +6426,18 @@ private fun buildAppDeveloperToolInstruction(
         appendLine("Tool call format:")
         appendLine("<tool_call>{\"serverId\":\"builtin_app_developer\",\"toolName\":\"app_developer\",\"arguments\":{...}}</tool_call>")
         appendLine()
-        appendLine("For create mode, required arguments:")
-        appendLine("- mode: \"create\" (or omit)")
-        appendLine("- name: app name in ONE language only (Chinese OR English), never bilingual")
-        appendLine("- description: concise description (one short sentence, no filler)")
-        appendLine("- style: visual style direction")
-        appendLine("- features: array of detailed functional requirements")
+        appendLine("Arguments policy (STRICT):")
+        appendLine("- ONLY 2 arguments are allowed:")
+        appendLine("  1) name: app name in ONE language only (Chinese OR English), never bilingual")
+        appendLine("  2) description: detailed product spec. Include style, layout, interactions, states, and edge cases.")
+        appendLine("- Do NOT emit style/features/mode as top-level arguments.")
+        appendLine("- If editing an existing app, still only use name + description.")
+        appendLine("- For edit intent, write metadata lines INSIDE description:")
+        appendLine("  operation: edit")
+        appendLine("  target_app_id: <id from saved apps context> (or target_app_name)")
+        appendLine("  request: <detailed modifications>")
         appendLine("- All declared UI interactions must be real and fully functional (no dead buttons/links).")
-        appendLine("- If style mentions iOS/iPhone/Cupertino/iOS 18, enforce strict iOS 18 HIG constraints.")
-        appendLine()
-        appendLine("For edit mode, required arguments:")
-        appendLine("- mode: \"edit\"")
-        appendLine("- targetAppId or targetAppName: choose from saved apps context above")
-        appendLine("- editRequest: clear and detailed modification request")
-        appendLine("- Keep existing working behavior unless explicitly changed.")
-        appendLine("- Never ship simulated-only functionality.")
+        appendLine("- If description mentions iOS/iPhone/Cupertino/iOS 18, enforce strict iOS 18 HIG constraints.")
     }.trim()
 }
 
@@ -6341,21 +6457,18 @@ private fun buildPendingAppAutomationPrompt(task: AppAutomationTask): String {
             appendLine("Please edit an existing saved HTML app.")
         }
         appendLine("Do NOT create a new app. Update the target app in-place.")
-        appendLine("Use app_developer tool in edit mode.")
+        appendLine("Use app_developer tool with ONLY two arguments: name + description.")
         appendLine()
         appendLine("Required tool arguments:")
-        appendLine("- mode: \"edit\"")
-        append("- targetAppId: \"")
-        append(appId)
-        appendLine("\"")
-        append("- targetAppName: \"")
-        append(appName)
-        appendLine("\"")
-        append("- name: one-language app name only (Chinese OR English)")
-        appendLine("- description: one short sentence")
-        appendLine("- style: keep existing style unless request changes style")
-        appendLine("- features: list only real, working functionality")
-        appendLine("- editRequest: include the request below")
+        appendLine("- name: one-language app name only (Chinese OR English)")
+        appendLine("- description: detailed spec and include metadata lines:")
+        appendLine("  operation: edit")
+        append("  target_app_id: ")
+        appendLine(appId)
+        append("  target_app_name: ")
+        appendLine(appName)
+        appendLine("  request: <the modification request below>")
+        appendLine("- Do not add any other top-level arguments.")
         appendLine()
         appendLine(if (mode == "debug_fix") "Bug report:" else "Edit request:")
         appendLine(request)

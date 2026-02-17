@@ -13,6 +13,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -24,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
 
 private const val APP_RUNTIME_ERROR_MARKER = "ZION_APP_RUNTIME_ERROR:"
@@ -189,11 +191,23 @@ fun AppHtmlWebView(
             }
         }
 
-    Box(modifier = modifier) {
+    val containerModifier =
+        if (transparentBackground) {
+            modifier
+        } else {
+            modifier.background(Color.White)
+        }
+
+    Box(modifier = containerModifier) {
         AndroidView(
             modifier = Modifier.fillMaxWidth(),
             factory = { context ->
                 WebView(context).apply {
+                    if (transparentBackground) {
+                        setBackgroundColor(AndroidColor.TRANSPARENT)
+                    } else {
+                        setBackgroundColor(AndroidColor.WHITE)
+                    }
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
@@ -219,9 +233,6 @@ fun AppHtmlWebView(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         settings.safeBrowsingEnabled = true
                     }
-                    if (transparentBackground) {
-                        setBackgroundColor(AndroidColor.TRANSPARENT)
-                    }
                     overScrollMode = WebView.OVER_SCROLL_IF_CONTENT_SCROLLS
 
                     if (enableCookies) {
@@ -238,6 +249,11 @@ fun AppHtmlWebView(
             update = { webView ->
                 if (webView.tag != contentSignature) {
                     webView.tag = contentSignature
+                    if (transparentBackground) {
+                        webView.setBackgroundColor(AndroidColor.TRANSPARENT)
+                    } else {
+                        webView.setBackgroundColor(AndroidColor.WHITE)
+                    }
                     if (normalizedUrl.isNotBlank()) {
                         webView.loadUrl(normalizedUrl)
                     } else {
