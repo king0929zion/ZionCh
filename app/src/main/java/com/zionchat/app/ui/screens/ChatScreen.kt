@@ -149,7 +149,13 @@ fun ChatScreen(navController: NavController) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     var showToolMenu by remember { mutableStateOf(false) }
+    var showMcpToolPicker by remember { mutableStateOf(false) }
     var selectedTool by remember { mutableStateOf<String?>(null) }
+    var selectedMcpToolKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var draftMcpToolKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var mcpToolPickerLoading by remember { mutableStateOf(false) }
+    var mcpToolPickerError by remember { mutableStateOf<String?>(null) }
+    val mcpToolPickerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var messageText by remember { mutableStateOf("") }
     var imageAttachments by remember { mutableStateOf<List<PendingImageAttachment>>(emptyList()) }
     var inputFieldFocused by remember { mutableStateOf(false) }
@@ -171,6 +177,9 @@ fun ChatScreen(navController: NavController) {
     }
     BackHandler(enabled = showToolMenu) {
         showToolMenu = false
+    }
+    BackHandler(enabled = showMcpToolPicker) {
+        showMcpToolPicker = false
     }
 
     val photoPickerLauncher =
@@ -196,9 +205,13 @@ fun ChatScreen(navController: NavController) {
     val defaultImageModelId by repository.defaultImageModelIdFlow.collectAsState(initial = null)
     val defaultAppBuilderModelId by repository.defaultAppBuilderModelIdFlow.collectAsState(initial = null)
     val webSearchConfig by repository.webSearchConfigFlow.collectAsState(initial = WebSearchConfig())
+    val mcpList by repository.mcpListFlow.collectAsState(initial = emptyList())
     val pendingAppAutomationTask by repository.pendingAppAutomationTaskFlow.collectAsState(initial = null)
     val appAccentColor by repository.appAccentColorFlow.collectAsState(initial = "default")
     val accentPalette = remember(appAccentColor) { accentPaletteForKey(appAccentColor) }
+    val enabledMcpServers = remember(mcpList) { mcpList.filter { it.enabled } }
+    val mcpToolPickerItems = remember(enabledMcpServers) { buildMcpToolPickerItems(enabledMcpServers) }
+    val mcpToolPickerAllKeys = remember(mcpToolPickerItems) { mcpToolPickerItems.map { it.key }.toSet() }
     var lastAutoDispatchedTaskId by remember { mutableStateOf<String?>(null) }
 
     // Avoid IME restore loops on cold start/resume.
@@ -384,6 +397,40 @@ fun ChatScreen(navController: NavController) {
         lastKeyboardHideRequestAtMs = now
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
+    }
+
+    fun openMcpToolPicker() {
+        showToolMenu = false
+        showMcpToolPicker = true
+        mcpToolPickerError = null
+        hideKeyboardIfNeeded(force = true)
+        scope.launch {
+            mcpToolPickerLoading = true
+            runCatching {
+                val enabledServersSnapshot = repository.mcpListFlow.first().filter { it.enabled }
+                enabledServersSnapshot.forEach { server ->
+                    if (server.tools.isNotEmpty()) return@forEach
+                    val fetched = mcpClient.fetchTools(server).getOrNull().orEmpty()
+                    if (fetched.isNotEmpty()) {
+                        repository.updateMcpTools(server.id, fetched)
+                    }
+                }
+            }.onFailure { error ->
+                mcpToolPickerError =
+                    error.message?.trim()?.takeIf { it.isNotBlank() }
+                        ?: "Failed to sync MCP tools."
+            }
+            val refreshedEnabledServers = repository.mcpListFlow.first().filter { it.enabled }
+            val refreshedKeys = buildMcpToolPickerItems(refreshedEnabledServers).map { it.key }.toSet()
+            val normalizedCurrent = selectedMcpToolKeys.filter { it in refreshedKeys }.toSet()
+            draftMcpToolKeys =
+                when {
+                    refreshedKeys.isEmpty() -> emptySet()
+                    normalizedCurrent.isNotEmpty() -> normalizedCurrent
+                    else -> refreshedKeys
+                }
+            mcpToolPickerLoading = false
+        }
     }
 
     data class DeployOutcome(
@@ -1045,6 +1092,7 @@ fun ChatScreen(navController: NavController) {
                 } else {
                     // 普通聊天流程
                     val explicitMcp = selectedTool == "mcp"
+                    val selectedMcpToolKeysSnapshot = selectedMcpToolKeys
                     val explicitAppBuilder = selectedTool == "app_builder"
                     val useWebSearch = explicitWebSearchRequest || weakAutoWebSearchIntent
                     val canUseAppBuilder = explicitAppBuilder
@@ -1136,12 +1184,32 @@ fun ChatScreen(navController: NavController) {
                             }
                             server.copy(tools = fetched)
                         }
-                    val availableMcpServers = serversWithTools.filter { it.tools.isNotEmpty() }
+                    val scopedMcpServers =
+                        if (explicitMcp && selectedMcpToolKeysSnapshot.isNotEmpty()) {
+                            serversWithTools.map { server ->
+                                server.copy(
+                                    tools =
+                                        server.tools.filter { tool ->
+                                            selectedMcpToolKeysSnapshot.contains(
+                                                buildMcpToolPickerKey(server.id, tool.name)
+                                            )
+                                        }
+                                )
+                            }
+                        } else {
+                            serversWithTools
+                        }
+                    val availableMcpServers = scopedMcpServers.filter { it.tools.isNotEmpty() }
                     val canUseMcp = availableMcpServers.isNotEmpty()
                     val canUseAnyTool = canUseMcp || canUseAppBuilder
 
                     if (explicitMcp && !canUseMcp) {
-                        val msg = "No MCP tools available. Sync tools in MCP Tools first."
+                        val msg =
+                            if (selectedMcpToolKeysSnapshot.isNotEmpty()) {
+                                "No selected MCP tools available. Re-select MCP tools."
+                            } else {
+                                "No MCP tools available. Sync tools in MCP Tools first."
+                            }
                         updateAssistantContent(msg, null)
                         repository.appendMessage(
                             safeConversationId,
@@ -2451,6 +2519,7 @@ fun ChatScreen(navController: NavController) {
                 ) {
                     BottomInputArea(
                         selectedTool = selectedTool,
+                        mcpSelectedCount = selectedMcpToolKeys.size,
                         webSearchEngine = webSearchConfig.engine,
                         attachments = imageAttachments,
                         onRemoveAttachment = { index ->
@@ -2506,6 +2575,9 @@ fun ChatScreen(navController: NavController) {
                             hideKeyboardIfNeeded(force = true)
                             photoPickerLauncher.launch("image/*")
                         }
+                        "mcp" -> {
+                            openMcpToolPicker()
+                        }
                         else -> {
                             selectedTool = tool
                             showToolMenu = false
@@ -2513,6 +2585,45 @@ fun ChatScreen(navController: NavController) {
                     }
                 }
             )
+
+            if (showMcpToolPicker) {
+                ModalBottomSheet(
+                    onDismissRequest = { showMcpToolPicker = false },
+                    sheetState = mcpToolPickerState,
+                    containerColor = Surface,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    dragHandle = { AppSheetDragHandle(backgroundColor = Surface) }
+                ) {
+                    McpToolPickerSheetContent(
+                        loading = mcpToolPickerLoading,
+                        errorText = mcpToolPickerError,
+                        toolItems = mcpToolPickerItems,
+                        selectedKeys = draftMcpToolKeys,
+                        onToggle = { key, enabled ->
+                            draftMcpToolKeys =
+                                if (enabled) {
+                                    draftMcpToolKeys + key
+                                } else {
+                                    draftMcpToolKeys - key
+                                }
+                        },
+                        onSelectAll = { draftMcpToolKeys = mcpToolPickerAllKeys },
+                        onClearAll = { draftMcpToolKeys = emptySet() },
+                        onOpenMcpSettings = {
+                            showMcpToolPicker = false
+                            navController.navigate("mcp")
+                        },
+                        onConfirm = {
+                            if (draftMcpToolKeys.isNotEmpty()) {
+                                selectedMcpToolKeys = draftMcpToolKeys
+                                selectedTool = "mcp"
+                                showMcpToolPicker = false
+                            }
+                        },
+                        onDismiss = { showMcpToolPicker = false }
+                    )
+                }
+            }
 
             // 获取当前对话的实时thinking内容
             val currentMessageThinking = localMessages.lastOrNull { it.reasoning != null }?.reasoning
@@ -4545,6 +4656,190 @@ fun ToolMenuPanel(
 }
 
 @Composable
+private fun McpToolPickerSheetContent(
+    loading: Boolean,
+    errorText: String?,
+    toolItems: List<McpToolPickerItem>,
+    selectedKeys: Set<String>,
+    onToggle: (key: String, enabled: Boolean) -> Unit,
+    onSelectAll: () -> Unit,
+    onClearAll: () -> Unit,
+    onOpenMcpSettings: () -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val groupedItems = remember(toolItems) { toolItems.groupBy { it.serverId to it.serverName } }
+    val selectedCount = selectedKeys.count { key -> toolItems.any { it.key == key } }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 260.dp, max = 640.dp)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.chat_mcp_picker_title),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.chat_mcp_picker_subtitle),
+            fontSize = 13.sp,
+            color = TextSecondary
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (!errorText.isNullOrBlank()) {
+            Text(
+                text = stringResource(R.string.chat_mcp_picker_sync_error, errorText),
+                fontSize = 12.sp,
+                color = Color(0xFFB42318),
+                modifier = Modifier.padding(bottom = 10.dp)
+            )
+        }
+
+        when {
+            loading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 36.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(26.dp),
+                            strokeWidth = 2.2.dp,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = stringResource(R.string.chat_mcp_picker_loading),
+                            fontSize = 13.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+            toolItems.isEmpty() -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.chat_mcp_picker_empty_enabled),
+                        fontSize = 13.sp,
+                        color = TextSecondary
+                    )
+                    TextButton(onClick = onOpenMcpSettings) {
+                        Text(text = stringResource(R.string.settings_item_mcp_tools))
+                    }
+                }
+            }
+            else -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AssistChip(
+                        onClick = onSelectAll,
+                        label = { Text(stringResource(R.string.chat_mcp_picker_select_all)) }
+                    )
+                    AssistChip(
+                        onClick = onClearAll,
+                        label = { Text(stringResource(R.string.chat_mcp_picker_clear_all)) }
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = true),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    groupedItems.forEach { (serverPair, serverItems) ->
+                        item(key = "mcp_server_${serverPair.first}") {
+                            Text(
+                                text = serverPair.second,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
+                            )
+                        }
+                        items(
+                            items = serverItems,
+                            key = { item -> item.key }
+                        ) { item ->
+                            val checked = selectedKeys.contains(item.key)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .pressableScale(
+                                        pressedScale = 0.985f,
+                                        onClick = { onToggle(item.key, !checked) }
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = item.toolName,
+                                        fontSize = 14.sp,
+                                        color = TextPrimary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    if (item.description.isNotBlank()) {
+                                        Text(
+                                            text = item.description,
+                                            fontSize = 12.sp,
+                                            color = TextSecondary,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                Switch(
+                                    checked = checked,
+                                    onCheckedChange = { value -> onToggle(item.key, value) }
+                                )
+                            }
+                            Divider(color = GrayLight.copy(alpha = 0.7f))
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.common_cancel))
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Button(
+                onClick = onConfirm,
+                enabled = !loading && selectedCount > 0
+            ) {
+                Text(text = stringResource(R.string.chat_mcp_picker_confirm, selectedCount))
+            }
+        }
+    }
+}
+
+@Composable
 fun QuickActionButton(
     icon: @Composable () -> Unit,
     label: String,
@@ -4698,6 +4993,7 @@ private fun bottomInputBottomPadding(imeVisible: Boolean): Dp {
 @Composable
 private fun BottomInputArea(
     selectedTool: String?,
+    mcpSelectedCount: Int,
     webSearchEngine: String,
     attachments: List<PendingImageAttachment>,
     onRemoveAttachment: (Int) -> Unit,
@@ -4737,7 +5033,12 @@ private fun BottomInputArea(
         "files" -> "Files"
         "web" -> "Search · ${displaySearchEngineName(webSearchEngine)}"
         "image" -> "Image"
-        "mcp" -> stringResource(R.string.settings_item_mcp_tools)
+        "mcp" ->
+            if (mcpSelectedCount > 0) {
+                stringResource(R.string.chat_mcp_selected_count, mcpSelectedCount)
+            } else {
+                stringResource(R.string.settings_item_mcp_tools)
+            }
         "app_builder" -> stringResource(R.string.chat_tool_app_builder)
         else -> selectedTool?.replaceFirstChar { it.uppercase() }.orEmpty()
     }
@@ -5198,11 +5499,41 @@ private data class AppDevTagPayload(
     val runtimeArtifactUrl: String? = null
 )
 
+private data class McpToolPickerItem(
+    val key: String,
+    val serverId: String,
+    val serverName: String,
+    val toolName: String,
+    val description: String
+)
+
 private data class PlannedMcpToolCall(
     val serverId: String,
     val toolName: String,
     val arguments: Map<String, Any?>
 )
+
+private fun buildMcpToolPickerKey(serverId: String, toolName: String): String {
+    return serverId.trim() + "::" + toolName.trim().lowercase()
+}
+
+private fun buildMcpToolPickerItems(servers: List<McpConfig>): List<McpToolPickerItem> {
+    return servers
+        .sortedBy { it.name.trim().lowercase() }
+        .flatMap { server ->
+            server.tools
+                .sortedBy { it.name.trim().lowercase() }
+                .map { tool ->
+                    McpToolPickerItem(
+                        key = buildMcpToolPickerKey(server.id, tool.name),
+                        serverId = server.id,
+                        serverName = server.name.trim().ifBlank { "Unnamed MCP" },
+                        toolName = tool.name.trim(),
+                        description = tool.description.trim()
+                    )
+                }
+        }
+}
 
 private fun displaySearchEngineName(raw: String): String {
     return when (raw.trim().lowercase()) {

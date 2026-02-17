@@ -117,6 +117,15 @@
     <string name="chat_tool_create_image">Create image</string>
     <string name="chat_tool_create_image_subtitle">Visualize anything</string>
     <string name="chat_tool_mcp_subtitle">Connect external tools</string>
+    <string name="chat_mcp_selected_count">%1$d MCP Tools</string>
+    <string name="chat_mcp_picker_title">Enable MCP Tools</string>
+    <string name="chat_mcp_picker_subtitle">Choose the MCP tools available in this chat.</string>
+    <string name="chat_mcp_picker_select_all">Select all</string>
+    <string name="chat_mcp_picker_clear_all">Clear</string>
+    <string name="chat_mcp_picker_confirm">Enable %1$d</string>
+    <string name="chat_mcp_picker_empty_enabled">No enabled MCP tools found.</string>
+    <string name="chat_mcp_picker_loading">Syncing MCP tools...</string>
+    <string name="chat_mcp_picker_sync_error">Sync failed: %1$s</string>
     <string name="chat_tool_app_builder">App developer</string>
     <string name="chat_tool_app_builder_subtitle">Build an HTML app from specs</string>
     <string name="search_settings_engine">Search engine</string>
