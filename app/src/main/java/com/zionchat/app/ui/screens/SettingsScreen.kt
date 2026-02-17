@@ -223,7 +223,7 @@ fun SettingsScreen(navController: NavController) {
                 }
 
                 // AI Model 分组
-                SettingsGroup(title = stringResource(R.string.settings_group_ai_model), itemCount = 5) {
+                SettingsGroup(title = stringResource(R.string.settings_group_ai_model), itemCount = 6) {
                     SettingsItem(
                         icon = {
                             Icon(
@@ -252,6 +252,13 @@ fun SettingsScreen(navController: NavController) {
                         showChevron = true,
                         showDivider = true,
                         onClick = { navController.navigate("model_services") }
+                    )
+                    SettingsItem(
+                        icon = { Icon(AppIcons.Search, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        label = stringResource(R.string.settings_item_search),
+                        showChevron = true,
+                        showDivider = true,
+                        onClick = { navController.navigate("search_settings") }
                     )
                     SettingsItem(
                         icon = { Icon(AppIcons.Globe, null, Modifier.size(22.dp), tint = Color.Unspecified) },

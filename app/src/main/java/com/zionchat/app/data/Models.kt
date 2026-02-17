@@ -139,6 +139,17 @@ data class WebHostingConfig(
     val autoDeploy: Boolean = true
 )
 
+data class WebSearchConfig(
+    val engine: String = "bing",
+    val exaApiKey: String = "",
+    val tavilyApiKey: String = "",
+    val tavilyDepth: String = "advanced",
+    val linkupApiKey: String = "",
+    val linkupDepth: String = "standard",
+    val autoSearchEnabled: Boolean = true,
+    val maxResults: Int = 6
+)
+
 data class RuntimePackagingConfig(
     val localBridgeBaseUrl: String = "http://127.0.0.1:17856",
     val localBridgeToken: String = "",

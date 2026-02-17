@@ -19,6 +19,7 @@
     <string name="settings_group_ai_model">AI Model</string>
     <string name="settings_item_default_model">Default model</string>
     <string name="settings_item_model_services">Model services</string>
+    <string name="settings_item_search">Search</string>
     <string name="settings_item_mcp_tools">MCP Tools</string>
 
     <string name="language_title">Language</string>
@@ -118,6 +119,21 @@
     <string name="chat_tool_mcp_subtitle">Connect external tools</string>
     <string name="chat_tool_app_builder">App developer</string>
     <string name="chat_tool_app_builder_subtitle">Build an HTML app from specs</string>
+    <string name="search_settings_engine">Search engine</string>
+    <string name="search_settings_auto_title">AI proactive search</string>
+    <string name="search_settings_auto_subtitle">Automatically search for real-time/time-sensitive questions</string>
+    <string name="search_settings_result_count">Result count</string>
+    <string name="search_settings_result_count_subtitle">How many sources to inject into model context</string>
+    <string name="search_settings_exa_key">Exa API key</string>
+    <string name="search_settings_tavily_key">Tavily API key</string>
+    <string name="search_settings_linkup_key">Linkup API key</string>
+    <string name="search_settings_depth">Depth</string>
+    <string name="search_settings_depth_basic">Basic</string>
+    <string name="search_settings_depth_advanced">Advanced</string>
+    <string name="search_settings_depth_standard">Standard</string>
+    <string name="search_settings_depth_deep">Deep</string>
+    <string name="search_settings_bing_note">Bing mode uses crawler search and may occasionally be rate-limited.</string>
+    <string name="search_settings_save">Save search config</string>
     <string name="app_dev_preview_title">Preview</string>
     <string name="app_dev_preview_unavailable">Preview is unavailable until HTML is generated.</string>
     <string name="app_dev_input_placeholder">Describe the changes you want...</string>

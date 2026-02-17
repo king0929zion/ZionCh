@@ -12,6 +12,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import org.jsoup.Jsoup
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.util.UUID
@@ -29,6 +30,11 @@ class ChatApiClient {
             .callTimeout(0, TimeUnit.MILLISECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
+            .build()
+    private val webSearchClient: OkHttpClient =
+        client.newBuilder()
+            .readTimeout(35, TimeUnit.SECONDS)
+            .callTimeout(45, TimeUnit.SECONDS)
             .build()
     private val gson = Gson()
     private val jsonMediaType = "application/json".toMediaType()
@@ -68,87 +74,294 @@ class ChatApiClient {
     }
 
     suspend fun webSearch(query: String): Result<String> {
+        return webSearch(query, WebSearchConfig())
+    }
+
+    suspend fun webSearch(query: String, config: WebSearchConfig): Result<String> {
         val trimmed = query.trim()
         if (trimmed.isBlank()) return Result.success("")
 
         return withContext(Dispatchers.IO) {
             runCatching {
-                val url =
-                    "https://api.duckduckgo.com/".toHttpUrl().newBuilder()
-                        .addQueryParameter("q", trimmed)
-                        .addQueryParameter("format", "json")
-                        .addQueryParameter("no_html", "1")
-                        .addQueryParameter("no_redirect", "1")
-                        .addQueryParameter("skip_disambig", "1")
-                        .build()
-
-                val request =
-                    Request.Builder()
-                        .url(url)
-                        .get()
-                        .addHeader("Accept", "application/json")
-                        .build()
-
-                client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        error("HTTP ${response.code}: $raw")
+                val engine = normalizeSearchEngine(config.engine)
+                val maxResults = config.maxResults.coerceIn(1, 10)
+                val result =
+                    when (engine) {
+                        "exa" -> searchWithExa(trimmed, config.exaApiKey, maxResults)
+                        "tavily" -> searchWithTavily(trimmed, config.tavilyApiKey, config.tavilyDepth, maxResults)
+                        "linkup" -> searchWithLinkup(trimmed, config.linkupApiKey, config.linkupDepth, maxResults)
+                        else -> searchWithBing(trimmed, maxResults)
                     }
-
-                    val json = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull()
-                        ?: error("Invalid search response")
-
-                    val abstractText = json.get("AbstractText")?.asString?.trim().orEmpty()
-                    val heading = json.get("Heading")?.asString?.trim().orEmpty()
-
-                    fun flattenRelatedTopics(acc: MutableList<String>, el: com.google.gson.JsonElement?) {
-                        val arr = runCatching { el?.asJsonArray }.getOrNull() ?: return
-                        arr.forEach { item ->
-                            val obj = runCatching { item.asJsonObject }.getOrNull() ?: return@forEach
-                            if (obj.has("Topics")) {
-                                flattenRelatedTopics(acc, obj.get("Topics"))
-                                return@forEach
-                            }
-                            val text = obj.get("Text")?.asString?.trim().orEmpty()
-                            val urlStr = obj.get("FirstURL")?.asString?.trim().orEmpty()
-                            if (text.isNotBlank()) {
-                                acc.add(
-                                    if (urlStr.isNotBlank()) "$text ($urlStr)" else text
-                                )
-                            }
-                        }
-                    }
-
-                    val relatedItems = mutableListOf<String>()
-                    flattenRelatedTopics(relatedItems, json.get("RelatedTopics"))
-                    val related = relatedItems
-                        .filter { it.isNotBlank() }
-                        .take(6)
-
-                    buildString {
-                        if (heading.isNotBlank()) {
-                            append("Heading: ")
-                            append(heading)
-                            append('\n')
-                        }
-                        if (abstractText.isNotBlank()) {
-                            append("Abstract: ")
-                            append(abstractText)
-                            append("\n\n")
-                        }
-                        if (related.isNotEmpty()) {
-                            append("Related:\n")
-                            related.forEach { item ->
-                                append("- ")
-                                append(item)
-                                append('\n')
-                            }
-                        }
-                    }.trim()
-                }
+                formatWebSearchContext(engine, trimmed, result)
             }
         }
     }
+
+    private fun normalizeSearchEngine(raw: String): String {
+        return when (raw.trim().lowercase()) {
+            "bing", "exa", "tavily", "linkup" -> raw.trim().lowercase()
+            else -> "bing"
+        }
+    }
+
+    private fun normalizeWhitespace(raw: String): String {
+        return raw.replace(Regex("\\s+"), " ").trim()
+    }
+
+    private fun searchWithBing(query: String, maxResults: Int): WebSearchResponse {
+        val url =
+            "https://www.bing.com/search".toHttpUrl().newBuilder()
+                .addQueryParameter("q", query)
+                .build()
+        val request =
+            Request.Builder()
+                .url(url)
+                .get()
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                )
+                .header(
+                    "Accept",
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+                )
+                .header("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8")
+                .header("Referer", "https://www.bing.com/")
+                .build()
+
+        webSearchClient.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                error("Bing HTTP ${response.code}: $raw")
+            }
+
+            val doc = Jsoup.parse(raw)
+            val items =
+                doc.select("li.b_algo")
+                    .mapNotNull { block ->
+                        val title = normalizeWhitespace(block.selectFirst("h2")?.text().orEmpty())
+                        val urlValue = normalizeWhitespace(block.selectFirst("h2 a")?.attr("href").orEmpty())
+                        val snippet =
+                            normalizeWhitespace(
+                                block.selectFirst(".b_caption p")?.text()
+                                    ?: block.selectFirst("p")?.text().orEmpty()
+                            )
+                        if (title.isBlank() || urlValue.isBlank()) {
+                            null
+                        } else {
+                            WebSearchItem(
+                                title = title,
+                                url = urlValue,
+                                text = snippet
+                            )
+                        }
+                    }
+                    .take(maxResults)
+            if (items.isEmpty()) error("Bing returned no usable results.")
+            return WebSearchResponse(items = items)
+        }
+    }
+
+    private fun searchWithExa(query: String, apiKey: String, maxResults: Int): WebSearchResponse {
+        val key = apiKey.trim()
+        if (key.isBlank()) error("Exa API key is required.")
+
+        val body =
+            gson.toJson(
+                mapOf(
+                    "query" to query,
+                    "numResults" to maxResults,
+                    "contents" to mapOf("text" to true)
+                )
+            )
+        val request =
+            Request.Builder()
+                .url("https://api.exa.ai/search")
+                .post(body.toRequestBody(strictJsonMediaType))
+                .header("Authorization", "Bearer $key")
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .build()
+
+        webSearchClient.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                error("Exa HTTP ${response.code}: $raw")
+            }
+            val json = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull()
+                ?: error("Invalid Exa response")
+            val results = runCatching { json.getAsJsonArray("results") }.getOrNull()
+            val items =
+                results?.mapNotNull { element ->
+                    val obj = runCatching { element.asJsonObject }.getOrNull() ?: return@mapNotNull null
+                    val title = normalizeWhitespace(obj.get("title")?.asString.orEmpty())
+                    val urlValue = normalizeWhitespace(obj.get("url")?.asString.orEmpty())
+                    val text = normalizeWhitespace(obj.get("text")?.asString.orEmpty())
+                    if (title.isBlank() || urlValue.isBlank()) null else WebSearchItem(title = title, url = urlValue, text = text)
+                }.orEmpty()
+            if (items.isEmpty()) error("Exa returned no usable results.")
+            return WebSearchResponse(items = items.take(maxResults))
+        }
+    }
+
+    private fun searchWithTavily(
+        query: String,
+        apiKey: String,
+        depthRaw: String,
+        maxResults: Int
+    ): WebSearchResponse {
+        val key = apiKey.trim()
+        if (key.isBlank()) error("Tavily API key is required.")
+        val depth =
+            when (depthRaw.trim().lowercase()) {
+                "basic", "advanced" -> depthRaw.trim().lowercase()
+                else -> "advanced"
+            }
+
+        val body =
+            gson.toJson(
+                mapOf(
+                    "query" to query,
+                    "max_results" to maxResults,
+                    "search_depth" to depth,
+                    "topic" to "general"
+                )
+            )
+        val request =
+            Request.Builder()
+                .url("https://api.tavily.com/search")
+                .post(body.toRequestBody(strictJsonMediaType))
+                .header("Authorization", "Bearer $key")
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .build()
+
+        webSearchClient.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                error("Tavily HTTP ${response.code}: $raw")
+            }
+            val json = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull()
+                ?: error("Invalid Tavily response")
+            val answer = normalizeWhitespace(json.get("answer")?.asString.orEmpty()).ifBlank { null }
+            val results = runCatching { json.getAsJsonArray("results") }.getOrNull()
+            val items =
+                results?.mapNotNull { element ->
+                    val obj = runCatching { element.asJsonObject }.getOrNull() ?: return@mapNotNull null
+                    val title = normalizeWhitespace(obj.get("title")?.asString.orEmpty())
+                    val urlValue = normalizeWhitespace(obj.get("url")?.asString.orEmpty())
+                    val text = normalizeWhitespace(obj.get("content")?.asString.orEmpty())
+                    if (title.isBlank() || urlValue.isBlank()) null else WebSearchItem(title = title, url = urlValue, text = text)
+                }.orEmpty()
+            if (items.isEmpty()) error("Tavily returned no usable results.")
+            return WebSearchResponse(answer = answer, items = items.take(maxResults))
+        }
+    }
+
+    private fun searchWithLinkup(
+        query: String,
+        apiKey: String,
+        depthRaw: String,
+        maxResults: Int
+    ): WebSearchResponse {
+        val key = apiKey.trim()
+        if (key.isBlank()) error("Linkup API key is required.")
+        val depth =
+            when (depthRaw.trim().lowercase()) {
+                "standard", "deep" -> depthRaw.trim().lowercase()
+                else -> "standard"
+            }
+
+        val body =
+            gson.toJson(
+                mapOf(
+                    "q" to query,
+                    "depth" to depth,
+                    "outputType" to "sourcedAnswer",
+                    "includeImages" to false
+                )
+            )
+        val request =
+            Request.Builder()
+                .url("https://api.linkup.so/v1/search")
+                .post(body.toRequestBody(strictJsonMediaType))
+                .header("Authorization", "Bearer $key")
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .build()
+
+        webSearchClient.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                error("Linkup HTTP ${response.code}: $raw")
+            }
+            val json = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull()
+                ?: error("Invalid Linkup response")
+            val answer = normalizeWhitespace(json.get("answer")?.asString.orEmpty()).ifBlank { null }
+            val sources = runCatching { json.getAsJsonArray("sources") }.getOrNull()
+            val items =
+                sources?.mapNotNull { element ->
+                    val obj = runCatching { element.asJsonObject }.getOrNull() ?: return@mapNotNull null
+                    val title = normalizeWhitespace(obj.get("name")?.asString.orEmpty())
+                    val urlValue = normalizeWhitespace(obj.get("url")?.asString.orEmpty())
+                    val text = normalizeWhitespace(obj.get("snippet")?.asString.orEmpty())
+                    if (title.isBlank() || urlValue.isBlank()) null else WebSearchItem(title = title, url = urlValue, text = text)
+                }.orEmpty()
+            if (items.isEmpty()) error("Linkup returned no usable results.")
+            return WebSearchResponse(answer = answer, items = items.take(maxResults))
+        }
+    }
+
+    private fun formatWebSearchContext(engine: String, query: String, result: WebSearchResponse): String {
+        val engineLabel =
+            when (engine) {
+                "exa" -> "Exa"
+                "tavily" -> "Tavily"
+                "linkup" -> "Linkup"
+                else -> "Bing"
+            }
+        return buildString {
+            append("Search engine: ")
+            append(engineLabel)
+            append('\n')
+            append("Query: ")
+            append(query)
+            append('\n')
+            result.answer?.takeIf { it.isNotBlank() }?.let { answer ->
+                append('\n')
+                append("Engine answer: ")
+                append(answer.take(600))
+                append('\n')
+            }
+            append('\n')
+            append("Results:\n")
+            result.items.take(10).forEachIndexed { index, item ->
+                append(index + 1)
+                append(". ")
+                append(item.title.take(180))
+                append('\n')
+                append("   ")
+                append(item.url.take(420))
+                append('\n')
+                if (item.text.isNotBlank()) {
+                    append("   ")
+                    append(item.text.take(420))
+                    append('\n')
+                }
+            }
+        }.trim()
+    }
+
+    private data class WebSearchResponse(
+        val answer: String? = null,
+        val items: List<WebSearchItem>
+    )
+
+    private data class WebSearchItem(
+        val title: String,
+        val url: String,
+        val text: String
+    )
 
     suspend fun listModels(
         provider: ProviderConfig,

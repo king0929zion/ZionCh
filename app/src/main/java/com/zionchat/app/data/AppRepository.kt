@@ -50,8 +50,19 @@ class AppRepository(context: Context) {
     private val vercelTeamIdKey = stringPreferencesKey("vercel_team_id")
     private val vercelCustomDomainKey = stringPreferencesKey("vercel_custom_domain")
     private val webHostingAutoDeployKey = booleanPreferencesKey("web_hosting_auto_deploy")
+    private val webSearchEngineKey = stringPreferencesKey("web_search_engine")
+    private val webSearchExaApiKey = stringPreferencesKey("web_search_exa_api_key")
+    private val webSearchTavilyApiKey = stringPreferencesKey("web_search_tavily_api_key")
+    private val webSearchTavilyDepthKey = stringPreferencesKey("web_search_tavily_depth")
+    private val webSearchLinkupApiKey = stringPreferencesKey("web_search_linkup_api_key")
+    private val webSearchLinkupDepthKey = stringPreferencesKey("web_search_linkup_depth")
+    private val webSearchAutoEnabledKey = booleanPreferencesKey("web_search_auto_enabled")
+    private val webSearchMaxResultsKey = intPreferencesKey("web_search_max_results")
     private val appModuleVersionModelKey = intPreferencesKey("app_module_version_model")
     private val supportedAccentKeys = setOf("default", "blue", "pink", "orange", "black")
+    private val supportedSearchEngines = setOf("bing", "exa", "tavily", "linkup")
+    private val supportedTavilyDepth = setOf("basic", "advanced")
+    private val supportedLinkupDepth = setOf("standard", "deep")
     private val supportedRuntimeBuildStatuses =
         setOf("queued", "in_progress", "success", "failed", "disabled", "skipped")
 
@@ -379,6 +390,22 @@ class AppRepository(context: Context) {
         )
     }
 
+    val webSearchConfigFlow: Flow<WebSearchConfig> = prefsFlow.map { prefs ->
+        val engineRaw = prefs[webSearchEngineKey]?.trim()?.lowercase().orEmpty()
+        val tavilyDepthRaw = prefs[webSearchTavilyDepthKey]?.trim()?.lowercase().orEmpty()
+        val linkupDepthRaw = prefs[webSearchLinkupDepthKey]?.trim()?.lowercase().orEmpty()
+        WebSearchConfig(
+            engine = if (supportedSearchEngines.contains(engineRaw)) engineRaw else "bing",
+            exaApiKey = prefs[webSearchExaApiKey].orEmpty().trim(),
+            tavilyApiKey = prefs[webSearchTavilyApiKey].orEmpty().trim(),
+            tavilyDepth = if (supportedTavilyDepth.contains(tavilyDepthRaw)) tavilyDepthRaw else "advanced",
+            linkupApiKey = prefs[webSearchLinkupApiKey].orEmpty().trim(),
+            linkupDepth = if (supportedLinkupDepth.contains(linkupDepthRaw)) linkupDepthRaw else "standard",
+            autoSearchEnabled = prefs[webSearchAutoEnabledKey] ?: true,
+            maxResults = (prefs[webSearchMaxResultsKey] ?: 6).coerceIn(1, 10)
+        )
+    }
+
     val appModuleVersionModelFlow: Flow<Int> = prefsFlow.map { prefs ->
         (prefs[appModuleVersionModelKey] ?: 1).coerceAtLeast(1)
     }
@@ -565,6 +592,35 @@ class AppRepository(context: Context) {
     }
 
     suspend fun getWebHostingConfig(): WebHostingConfig = webHostingConfigFlow.first()
+
+    suspend fun setWebSearchConfig(config: WebSearchConfig) {
+        dataStore.edit { prefs ->
+            val engine = config.engine.trim().lowercase().takeIf { supportedSearchEngines.contains(it) } ?: "bing"
+            prefs[webSearchEngineKey] = engine
+
+            val exaApiKey = config.exaApiKey.trim()
+            if (exaApiKey.isBlank()) prefs.remove(webSearchExaApiKey) else prefs[webSearchExaApiKey] = exaApiKey
+
+            val tavilyApiKey = config.tavilyApiKey.trim()
+            if (tavilyApiKey.isBlank()) prefs.remove(webSearchTavilyApiKey) else prefs[webSearchTavilyApiKey] = tavilyApiKey
+
+            val tavilyDepth =
+                config.tavilyDepth.trim().lowercase().takeIf { supportedTavilyDepth.contains(it) } ?: "advanced"
+            prefs[webSearchTavilyDepthKey] = tavilyDepth
+
+            val linkupApiKey = config.linkupApiKey.trim()
+            if (linkupApiKey.isBlank()) prefs.remove(webSearchLinkupApiKey) else prefs[webSearchLinkupApiKey] = linkupApiKey
+
+            val linkupDepth =
+                config.linkupDepth.trim().lowercase().takeIf { supportedLinkupDepth.contains(it) } ?: "standard"
+            prefs[webSearchLinkupDepthKey] = linkupDepth
+
+            prefs[webSearchAutoEnabledKey] = config.autoSearchEnabled
+            prefs[webSearchMaxResultsKey] = config.maxResults.coerceIn(1, 10)
+        }
+    }
+
+    suspend fun getWebSearchConfig(): WebSearchConfig = webSearchConfigFlow.first()
 
     suspend fun setAppModuleVersionModel(value: Int) {
         dataStore.edit { prefs ->

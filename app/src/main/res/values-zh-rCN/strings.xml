@@ -19,6 +19,7 @@
     <string name="settings_group_ai_model">AI 模型</string>
     <string name="settings_item_default_model">默认模型</string>
     <string name="settings_item_model_services">模型服务</string>
+    <string name="settings_item_search">搜索</string>
     <string name="settings_item_mcp_tools">MCP 工具</string>
 
     <string name="language_title">Language</string>
@@ -118,6 +119,21 @@
     <string name="chat_tool_mcp_subtitle">连接外部工具</string>
     <string name="chat_tool_app_builder">应用开发</string>
     <string name="chat_tool_app_builder_subtitle">按规范生成 HTML 应用</string>
+    <string name="search_settings_engine">搜索引擎</string>
+    <string name="search_settings_auto_title">AI 主动搜索</string>
+    <string name="search_settings_auto_subtitle">对实时/时效性问题自动触发联网搜索</string>
+    <string name="search_settings_result_count">结果数量</string>
+    <string name="search_settings_result_count_subtitle">注入到模型上下文的来源数量</string>
+    <string name="search_settings_exa_key">Exa API Key</string>
+    <string name="search_settings_tavily_key">Tavily API Key</string>
+    <string name="search_settings_linkup_key">Linkup API Key</string>
+    <string name="search_settings_depth">深度</string>
+    <string name="search_settings_depth_basic">基础</string>
+    <string name="search_settings_depth_advanced">高级</string>
+    <string name="search_settings_depth_standard">标准</string>
+    <string name="search_settings_depth_deep">深度</string>
+    <string name="search_settings_bing_note">Bing 模式基于爬虫抓取，偶发会被限流。</string>
+    <string name="search_settings_save">保存搜索配置</string>
     <string name="app_dev_preview_title">预览</string>
     <string name="app_dev_preview_unavailable">尚未生成 HTML，暂不可预览。</string>
     <string name="app_dev_input_placeholder">告诉我你要修改什么...</string>

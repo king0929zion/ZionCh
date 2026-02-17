@@ -94,6 +94,7 @@ import com.zionchat.app.data.McpToolCall
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.RuntimeShellPlugin
 import com.zionchat.app.data.SavedApp
+import com.zionchat.app.data.WebSearchConfig
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.TopFadeScrim
 import com.zionchat.app.ui.components.AppSheetDragHandle
@@ -194,6 +195,7 @@ fun ChatScreen(navController: NavController) {
     val defaultChatModelId by repository.defaultChatModelIdFlow.collectAsState(initial = null)
     val defaultImageModelId by repository.defaultImageModelIdFlow.collectAsState(initial = null)
     val defaultAppBuilderModelId by repository.defaultAppBuilderModelIdFlow.collectAsState(initial = null)
+    val webSearchConfig by repository.webSearchConfigFlow.collectAsState(initial = WebSearchConfig())
     val pendingAppAutomationTask by repository.pendingAppAutomationTaskFlow.collectAsState(initial = null)
     val appAccentColor by repository.appAccentColorFlow.collectAsState(initial = "default")
     val accentPalette = remember(appAccentColor) { accentPaletteForKey(appAccentColor) }
@@ -787,10 +789,21 @@ fun ChatScreen(navController: NavController) {
         val attachmentsSnapshot = imageAttachments
         if ((trimmed.isEmpty() && attachmentsSnapshot.isEmpty()) || isStreaming) return
         val selectedToolSnapshot = selectedTool
+        val webSearchConfigSnapshot = webSearchConfig
+        val explicitWebSearchRequest = selectedToolSnapshot == "web"
         val explicitAppBuilderRequest = selectedToolSnapshot == "app_builder"
         val confirmationMatched = pendingAppBuilderConfirmation && isAppBuilderConfirmationReply(trimmed)
+        val weakAutoWebSearchIntent =
+            selectedToolSnapshot == null &&
+                !explicitAppBuilderRequest &&
+                !confirmationMatched &&
+                attachmentsSnapshot.isEmpty() &&
+                webSearchConfigSnapshot.autoSearchEnabled &&
+                shouldAutoSearchForPrompt(trimmed)
         val weakAutoAppBuilderIntent =
             selectedToolSnapshot == null &&
+                !explicitWebSearchRequest &&
+                !weakAutoWebSearchIntent &&
                 !explicitAppBuilderRequest &&
                 !confirmationMatched &&
                 shouldEnableAppBuilderForPrompt(trimmed)
@@ -1033,6 +1046,7 @@ fun ChatScreen(navController: NavController) {
                     // 普通聊天流程
                     val explicitMcp = selectedTool == "mcp"
                     val explicitAppBuilder = selectedTool == "app_builder"
+                    val useWebSearch = explicitWebSearchRequest || weakAutoWebSearchIntent
                     val canUseAppBuilder = explicitAppBuilder
                     val configuredAppBuilderModel =
                         defaultAppBuilderModelId?.trim()?.takeIf { it.isNotBlank() }?.let { key ->
@@ -1066,22 +1080,38 @@ fun ChatScreen(navController: NavController) {
                         )
                         return@launch
                     }
-                    val webContextMessage =
-                        if (selectedTool == "web") {
-                            val webContext = chatApiClient.webSearch(trimmed).getOrDefault("")
-                            webContext.takeIf { it.isNotBlank() }?.let { content ->
-                                Message(
-                                    role = "system",
-                                    content =
-                                        "Use the following web search results as reference. If they are insufficient, answer based on best effort.\n\n$content"
-                                )
-                            }
+                    val webSearchResult =
+                        if (useWebSearch) {
+                            chatApiClient.webSearch(trimmed, webSearchConfigSnapshot)
                         } else {
                             null
                         }
+                    if (explicitWebSearchRequest && webSearchResult?.isFailure == true) {
+                        val reason =
+                            webSearchResult.exceptionOrNull()?.message?.trim()?.takeIf { it.isNotBlank() }
+                                ?: "Unknown error"
+                        val msg = "Web search failed: $reason. Configure it in Settings → Search."
+                        updateAssistantContent(msg, null)
+                        repository.appendMessage(
+                            safeConversationId,
+                            assistantMessage.copy(content = msg)
+                        )
+                        return@launch
+                    }
+                    val webContextMessage =
+                        webSearchResult
+                            ?.getOrNull()
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { content ->
+                                Message(
+                                    role = "system",
+                                    content =
+                                        "Use the following web search results as reference. Prefer these sources for factual/real-time questions.\n\n$content"
+                                )
+                            }
 
                     val enabledServers =
-                        if (selectedTool == "web") {
+                        if (useWebSearch) {
                             emptyList<McpConfig>()
                         } else {
                             repository.mcpListFlow.first().filter { it.enabled }
@@ -2421,6 +2451,7 @@ fun ChatScreen(navController: NavController) {
                 ) {
                     BottomInputArea(
                         selectedTool = selectedTool,
+                        webSearchEngine = webSearchConfig.engine,
                         attachments = imageAttachments,
                         onRemoveAttachment = { index ->
                             if (index < 0 || index >= imageAttachments.size) return@BottomInputArea
@@ -2460,6 +2491,7 @@ fun ChatScreen(navController: NavController) {
             // 底部工具面板（覆盖在输入框上方）
             ToolMenuPanel(
                 visible = showToolMenu,
+                webSearchEngine = webSearchConfig.engine,
                 modifier = Modifier.zIndex(20f),
                 onDismiss = { showToolMenu = false },
                 onToolSelect = { tool ->
@@ -4321,6 +4353,7 @@ fun ActionButton(
 @Composable
 fun ToolMenuPanel(
     visible: Boolean,
+    webSearchEngine: String,
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
     onToolSelect: (String) -> Unit
@@ -4477,10 +4510,14 @@ fun ToolMenuPanel(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // 列表项
+                    val webSearchSubtitle =
+                        stringResource(R.string.chat_tool_web_search_subtitle) +
+                            " · " +
+                            displaySearchEngineName(webSearchEngine)
                     ToolListItem(
                         icon = { Icon(AppIcons.Globe, null, Modifier.size(24.dp), TextPrimary) },
                         title = stringResource(R.string.chat_tool_web_search),
-                        subtitle = stringResource(R.string.chat_tool_web_search_subtitle),
+                        subtitle = webSearchSubtitle,
                         onClick = { onToolSelect("web") }
                     )
                     ToolListItem(
@@ -4661,6 +4698,7 @@ private fun bottomInputBottomPadding(imeVisible: Boolean): Dp {
 @Composable
 private fun BottomInputArea(
     selectedTool: String?,
+    webSearchEngine: String,
     attachments: List<PendingImageAttachment>,
     onRemoveAttachment: (Int) -> Unit,
     onToolToggle: () -> Unit,
@@ -4697,7 +4735,7 @@ private fun BottomInputArea(
     val maxLines = if (selectedTool != null) 6 else 5
     val toolLabel = when (selectedTool) {
         "files" -> "Files"
-        "web" -> "Search"
+        "web" -> "Search · ${displaySearchEngineName(webSearchEngine)}"
         "image" -> "Image"
         "mcp" -> stringResource(R.string.settings_item_mcp_tools)
         "app_builder" -> stringResource(R.string.chat_tool_app_builder)
@@ -5165,6 +5203,40 @@ private data class PlannedMcpToolCall(
     val toolName: String,
     val arguments: Map<String, Any?>
 )
+
+private fun displaySearchEngineName(raw: String): String {
+    return when (raw.trim().lowercase()) {
+        "exa" -> "Exa"
+        "tavily" -> "Tavily"
+        "linkup" -> "Linkup"
+        else -> "Bing"
+    }
+}
+
+private fun shouldAutoSearchForPrompt(userPrompt: String): Boolean {
+    val text = userPrompt.trim().lowercase()
+    if (text.isBlank()) return false
+
+    val timeSensitivePatterns =
+        listOf(
+            Regex("(?i)\\b(latest|today|recent|current|news|breaking|update|live|price|stock|weather|score|schedule|release)\\b"),
+            Regex("(最新|今天|最近|当前|新闻|快讯|实时|价格|股价|天气|比分|赛程|发布)")
+        )
+    val lookupPatterns =
+        listOf(
+            Regex("(?i)\\b(search|look up|find|check|verify|compare|summarize)\\b"),
+            Regex("(搜索|查一下|查找|检索|核实|对比|汇总)")
+        )
+    val questionHint =
+        text.endsWith("?") ||
+            text.endsWith("？") ||
+            Regex("(?i)\\b(what|who|when|where|how|is|are|can|could|should|which)\\b").containsMatchIn(text) ||
+            Regex("(什么|谁|何时|哪里|怎么|是否|能否|哪个)").containsMatchIn(text)
+
+    val hasTimeSensitive = timeSensitivePatterns.any { it.containsMatchIn(text) }
+    val hasLookupIntent = lookupPatterns.any { it.containsMatchIn(text) }
+    return hasTimeSensitive || (hasLookupIntent && questionHint)
+}
 
 private fun shouldEnableAppBuilderForPrompt(userPrompt: String): Boolean {
     val text = userPrompt.trim().lowercase()
