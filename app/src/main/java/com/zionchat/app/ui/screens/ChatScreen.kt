@@ -2191,9 +2191,17 @@ fun ChatScreen(navController: NavController) {
     }
 
     val displayName = nickname.takeIf { it.isNotBlank() } ?: "Kendall Williamson"
+    val appWorkspaceActive = !appWorkspaceTagId.isNullOrBlank()
+
+    LaunchedEffect(appWorkspaceActive) {
+        if (appWorkspaceActive && drawerState.isOpen) {
+            drawerState.close()
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = !appWorkspaceActive,
         drawerContent = {
             SidebarContent(
                 conversations = conversations,
@@ -2390,7 +2398,11 @@ fun ChatScreen(navController: NavController) {
             ) {
                 Box(modifier = Modifier.onSizeChanged { topBarHeightPx = it.height }) {
                     TopNavBar(
-                        onMenuClick = { scope.launch { drawerState.open() } },
+                        onMenuClick = {
+                            if (!appWorkspaceActive) {
+                                scope.launch { drawerState.open() }
+                            }
+                        },
                         onNewChatClick = ::startNewChat
                     )
                 }
@@ -2791,7 +2803,7 @@ fun MessageItem(
             }
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.85f)
+                .fillMaxWidth()
                 .then(assistantContentModifier)
                 .combinedClickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -3041,16 +3053,44 @@ private fun AppDevToolTagCard(
     val statusLower = payload.status.trim().lowercase()
     val hasHtml = payload.html.trim().isNotBlank()
     val isCompleted = statusLower == "success" && hasHtml
+    val isRunning = statusLower == "running"
     val showSkeleton = !isCompleted && statusLower != "error"
     val runtimeBusy = payload.runtimeStatus == "queued" || payload.runtimeStatus == "in_progress"
+    val reportedProgress = payload.progress.coerceIn(0, 100).toFloat()
+    val htmlLength = payload.html.trim().length
+    val htmlSignalProgress =
+        if (htmlLength <= 0) {
+            0f
+        } else {
+            val normalized =
+                kotlin.math.sqrt(htmlLength.toFloat().coerceAtMost(120_000f)) /
+                    kotlin.math.sqrt(120_000f)
+            (10f + normalized * 78f).coerceAtMost(92f)
+        }
     val targetProgress =
         when {
             isCompleted -> 100f
-            statusLower == "error" -> payload.progress.coerceIn(0, 100).toFloat()
-            else -> payload.progress.coerceIn(0, 100).toFloat()
+            statusLower == "error" -> reportedProgress
+            isRunning ->
+                maxOf(
+                    reportedProgress,
+                    htmlSignalProgress,
+                    8f,
+                    if (runtimeBusy) 96f else 0f
+                ).coerceAtMost(if (runtimeBusy) 99f else 96f)
+            else -> reportedProgress.coerceAtMost(99f)
         }
+    val initialProgress = if (isRunning) maxOf(8f, targetProgress) else targetProgress
+    var monotonicProgress by remember(tag.id) { mutableFloatStateOf(initialProgress) }
+    LaunchedEffect(tag.id, targetProgress, isCompleted, statusLower) {
+        when {
+            isCompleted -> monotonicProgress = 100f
+            statusLower == "error" -> monotonicProgress = targetProgress
+            targetProgress > monotonicProgress -> monotonicProgress = targetProgress
+        }
+    }
     val animatedProgress by animateFloatAsState(
-        targetValue = targetProgress,
+        targetValue = monotonicProgress.coerceIn(0f, 100f),
         animationSpec = tween(durationMillis = 240, easing = LinearEasing),
         label = "app_dev_progress_value"
     )
@@ -3078,10 +3118,6 @@ private fun AppDevToolTagCard(
                 totalCells = 48
             )
         }
-    var contributionAnimated by remember(tag.id) { mutableStateOf(false) }
-    LaunchedEffect(tag.id) {
-        contributionAnimated = true
-    }
 
     val titleText = payload.name.ifBlank { "CodeMaster" }
     val subtitleText =
@@ -3109,7 +3145,6 @@ private fun AppDevToolTagCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 340.dp)
                 .shadow(
                     elevation = 8.dp,
                     shape = RoundedCornerShape(20.dp),
@@ -3216,7 +3251,8 @@ private fun AppDevToolTagCard(
                 Spacer(modifier = Modifier.height(10.dp))
                 AppDevContributionGrid(
                     levels = contributionLevels,
-                    animateIn = contributionAnimated,
+                    progressPercent = progressValue,
+                    isRunning = isRunning,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp)
@@ -3289,11 +3325,40 @@ private fun AppDevToolTagCard(
 @Composable
 private fun AppDevContributionGrid(
     levels: List<Int>,
-    animateIn: Boolean,
+    progressPercent: Int,
+    isRunning: Boolean,
     modifier: Modifier = Modifier
 ) {
     val rows = 3
     val cols = 16
+    val totalCells = rows * cols
+    val targetFilledCells =
+        ((progressPercent.coerceIn(0, 100) / 100f) * totalCells)
+            .toInt()
+            .coerceIn(0, totalCells)
+    var animatedFilledCells by remember(levels, isRunning) { mutableIntStateOf(0) }
+
+    LaunchedEffect(targetFilledCells, isRunning) {
+        when {
+            targetFilledCells < animatedFilledCells -> {
+                animatedFilledCells = targetFilledCells
+            }
+            targetFilledCells == animatedFilledCells -> Unit
+            else -> {
+                val stepDelayMs =
+                    when {
+                        targetFilledCells - animatedFilledCells > 20 -> 6L
+                        targetFilledCells - animatedFilledCells > 8 -> 10L
+                        else -> 16L
+                    }
+                while (animatedFilledCells < targetFilledCells) {
+                    animatedFilledCells += 1
+                    delay(stepDelayMs)
+                }
+            }
+        }
+    }
+
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(3.dp)
@@ -3308,30 +3373,25 @@ private fun AppDevContributionGrid(
                 for (row in 0 until rows) {
                     val index = (col * rows) + row
                     val level = levels.getOrElse(index) { 0 }.coerceIn(0, 4)
-                    val targetVisibility = if (animateIn) 1f else 0f
-                    val delayMs = index * 20
+                    val filled = index < animatedFilledCells
                     val scale by animateFloatAsState(
-                        targetValue = targetVisibility,
+                        targetValue = if (filled) 1f else 0f,
                         animationSpec =
-                            keyframes {
-                                durationMillis = delayMs + 400
-                                0f at 0
-                                0f at delayMs
-                                1.1f at (delayMs + 200)
-                                1f at (delayMs + 400)
+                            if (filled) {
+                                keyframes {
+                                    durationMillis = 260
+                                    0f at 0
+                                    1.12f at 160
+                                    1f at 260
+                                }
+                            } else {
+                                tween(durationMillis = 120, easing = LinearEasing)
                             },
                         label = "app_dev_contrib_scale_$index"
                     )
                     val alpha by animateFloatAsState(
-                        targetValue = targetVisibility,
-                        animationSpec =
-                            keyframes {
-                                durationMillis = delayMs + 400
-                                0f at 0
-                                0f at delayMs
-                                1f at (delayMs + 220)
-                                1f at (delayMs + 400)
-                            },
+                        targetValue = if (filled) 1f else 0f,
+                        animationSpec = tween(durationMillis = 160, easing = LinearEasing),
                         label = "app_dev_contrib_alpha_$index"
                     )
 
@@ -3340,13 +3400,19 @@ private fun AppDevContributionGrid(
                             .weight(1f)
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(2.dp))
-                            .background(githubContributionColor(level))
-                            .graphicsLayer(
-                                alpha = alpha,
-                                scaleX = scale,
-                                scaleY = scale
-                            )
-                    )
+                            .background(Color(0xFFEBEDF0))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .graphicsLayer(
+                                    alpha = alpha,
+                                    scaleX = scale,
+                                    scaleY = scale
+                                )
+                                .background(githubContributionColor(level))
+                        )
+                    }
                 }
             }
         }
