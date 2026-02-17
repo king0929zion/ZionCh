@@ -232,8 +232,8 @@ fun AppHtmlWebView(
                         }
                     }
 
-                    webViewClient = webViewClient
-                    webChromeClient = webChromeClient
+                    setWebViewClient(webViewClient)
+                    setWebChromeClient(webChromeClient)
                 }
             },
             update = { webView ->
