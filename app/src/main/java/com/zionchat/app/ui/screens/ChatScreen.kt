@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
@@ -124,6 +125,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.keyframes
 import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
 
@@ -3041,53 +3043,61 @@ private fun AppDevToolTagCard(
     val isCompleted = statusLower == "success" && hasHtml
     val showSkeleton = !isCompleted && statusLower != "error"
     val runtimeBusy = payload.runtimeStatus == "queued" || payload.runtimeStatus == "in_progress"
-
-    val iconTransition = rememberInfiniteTransition(label = "app_dev_icon_flow")
-    val iconShift by iconTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 300f,
-        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 8000, easing = LinearEasing)),
-        label = "app_dev_icon_flow_shift"
+    val targetProgress =
+        when {
+            isCompleted -> 100f
+            statusLower == "error" -> payload.progress.coerceIn(0, 100).toFloat()
+            else -> payload.progress.coerceIn(0, 100).toFloat()
+        }
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = tween(durationMillis = 240, easing = LinearEasing),
+        label = "app_dev_progress_value"
     )
-    val skeletonShift by iconTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 420f,
+    val progressValue = animatedProgress.roundToInt().coerceIn(0, 100)
+
+    val shimmerTransition = rememberInfiniteTransition(label = "app_dev_skeleton_shimmer")
+    val skeletonShift by shimmerTransition.animateFloat(
+        initialValue = 220f,
+        targetValue = -220f,
         animationSpec = infiniteRepeatable(animation = tween(durationMillis = 2000, easing = LinearEasing)),
         label = "app_dev_skeleton_shift"
     )
-    val sparkleAlpha by iconTransition.animateFloat(
-        initialValue = 0.62f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "app_dev_sparkle_alpha"
-    )
-    val flowingIconBrush = remember(iconShift) {
-        Brush.linearGradient(
-            colors = listOf(
-                Color(0xFF1E40AF),
-                Color(0xFF6D28D9),
-                Color(0xFF15803D),
-                Color(0xFFC2410C),
-                Color(0xFF1E40AF)
-            ),
-            start = Offset(iconShift - 300f, 0f),
-            end = Offset(iconShift, 300f)
-        )
-    }
     val skeletonBrush = remember(skeletonShift) {
         Brush.linearGradient(
-            colors = listOf(
-                Color(0xFFE5E7EB),
-                Color(0xFFF3F4F6),
-                Color(0xFFE5E7EB)
-            ),
-            start = Offset(skeletonShift - 420f, 0f),
-            end = Offset(skeletonShift, 0f)
+            colors = listOf(Color(0xFFE5E7EB), Color(0xFFF3F4F6), Color(0xFFE5E7EB)),
+            start = Offset(skeletonShift, 0f),
+            end = Offset(skeletonShift + 220f, 0f)
         )
     }
+
+    val contributionLevels =
+        remember(tag.id, payload.name, payload.subtitle, payload.description) {
+            buildGitHubContributionLevels(
+                seedKey = "${tag.id}|${payload.name}|${payload.subtitle}|${payload.description}",
+                totalCells = 48
+            )
+        }
+    var contributionAnimated by remember(tag.id) { mutableStateOf(false) }
+    LaunchedEffect(tag.id) {
+        contributionAnimated = true
+    }
+
+    val titleText = payload.name.ifBlank { "CodeMaster" }
+    val subtitleText =
+        when {
+            statusLower == "error" ->
+                payload.error?.trim().orEmpty().ifBlank { "Generation failed. Tap to inspect details and retry." }
+            else ->
+                payload.subtitle.ifBlank { payload.description }
+                    .ifBlank { "Full-stack project with 847 commits" }
+        }
+    val secondaryTint =
+        when {
+            isCompleted && runtimeBusy -> Color(0xFF9CA3AF)
+            isCompleted -> Color(0xFF4B5563)
+            else -> Color(0xFF9CA3AF)
+        }
 
     Box(
         modifier = Modifier
@@ -3099,81 +3109,81 @@ private fun AppDevToolTagCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 408.dp)
+                .widthIn(max = 340.dp)
                 .shadow(
-                    elevation = 3.dp,
-                    shape = RoundedCornerShape(16.dp),
+                    elevation = 8.dp,
+                    shape = RoundedCornerShape(20.dp),
                     ambientColor = Color.Black.copy(alpha = 0.08f),
                     spotColor = Color.Black.copy(alpha = 0.10f)
                 )
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.White, RoundedCornerShape(16.dp))
-                .border(width = 1.dp, color = Color(0xFFF3F4F6), shape = RoundedCornerShape(16.dp))
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color.White, RoundedCornerShape(20.dp))
+                .border(width = 1.dp, color = Color(0xFFF3F4F6), shape = RoundedCornerShape(20.dp))
+                .padding(20.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.Top
             ) {
                 Box(
                     modifier = Modifier
-                        .size(58.dp)
+                        .size(56.dp)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(16.dp),
+                            ambientColor = Color.Black.copy(alpha = 0.14f),
+                            spotColor = Color.Black.copy(alpha = 0.18f)
+                        )
                         .clip(RoundedCornerShape(16.dp))
-                        .background(flowingIconBrush, RoundedCornerShape(16.dp)),
+                        .background(Color(0xFF111827), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    AppDevRingGlyph(
-                        modifier = Modifier.size(24.dp),
-                        color = Color.White
-                    )
-                    Text(
-                        text = "✦",
-                        color = Color.White.copy(alpha = sparkleAlpha),
-                        fontSize = 14.sp,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = (-6).dp, y = 2.dp)
+                    Icon(
+                        imageVector = AppIcons.GitHub,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
                     )
                 }
 
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 58.dp),
+                        .heightIn(min = 56.dp),
                     verticalArrangement = Arrangement.Center
                 ) {
                     if (showSkeleton) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .height(14.dp)
+                                .fillMaxWidth(0.90f)
+                                .height(12.dp)
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(skeletonBrush)
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(0.75f)
-                                .height(14.dp)
+                                .fillMaxWidth(0.70f)
+                                .height(12.dp)
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(skeletonBrush)
                         )
                     } else {
                         Text(
-                            text = payload.name,
-                            fontSize = 19.sp,
-                            lineHeight = 21.sp,
+                            text = titleText,
+                            fontSize = 16.sp,
+                            lineHeight = 20.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF111827),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = payload.subtitle.ifBlank { payload.description }.ifBlank { "AI-powered HTML generator with real-time preview" },
-                            fontSize = 13.sp,
-                            lineHeight = 17.sp,
+                            text = subtitleText,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
                             color = Color(0xFF6B7280),
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
@@ -3182,7 +3192,38 @@ private fun AppDevToolTagCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Development progress",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF111827)
+                    )
+                    Text(
+                        text = "${progressValue}%",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF16A34A)
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                AppDevContributionGrid(
+                    levels = contributionLevels,
+                    animateIn = contributionAnimated,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -3192,23 +3233,23 @@ private fun AppDevToolTagCard(
                 if (showSkeleton) {
                     Box(
                         modifier = Modifier
-                            .widthIn(min = 136.dp, max = 136.dp)
-                            .height(36.dp)
+                            .width(128.dp)
+                            .height(32.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(skeletonBrush)
                     )
                 } else {
                     Box(
                         modifier = Modifier
-                            .height(36.dp)
+                            .height(32.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color(0xFF111827), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 20.dp),
+                            .padding(horizontal = 16.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "Preview",
-                            fontSize = 14.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             color = Color.White
                         )
@@ -3217,36 +3258,123 @@ private fun AppDevToolTagCard(
 
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
                         .background(Color.Transparent, CircleShape)
                         .pressableScale(
                             enabled = isCompleted && !runtimeBusy,
                             pressedScale = 0.95f,
                             onClick = onDownloadClick
-                        ),
+                        )
+                        .padding(6.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (runtimeBusy) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = Color(0xFF6B7280)
-                        )
-                    } else if (isCompleted) {
+                    if (isCompleted) {
                         DownloadOutlineGlyph(
-                            modifier = Modifier.size(22.dp),
-                            tint = Color(0xFF4B5563)
+                            modifier = Modifier.fillMaxSize(),
+                            tint = secondaryTint
                         )
                     } else {
                         EyeOutlineGlyph(
-                            modifier = Modifier.size(22.dp),
-                            tint = if (isTagRunning(tag)) Color(0xFF9CA3AF) else Color(0xFF6B7280)
+                            modifier = Modifier.fillMaxSize(),
+                            tint = secondaryTint
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AppDevContributionGrid(
+    levels: List<Int>,
+    animateIn: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val rows = 3
+    val cols = 16
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        for (col in 0 until cols) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                for (row in 0 until rows) {
+                    val index = (col * rows) + row
+                    val level = levels.getOrElse(index) { 0 }.coerceIn(0, 4)
+                    val targetVisibility = if (animateIn) 1f else 0f
+                    val delayMs = index * 20
+                    val scale by animateFloatAsState(
+                        targetValue = targetVisibility,
+                        animationSpec =
+                            keyframes {
+                                durationMillis = delayMs + 400
+                                0f at 0
+                                0f at delayMs
+                                1.1f at (delayMs + 200)
+                                1f at (delayMs + 400)
+                            },
+                        label = "app_dev_contrib_scale_$index"
+                    )
+                    val alpha by animateFloatAsState(
+                        targetValue = targetVisibility,
+                        animationSpec =
+                            keyframes {
+                                durationMillis = delayMs + 400
+                                0f at 0
+                                0f at delayMs
+                                1f at (delayMs + 220)
+                                1f at (delayMs + 400)
+                            },
+                        label = "app_dev_contrib_alpha_$index"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(githubContributionColor(level))
+                            .graphicsLayer(
+                                alpha = alpha,
+                                scaleX = scale,
+                                scaleY = scale
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun buildGitHubContributionLevels(seedKey: String, totalCells: Int): List<Int> {
+    val safeTotal = totalCells.coerceAtLeast(1)
+    val random = kotlin.random.Random(seedKey.hashCode())
+    return List(safeTotal) { index ->
+        val progress = index.toFloat() / safeTotal.toFloat()
+        when {
+            progress < 0.2f -> if (random.nextFloat() > 0.3f) random.nextInt(from = 1, until = 3) else 0
+            progress < 0.4f -> if (random.nextFloat() > 0.2f) random.nextInt(from = 1, until = 4) else 0
+            progress < 0.6f -> if (random.nextFloat() > 0.1f) random.nextInt(from = 1, until = 5) else 0
+            progress < 0.8f -> if (random.nextFloat() > 0.05f) random.nextInt(from = 2, until = 5) else 1
+            else -> if (random.nextFloat() > 0.1f) random.nextInt(from = 3, until = 5) else 2
+        }
+    }
+}
+
+private fun githubContributionColor(level: Int): Color {
+    return when (level.coerceIn(0, 4)) {
+        1 -> Color(0xFF9BE9A8)
+        2 -> Color(0xFF40C463)
+        3 -> Color(0xFF30A14E)
+        4 -> Color(0xFF216E39)
+        else -> Color(0xFFEBEDF0)
     }
 }
 
@@ -3309,30 +3437,6 @@ private fun DownloadOutlineGlyph(
             end = Offset(size.width * 0.76f, size.height * 0.80f),
             strokeWidth = stroke,
             cap = StrokeCap.Round
-        )
-    }
-}
-
-@Composable
-private fun AppDevRingGlyph(
-    modifier: Modifier = Modifier,
-    color: Color = Color.Black
-) {
-    Canvas(modifier = modifier) {
-        val strokeWidth = size.minDimension * 0.24f
-        val arcDiameter = size.minDimension - strokeWidth
-        val topLeft = Offset(
-            x = (size.width - arcDiameter) / 2f,
-            y = (size.height - arcDiameter) / 2f
-        )
-        drawArc(
-            color = color,
-            startAngle = -90f,
-            sweepAngle = 312f,
-            useCenter = false,
-            topLeft = topLeft,
-            size = Size(arcDiameter, arcDiameter),
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
         )
     }
 }

@@ -15,7 +15,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -261,11 +260,5 @@ fun AppHtmlWebView(
             }
         )
 
-        if (state.isLoading) {
-            LinearProgressIndicator(
-                progress = { state.loadingProgress.coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
     }
 }
