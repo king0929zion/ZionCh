@@ -1683,6 +1683,8 @@ fun ChatScreen(navController: NavController) {
                                                 currentHtml = targetSavedApp?.html.orEmpty(),
                                                 requestText = parsedSpec.editRequest.orEmpty(),
                                                 spec = parsedSpec,
+                                                sourceUserPrompt = trimmed,
+                                                rawToolArgsJson = argsJson,
                                                 onProgress = ::updateAppDevProgress,
                                                 onDraftHtml = ::updateAppDevDraft
                                             )
@@ -1693,6 +1695,8 @@ fun ChatScreen(navController: NavController) {
                                                 modelId = extractRemoteModelId(appModel.id),
                                                 extraHeaders = appModel.headers,
                                                 spec = parsedSpec,
+                                                sourceUserPrompt = trimmed,
+                                                rawToolArgsJson = argsJson,
                                                 onProgress = ::updateAppDevProgress,
                                                 onDraftHtml = ::updateAppDevDraft
                                             )
@@ -5469,9 +5473,23 @@ private fun buildAppGenerationSystemPrompt(useIos18Skill: Boolean): String {
 
 private fun buildAppGenerationUserPrompt(
     spec: AppDevToolSpec,
-    useIos18Skill: Boolean
+    useIos18Skill: Boolean,
+    sourceUserPrompt: String = "",
+    rawToolArgsJson: String = ""
 ): String {
     return buildString {
+        val rawUser = sourceUserPrompt.trim()
+        val rawArgs = rawToolArgsJson.trim()
+        if (rawUser.isNotBlank()) {
+            appendLine("Original user request (preserve this intent with highest priority):")
+            appendLine(rawUser.take(2400))
+            appendLine()
+        }
+        if (rawArgs.isNotBlank()) {
+            appendLine("Raw tool arguments JSON:")
+            appendLine(rawArgs.take(2400))
+            appendLine()
+        }
         appendLine("Build one HTML app with these specs:")
         append("Name: ")
         appendLine(spec.name)
@@ -5506,9 +5524,23 @@ private fun buildAppRevisionSystemPrompt(useIos18Skill: Boolean): String {
 private fun buildAppRevisionUserPrompt(
     currentHtml: String,
     requestText: String,
-    spec: AppDevToolSpec?
+    spec: AppDevToolSpec?,
+    sourceUserPrompt: String = "",
+    rawToolArgsJson: String = ""
 ): String {
     return buildString {
+        val rawUser = sourceUserPrompt.trim()
+        val rawArgs = rawToolArgsJson.trim()
+        if (rawUser.isNotBlank()) {
+            appendLine("Original user request (preserve this intent with highest priority):")
+            appendLine(rawUser.take(2400))
+            appendLine()
+        }
+        if (rawArgs.isNotBlank()) {
+            appendLine("Raw tool arguments JSON:")
+            appendLine(rawArgs.take(2400))
+            appendLine()
+        }
         appendLine("Update this app based on the request.")
         append("Request: ")
         appendLine(requestText.trim())
@@ -5548,6 +5580,8 @@ private suspend fun generateHtmlAppFromSpec(
     modelId: String,
     extraHeaders: List<HttpHeader>,
     spec: AppDevToolSpec,
+    sourceUserPrompt: String = "",
+    rawToolArgsJson: String = "",
     onProgress: ((Int) -> Unit)? = null,
     onDraftHtml: ((String) -> Unit)? = null
 ): String {
@@ -5558,7 +5592,13 @@ private suspend fun generateHtmlAppFromSpec(
             features = spec.features
         )
     val systemPrompt = buildAppGenerationSystemPrompt(useIos18Skill)
-    val userPrompt = buildAppGenerationUserPrompt(spec = spec, useIos18Skill = useIos18Skill)
+    val userPrompt =
+        buildAppGenerationUserPrompt(
+            spec = spec,
+            useIos18Skill = useIos18Skill,
+            sourceUserPrompt = sourceUserPrompt,
+            rawToolArgsJson = rawToolArgsJson
+        )
 
     var emittedProgress = 10
     var chunkCount = 0
@@ -5612,6 +5652,8 @@ private suspend fun reviseHtmlAppFromPrompt(
     currentHtml: String,
     requestText: String,
     spec: AppDevToolSpec? = null,
+    sourceUserPrompt: String = "",
+    rawToolArgsJson: String = "",
     onProgress: ((Int) -> Unit)? = null,
     onDraftHtml: ((String) -> Unit)? = null
 ): String {
@@ -5632,7 +5674,14 @@ private suspend fun reviseHtmlAppFromPrompt(
             requestText = request
         )
     val systemPrompt = buildAppRevisionSystemPrompt(useIos18Skill)
-    val userPrompt = buildAppRevisionUserPrompt(currentHtml = current, requestText = request, spec = spec)
+    val userPrompt =
+        buildAppRevisionUserPrompt(
+            currentHtml = current,
+            requestText = request,
+            spec = spec,
+            sourceUserPrompt = sourceUserPrompt,
+            rawToolArgsJson = rawToolArgsJson
+        )
 
     var emittedProgress = 12
     var chunkCount = 0
