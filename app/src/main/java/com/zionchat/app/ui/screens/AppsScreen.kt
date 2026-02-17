@@ -22,8 +22,11 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +48,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -147,6 +151,7 @@ fun AppsScreen(navController: NavController) {
     val appVersionModel by repository.appModuleVersionModelFlow.collectAsState(initial = 1)
     var runtimeShellInstalled by remember { mutableStateOf(RuntimeShellPlugin.isInstalled(context)) }
     var selectedSavedApp by remember { mutableStateOf<SavedApp?>(null) }
+    var pendingDeleteApp by remember { mutableStateOf<SavedApp?>(null) }
     var autoFixStateByAppId by remember { mutableStateOf<Map<String, AppAutoFixUiState>>(emptyMap()) }
 
     fun notifyRuntimeShellRequired() {
@@ -445,7 +450,8 @@ fun AppsScreen(navController: NavController) {
                             } else {
                                 SavedAppDesktopTile(
                                     app = app,
-                                    onClick = { selectedSavedApp = app }
+                                    onClick = { selectedSavedApp = app },
+                                    onLongClick = { pendingDeleteApp = app }
                                 )
                             }
                         }
@@ -453,6 +459,48 @@ fun AppsScreen(navController: NavController) {
                 }
             }
         }
+    }
+
+    pendingDeleteApp?.let { targetApp ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteApp = null },
+            title = { Text(text = "删除应用") },
+            text = {
+                Text(
+                    text = "确定删除「${targetApp.name}」吗？该应用及历史版本会被永久移除。",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteApp = null
+                        autoFixStateByAppId = autoFixStateByAppId - targetApp.id
+                        if (selectedSavedApp?.id == targetApp.id) {
+                            selectedSavedApp = null
+                        }
+                        scope.launch {
+                            runCatching { repository.deleteSavedApp(targetApp.id) }
+                                .onSuccess {
+                                    Toast.makeText(context, "应用已删除", Toast.LENGTH_SHORT).show()
+                                }
+                                .onFailure { error ->
+                                    val message = error.message?.trim().orEmpty().ifBlank { "删除失败，请重试。" }
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                }
+                        }
+                    }
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteApp = null }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
 
@@ -714,9 +762,11 @@ private fun CreateAppDesktopTile(onClick: () -> Unit) {
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun SavedAppDesktopTile(
     app: SavedApp,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val baseColor = remember(app.id, app.html) {
         inferAppChromeColorFromHtml(app.html) ?: Color(0xFF1F2024)
@@ -742,7 +792,12 @@ private fun SavedAppDesktopTile(
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(tileBg, RoundedCornerShape(14.dp))
-            .pressableScale(pressedScale = 0.96f, onClick = onClick)
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = LocalIndication.current,
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
