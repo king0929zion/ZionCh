@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 
 private const val APP_RUNTIME_ERROR_MARKER = "ZION_APP_RUNTIME_ERROR:"
@@ -70,11 +71,15 @@ fun AppHtmlWebView(
     enableThirdPartyCookies: Boolean = false,
     allowMixedContent: Boolean = true,
     transparentBackground: Boolean = false,
+    backgroundColor: Color = Color.White,
+    preRenderEnabled: Boolean = true,
     injectRuntimeDebugHook: Boolean = true,
     onRuntimeIssue: ((String) -> Unit)? = null,
+    onPageCommitVisible: (() -> Unit)? = null,
     onPageFinished: ((WebView) -> Unit)? = null
 ) {
     val runtimeIssueCallback by rememberUpdatedState(onRuntimeIssue)
+    val pageCommitVisibleCallback by rememberUpdatedState(onPageCommitVisible)
     val pageFinishedCallback by rememberUpdatedState(onPageFinished)
 
     val normalizedHtml = html.orEmpty()
@@ -140,6 +145,11 @@ fun AppHtmlWebView(
                     }
                 }
 
+                override fun onPageCommitVisible(view: WebView?, url: String?) {
+                    super.onPageCommitVisible(view, url)
+                    pageCommitVisibleCallback?.invoke()
+                }
+
                 override fun onReceivedError(
                     view: WebView?,
                     request: WebResourceRequest?,
@@ -195,7 +205,7 @@ fun AppHtmlWebView(
         if (transparentBackground) {
             modifier
         } else {
-            modifier.background(Color.White)
+            modifier.background(backgroundColor)
         }
 
     Box(modifier = containerModifier) {
@@ -206,7 +216,7 @@ fun AppHtmlWebView(
                     if (transparentBackground) {
                         setBackgroundColor(AndroidColor.TRANSPARENT)
                     } else {
-                        setBackgroundColor(AndroidColor.WHITE)
+                        setBackgroundColor(backgroundColor.toArgb())
                     }
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
@@ -230,8 +240,13 @@ fun AppHtmlWebView(
                     settings.displayZoomControls = false
                     settings.cacheMode = WebSettings.LOAD_DEFAULT
                     settings.textZoom = 100
+                    settings.loadsImagesAutomatically = true
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        settings.offscreenPreRaster = preRenderEnabled
+                    }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         settings.safeBrowsingEnabled = true
+                        setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
                     }
                     overScrollMode = WebView.OVER_SCROLL_IF_CONTENT_SCROLLS
 
@@ -247,13 +262,13 @@ fun AppHtmlWebView(
                 }
             },
             update = { webView ->
+                if (transparentBackground) {
+                    webView.setBackgroundColor(AndroidColor.TRANSPARENT)
+                } else {
+                    webView.setBackgroundColor(backgroundColor.toArgb())
+                }
                 if (webView.tag != contentSignature) {
                     webView.tag = contentSignature
-                    if (transparentBackground) {
-                        webView.setBackgroundColor(AndroidColor.TRANSPARENT)
-                    } else {
-                        webView.setBackgroundColor(AndroidColor.WHITE)
-                    }
                     if (normalizedUrl.isNotBlank()) {
                         webView.loadUrl(normalizedUrl)
                     } else {

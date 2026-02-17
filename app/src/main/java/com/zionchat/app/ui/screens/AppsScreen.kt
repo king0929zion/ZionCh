@@ -11,6 +11,7 @@ import android.os.Build
 import android.graphics.Color as AndroidColor
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -67,6 +69,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -74,7 +77,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -83,6 +85,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
@@ -102,8 +106,6 @@ import com.zionchat.app.data.RuntimeShellPlugin
 import com.zionchat.app.data.SavedApp
 import com.zionchat.app.data.WebHostingConfig
 import com.zionchat.app.data.extractRemoteModelId
-import com.zionchat.app.ui.components.BottomFadeScrim
-import com.zionchat.app.ui.components.TopFadeScrim
 import com.zionchat.app.ui.components.AppHtmlWebView
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
@@ -151,6 +153,7 @@ fun AppsScreen(navController: NavController) {
     var runtimeShellInstalled by remember { mutableStateOf(RuntimeShellPlugin.isInstalled(context)) }
     var selectedSavedApp by remember { mutableStateOf<SavedApp?>(null) }
     var pendingDeleteApp by remember { mutableStateOf<SavedApp?>(null) }
+    var openingAppId by remember { mutableStateOf<String?>(null) }
     var autoFixStateByAppId by remember { mutableStateOf<Map<String, AppAutoFixUiState>>(emptyMap()) }
 
     fun notifyRuntimeShellRequired() {
@@ -392,6 +395,7 @@ fun AppsScreen(navController: NavController) {
     val visibleApps = remember(sortedApps, selectedCategory) {
         filterAppsByCategory(sortedApps, selectedCategory)
     }
+    val listBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Scaffold(
         containerColor = Color.White,
@@ -406,7 +410,7 @@ fun AppsScreen(navController: NavController) {
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.White)
-                .padding(padding)
+                .padding(top = padding.calculateTopPadding())
         ) {
             AppsCategoryTabs(
                 selected = selectedCategory,
@@ -415,7 +419,7 @@ fun AppsScreen(navController: NavController) {
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 28.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = listBottomInset + 8.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 if (!runtimeShellInstalled) {
@@ -426,10 +430,15 @@ fun AppsScreen(navController: NavController) {
 
                 if (visibleApps.isEmpty()) {
                     item(key = "apps_empty_state") {
-                        AppsListEmptyState(
-                            category = selectedCategory,
-                            onCreate = { navController.navigate("chat") }
-                        )
+                        Box(
+                            modifier = Modifier.fillParentMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AppsListEmptyState(
+                                category = selectedCategory,
+                                onCreate = { navController.navigate("chat") }
+                            )
+                        }
                     }
                 } else {
                     items(
@@ -438,7 +447,16 @@ fun AppsScreen(navController: NavController) {
                     ) { app ->
                         SavedAppListRow(
                             app = app,
-                            onClick = { selectedSavedApp = app },
+                            isLaunching = openingAppId == app.id,
+                            onClick = {
+                                if (openingAppId != null) return@SavedAppListRow
+                                openingAppId = app.id
+                                scope.launch {
+                                    delay(120)
+                                    selectedSavedApp = app
+                                    openingAppId = null
+                                }
+                            },
                             onLongClick = { pendingDeleteApp = app }
                         )
                     }
@@ -744,8 +762,7 @@ private fun AppsListEmptyState(
 ) {
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 24.dp),
+            .fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -777,6 +794,7 @@ private fun AppsListEmptyState(
 @OptIn(ExperimentalFoundationApi::class)
 private fun SavedAppListRow(
     app: SavedApp,
+    isLaunching: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -794,6 +812,28 @@ private fun SavedAppListRow(
     val isBuilding = runtimeStatus == "queued" || runtimeStatus == "in_progress"
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    var entered by remember(app.id) { mutableStateOf(false) }
+    LaunchedEffect(app.id) { entered = true }
+    val entryAlpha by animateFloatAsState(
+        targetValue = if (entered) 1f else 0f,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "app_list_row_entry_alpha"
+    )
+    val entryTranslateY by animateFloatAsState(
+        targetValue = if (entered) 0f else 18f,
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        label = "app_list_row_entry_translate"
+    )
+    val pressedScale by animateFloatAsState(
+        targetValue =
+            when {
+                isLaunching -> 0.978f
+                pressed -> 0.992f
+                else -> 1f
+            },
+        animationSpec = tween(durationMillis = 110, easing = FastOutSlowInEasing),
+        label = "app_list_row_press_scale"
+    )
     val rowBg by animateColorAsState(
         targetValue = if (pressed) Color(0xFFF5F5F7) else Color.Transparent,
         animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
@@ -809,6 +849,12 @@ private fun SavedAppListRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                alpha = entryAlpha
+                translationY = entryTranslateY
+                scaleX = pressedScale
+                scaleY = pressedScale
+            }
             .clip(RoundedCornerShape(12.dp))
             .background(rowBg, RoundedCornerShape(12.dp))
             .combinedClickable(
@@ -1111,12 +1157,27 @@ private fun SavedAppPreviewPage(
     val baseUrl = remember(app.id) { "https://saved-app.zionchat.local/app/${app.id}/" }
     val deployUrl = remember(app.deployUrl) { app.deployUrl?.trim()?.takeIf { it.isNotBlank() } }
     val contentSignature = remember(app.id, app.html, deployUrl) { "${app.id}:${app.html.hashCode()}:${deployUrl.orEmpty()}" }
-    val controlsBackground =
-        if (chromeColor.luminance() < 0.46f) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.10f)
-    val controlsBorder =
-        if (chromeColor.luminance() < 0.46f) Color.White.copy(alpha = 0.34f) else Color.Black.copy(alpha = 0.14f)
-    val controlsTint =
-        if (chromeColor.luminance() < 0.46f) Color.White else TextPrimary
+    var firstVisualReady by remember(contentSignature) { mutableStateOf(false) }
+    var previewEntering by remember(contentSignature) { mutableStateOf(false) }
+    LaunchedEffect(contentSignature) {
+        previewEntering = true
+    }
+    val webContentVisible = previewEntering && firstVisualReady
+    val webContentAlpha by animateFloatAsState(
+        targetValue = if (webContentVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+        label = "preview_web_alpha"
+    )
+    val webContentScale by animateFloatAsState(
+        targetValue = if (webContentVisible) 1f else 1.014f,
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        label = "preview_web_scale"
+    )
+    val placeholderAlpha by animateFloatAsState(
+        targetValue = if (webContentVisible) 0f else 1f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "preview_placeholder_alpha"
+    )
     val reportIssue = rememberUpdatedState<(String) -> Unit> { raw ->
         if (autoFixState?.isFixing == true) return@rememberUpdatedState
         val normalized = raw.trim().replace(Regex("\\s+"), " ").take(480)
@@ -1130,7 +1191,7 @@ private fun SavedAppPreviewPage(
     }
 
     BackHandler(onBack = onDismiss)
-    PreviewSystemBarsEffect(color = chromeColor)
+    FullscreenPreviewSystemBarsEffect()
 
     Box(
         modifier = Modifier
@@ -1138,91 +1199,61 @@ private fun SavedAppPreviewPage(
             .background(chromeColor)
     ) {
         AppHtmlWebView(
-            modifier = Modifier.fillMaxSize(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = webContentAlpha
+                        scaleX = webContentScale
+                        scaleY = webContentScale
+                    },
             contentSignature = contentSignature,
             html = if (deployUrl.isNullOrBlank()) app.html else null,
             baseUrl = baseUrl,
             url = deployUrl,
             enableCookies = true,
             enableThirdPartyCookies = true,
-            transparentBackground = true,
+            transparentBackground = false,
+            backgroundColor = chromeColor,
+            preRenderEnabled = true,
             onRuntimeIssue = { raw -> reportIssue.value(raw) },
+            onPageCommitVisible = { firstVisualReady = true },
             onPageFinished = { webView ->
                 webView.evaluateJavascript(APP_CHROME_COLOR_JS) { jsResult ->
                     parseCssColorFromJs(jsResult)?.let { parsed ->
                         chromeColor = parsed
                     }
                 }
+                firstVisualReady = true
             }
         )
 
-        TopFadeScrim(
-            color = chromeColor,
-            height = 132.dp,
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
-        BottomFadeScrim(
-            color = chromeColor,
-            height = 124.dp,
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
-
-        Box(modifier = Modifier.align(Alignment.TopCenter)) {
-            AppPreviewTopChrome(
-                appName = app.name,
-                controlsBackground = controlsBackground,
-                controlsBorder = controlsBorder,
-                controlsTint = controlsTint,
-                canRedeploy = canRedeploy,
-                onDismiss = onDismiss,
-                onRedeploy = { onRedeploy(app) },
-                onEdit = { showEditDialog = true }
-            )
-        }
-
-        val autoFixLabel =
-            when {
-                autoFixState?.isFixing == true -> "修复中 ${autoFixState.progress.coerceIn(1, 99)}%"
-                !autoFixState?.message.isNullOrBlank() -> autoFixState?.message.orEmpty()
-                else -> ""
-            }
-        if (autoFixLabel.isNotBlank()) {
-            val statusBg =
-                if (autoFixState?.isFixing == true) {
-                    controlsBackground.copy(alpha = 0.92f)
-                } else {
-                    Color(0xFF111827).copy(alpha = 0.72f)
-                }
+        if (placeholderAlpha > 0.01f) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(top = 56.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(statusBg, RoundedCornerShape(12.dp))
-                    .border(width = 1.dp, color = controlsBorder, shape = RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = placeholderAlpha }
+                    .background(chromeColor),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = autoFixLabel,
-                    color = controlsTint,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
+                Box(
+                    modifier = Modifier
+                        .size(70.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            Color.Black.copy(alpha = if (chromeColor.luminance() < 0.46f) 0.24f else 0.08f),
+                            RoundedCornerShape(20.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AppDevRingGlyph(
+                        modifier = Modifier.size(30.dp),
+                        tint = if (chromeColor.luminance() < 0.46f) Color.White else Color.Black
+                    )
+                }
             }
         }
 
-        Box(modifier = Modifier.align(Alignment.BottomCenter)) {
-            AppPreviewBottomChrome(
-                versionName = app.versionName.ifBlank { "v${app.versionCode}" },
-                versionCount = versionCount,
-                controlsBackground = controlsBackground,
-                controlsBorder = controlsBorder,
-                controlsTint = controlsTint,
-                canRestore = versionCount > 1,
-                onRestore = { onRestorePreviousVersion(app) }
-            )
-        }
     }
 
     if (showEditDialog) {
@@ -1453,32 +1484,30 @@ private fun CircleIconButton(
 }
 
 @Composable
-private fun PreviewSystemBarsEffect(color: Color) {
+private fun FullscreenPreviewSystemBarsEffect() {
     val view = LocalView.current
     val activity = remember(view.context) { view.context.findActivity() }
 
-    DisposableEffect(activity, color) {
+    DisposableEffect(activity) {
         val hostActivity = activity
         if (hostActivity == null) {
             onDispose {}
         } else {
             val window = hostActivity.window
             val controller = WindowCompat.getInsetsController(window, window.decorView)
-            val previousStatusBarColor = window.statusBarColor
-            val previousNavigationBarColor = window.navigationBarColor
             val previousLightStatus = controller.isAppearanceLightStatusBars
             val previousLightNavigation = controller.isAppearanceLightNavigationBars
 
-            val targetColor = color.toArgb()
-            window.statusBarColor = targetColor
-            window.navigationBarColor = targetColor
-            val useDarkIcons = color.luminance() > 0.58f
-            controller.isAppearanceLightStatusBars = useDarkIcons
-            controller.isAppearanceLightNavigationBars = useDarkIcons
+            window.statusBarColor = AndroidColor.TRANSPARENT
+            window.navigationBarColor = AndroidColor.TRANSPARENT
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
 
             onDispose {
-                window.statusBarColor = previousStatusBarColor
-                window.navigationBarColor = previousNavigationBarColor
+                controller.show(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+                WindowCompat.setDecorFitsSystemWindows(window, false)
                 controller.isAppearanceLightStatusBars = previousLightStatus
                 controller.isAppearanceLightNavigationBars = previousLightNavigation
             }
