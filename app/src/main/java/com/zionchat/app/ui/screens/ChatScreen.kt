@@ -7,11 +7,6 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Environment
 import android.util.Base64
-import android.view.View
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -74,7 +69,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -102,6 +96,7 @@ import com.zionchat.app.data.SavedApp
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.TopFadeScrim
 import com.zionchat.app.ui.components.AppSheetDragHandle
+import com.zionchat.app.ui.components.AppHtmlWebView
 import com.zionchat.app.ui.components.MarkdownText
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.components.pressableScale
@@ -3552,49 +3547,11 @@ private fun AppDevWorkspaceScreen(
                             }
                         val contentSignature =
                             remember(workspaceBaseUrl, html) { "$workspaceBaseUrl:${html.hashCode()}" }
-                        AndroidView(
+                        AppHtmlWebView(
                             modifier = Modifier.fillMaxSize(),
-                            factory = { context ->
-                                WebView(context).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    settings.databaseEnabled = true
-                                    settings.allowFileAccess = false
-                                    settings.allowContentAccess = false
-                                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                                    settings.mediaPlaybackRequiresUserGesture = false
-                                    settings.useWideViewPort = true
-                                    settings.loadWithOverviewMode = true
-                                    settings.javaScriptCanOpenWindowsAutomatically = true
-                                    settings.setSupportZoom(true)
-                                    settings.builtInZoomControls = true
-                                    settings.displayZoomControls = false
-                                    settings.cacheMode = WebSettings.LOAD_DEFAULT
-                                    settings.textZoom = 100
-                                    overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-                                    webViewClient = WebViewClient()
-                                    webChromeClient = WebChromeClient()
-                                }
-                            },
-                            update = { webView ->
-                                if (webView.tag != contentSignature) {
-                                    webView.tag = contentSignature
-                                    webView.loadDataWithBaseURL(
-                                        workspaceBaseUrl,
-                                        html,
-                                        "text/html",
-                                        "utf-8",
-                                        null
-                                    )
-                                }
-                            },
-                            onRelease = { webView ->
-                                webView.stopLoading()
-                                webView.loadUrl("about:blank")
-                                webView.clearHistory()
-                                webView.removeAllViews()
-                                webView.destroy()
-                            }
+                            contentSignature = contentSignature,
+                            html = html,
+                            baseUrl = workspaceBaseUrl
                         )
                     }
                 }

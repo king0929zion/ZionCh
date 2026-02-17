@@ -10,13 +10,6 @@ import android.content.IntentFilter
 import android.os.Build
 import android.graphics.Color as AndroidColor
 import android.widget.Toast
-import android.webkit.ConsoleMessage
-import android.webkit.CookieManager
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -86,7 +79,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -109,6 +101,7 @@ import com.zionchat.app.data.WebHostingConfig
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.BottomFadeScrim
 import com.zionchat.app.ui.components.TopFadeScrim
+import com.zionchat.app.ui.components.AppHtmlWebView
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
@@ -125,9 +118,6 @@ import kotlinx.coroutines.launch
 
 private const val APP_CHROME_COLOR_JS =
     "(function(){try{var meta=document.querySelector('meta[name=\\\"theme-color\\\"]');if(meta&&meta.content){return meta.content;}var body=document.body?window.getComputedStyle(document.body):null;if(body){var bodyBg=body.backgroundColor||'';if(bodyBg&&bodyBg!=='transparent'&&bodyBg!=='rgba(0, 0, 0, 0)'){return bodyBg;}}var root=document.documentElement?window.getComputedStyle(document.documentElement):null;if(root){var rootBg=root.backgroundColor||'';if(rootBg&&rootBg!=='transparent'&&rootBg!=='rgba(0, 0, 0, 0)'){return rootBg;}}return '';}catch(e){return '';}})();"
-
-private const val APP_RUNTIME_DEBUG_HOOK_JS =
-    "(function(){try{if(window.__zionDebugHookInstalled){return 'ok';}window.__zionDebugHookInstalled=true;window.addEventListener('error',function(e){try{var msg=(e&&e.message)?String(e.message):'Unknown runtime error';var src=(e&&e.filename)?String(e.filename):'';var ln=(e&&e.lineno)?String(e.lineno):'0';console.error('ZION_APP_RUNTIME_ERROR:'+msg+' @'+src+':'+ln);}catch(_){}});window.addEventListener('unhandledrejection',function(e){try{var reason='';try{reason=String(e.reason);}catch(_){reason='[unknown]';}console.error('ZION_APP_RUNTIME_ERROR:UnhandledPromiseRejection '+reason);}catch(_){}});return 'ok';}catch(err){return 'err';}})();"
 
 private data class AppAutoFixUiState(
     val isFixing: Boolean = false,
@@ -926,93 +916,20 @@ private fun SavedAppPreviewPage(
             .fillMaxSize()
             .background(chromeColor)
     ) {
-        AndroidView(
+        AppHtmlWebView(
             modifier = Modifier.fillMaxSize(),
-            factory = { context ->
-                WebView(context).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.databaseEnabled = true
-                    settings.allowFileAccess = false
-                    settings.allowContentAccess = false
-                    setBackgroundColor(AndroidColor.TRANSPARENT)
-                    CookieManager.getInstance().setAcceptCookie(true)
-                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                    webViewClient =
-                        object : WebViewClient() {
-                            override fun onPageFinished(view: WebView?, url: String?) {
-                                super.onPageFinished(view, url)
-                                view?.evaluateJavascript(APP_CHROME_COLOR_JS) { jsResult ->
-                                    parseCssColorFromJs(jsResult)?.let { parsed ->
-                                        chromeColor = parsed
-                                    }
-                                }
-                                view?.evaluateJavascript(APP_RUNTIME_DEBUG_HOOK_JS, null)
-                            }
-
-                            override fun onReceivedError(
-                                view: WebView?,
-                                request: WebResourceRequest?,
-                                error: WebResourceError?
-                            ) {
-                                super.onReceivedError(view, request, error)
-                                if (request?.isForMainFrame != false) {
-                                    val detail =
-                                        buildString {
-                                            append("Load error")
-                                            val desc = error?.description?.toString()?.trim().orEmpty()
-                                            if (desc.isNotBlank()) {
-                                                append(": ")
-                                                append(desc)
-                                            }
-                                        }
-                                    reportIssue.value(detail)
-                                }
-                            }
-
-                            @Suppress("DEPRECATION")
-                            override fun onReceivedError(
-                                view: WebView?,
-                                errorCode: Int,
-                                description: String?,
-                                failingUrl: String?
-                            ) {
-                                super.onReceivedError(view, errorCode, description, failingUrl)
-                                val detail = "Load error: ${description?.trim().orEmpty().ifBlank { "Unknown" }}"
-                                reportIssue.value(detail)
-                            }
-                        }
-                    webChromeClient =
-                        object : WebChromeClient() {
-                            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                                val msg = consoleMessage?.message()?.trim().orEmpty()
-                                if (msg.isNotBlank()) {
-                                    val marker = "ZION_APP_RUNTIME_ERROR:"
-                                    when {
-                                        msg.contains(marker, ignoreCase = true) ->
-                                            reportIssue.value(msg.substringAfter(marker).trim())
-                                        consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR ->
-                                            reportIssue.value("Console error: $msg")
-                                    }
-                                }
-                                return super.onConsoleMessage(consoleMessage)
-                            }
-                        }
-                }
-            },
-            update = { webView ->
-                if (webView.tag != contentSignature) {
-                    webView.tag = contentSignature
-                    if (!deployUrl.isNullOrBlank()) {
-                        webView.loadUrl(deployUrl)
-                    } else {
-                        webView.loadDataWithBaseURL(
-                            baseUrl,
-                            app.html,
-                            "text/html",
-                            "utf-8",
-                            null
-                        )
+            contentSignature = contentSignature,
+            html = if (deployUrl.isNullOrBlank()) app.html else null,
+            baseUrl = baseUrl,
+            url = deployUrl,
+            enableCookies = true,
+            enableThirdPartyCookies = true,
+            transparentBackground = true,
+            onRuntimeIssue = { raw -> reportIssue.value(raw) },
+            onPageFinished = { webView ->
+                webView.evaluateJavascript(APP_CHROME_COLOR_JS) { jsResult ->
+                    parseCssColorFromJs(jsResult)?.let { parsed ->
+                        chromeColor = parsed
                     }
                 }
             }
