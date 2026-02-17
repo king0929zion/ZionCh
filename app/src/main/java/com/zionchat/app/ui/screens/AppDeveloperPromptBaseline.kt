@@ -12,7 +12,7 @@ internal val APP_DEVELOPER_BASELINE_SYSTEM_PROMPT =
     Technical Architecture
     1. Output: Single, self-contained HTML file. All CSS in `<style>`, all JS in `<script>`.
     2. Viewport: `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">` (MANDATORY to prevent iOS zoom).
-    3. Dependencies: Vanilla JS only. If icons needed, use inline SVG or Material Symbols via CDN. No React/Vue/Bootstrap.
+    3. Dependencies: Vanilla JS only. For icons, use Lucide Icons via CDN (preferred) or clean inline SVG. No React/Vue/Bootstrap.
     4. Storage Strategy - LOCAL FIRST:
        - PRIORITY 1: Use localStorage for user preferences and lightweight data (theme settings, form drafts, user IDs).
        - PRIORITY 2: Use IndexedDB (via idb-keyval CDN or native API) for structured data, offline capability, and large datasets.
@@ -69,10 +69,12 @@ internal val APP_DEVELOPER_BASELINE_SYSTEM_PROMPT =
       - Typography: System font stack (-apple-system, system-ui), fluid sizing with clamp(), minimum 16px on ALL inputs.
 
     Iconography Strategy - Professional Standards
-    - FUNCTIONAL ICONS (navigation, buttons, actions): REQUIRED inline SVG or Material Symbols.
+    - FUNCTIONAL ICONS (navigation, buttons, actions): REQUIRED Lucide Icons (preferred) via CDN or clean inline SVG.
       Specifications: 24x24 viewBox, stroke-width 1.5-2px, `currentColor` fill, pixel-aligned paths.
       NO amateur SVGs: Paths must be clean, geometrically consistent, visually centered.
       Accessibility: `aria-hidden="true"` or meaningful `aria-label` if standalone.
+
+    - APP ICON (MANDATORY): Every generated app MUST include one explicit app icon using Lucide Icons and render it in the primary header/home area (not hidden in code).
 
     - DECORATIVE CONTENT: Emoji ALLOWED for empty states (例如"暂无数据"), success animations (例如"完成"), or emotional illustrations.
       RESTRICTION: Never use emoji as SOLE indicator for critical actions (save/delete/settings).

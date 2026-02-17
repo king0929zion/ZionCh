@@ -18,7 +18,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,9 +39,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.LocalIndication
@@ -59,6 +61,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
@@ -124,6 +127,12 @@ private data class AppAutoFixUiState(
     val progress: Int = 0,
     val message: String? = null
 )
+
+private enum class AppsCategory(val label: String) {
+    Featured("Featured"),
+    Lifestyle("Lifestyle"),
+    Productivity("Productivity")
+}
 
 @Composable
 fun AppsScreen(navController: NavController) {
@@ -378,8 +387,14 @@ fun AppsScreen(navController: NavController) {
         return
     }
 
+    var selectedCategory by rememberSaveable { mutableStateOf(AppsCategory.Featured) }
+    val sortedApps = remember(savedApps) { savedApps.sortedByDescending { it.updatedAt } }
+    val visibleApps = remember(sortedApps, selectedCategory) {
+        filterAppsByCategory(sortedApps, selectedCategory)
+    }
+
     Scaffold(
-        containerColor = Background,
+        containerColor = Color.White,
         topBar = {
             AppsTopBar(
                 onBack = { navController.popBackStack() },
@@ -390,61 +405,42 @@ fun AppsScreen(navController: NavController) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
+                .background(Color.White)
                 .padding(padding)
         ) {
-            if (!runtimeShellInstalled) {
-                Text(
-                    text = stringResource(R.string.runtime_shell_required_section),
-                    fontSize = 13.sp,
-                    fontFamily = SourceSans3,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 8.dp)
-                )
-                RuntimeShellRequiredCard(
-                    templateLabel = "${RuntimeShellPlugin.packageName()} / ${RuntimeShellPlugin.templateFileName()}",
-                    isInstalled = runtimeShellInstalled,
-                    onDownload = { openRuntimeShellDownload() },
-                    onRefresh = { runtimeShellInstalled = RuntimeShellPlugin.isInstalled(context) },
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-            } else {
-                RuntimeShellReadyBadge(
-                    templateLabel = "${RuntimeShellPlugin.packageName()} / ${RuntimeShellPlugin.templateFileName()}"
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-            }
+            AppsCategoryTabs(
+                selected = selectedCategory,
+                onSelect = { selectedCategory = it }
+            )
 
-            Surface(
+            LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                color = SurfaceColor,
-                shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                if (savedApps.isEmpty()) {
-                    EmptyDesktopState(onCreate = { navController.navigate("chat") })
+                if (!runtimeShellInstalled) {
+                    item(key = "runtime_shell_required") {
+                        RuntimeShellInstallRow(onClick = { openRuntimeShellDownload() })
+                    }
+                }
+
+                if (visibleApps.isEmpty()) {
+                    item(key = "apps_empty_state") {
+                        AppsListEmptyState(
+                            category = selectedCategory,
+                            onCreate = { navController.navigate("chat") }
+                        )
+                    }
                 } else {
-                    val desktopEntries = remember(savedApps) { listOf<SavedApp?>(null) + savedApps }
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
-                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 28.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp)
-                    ) {
-                        items(
-                            items = desktopEntries,
-                            key = { app -> app?.id ?: "desktop_create_tile" }
-                        ) { app ->
-                            if (app == null) {
-                                CreateAppDesktopTile(onClick = { navController.navigate("chat") })
-                            } else {
-                                SavedAppDesktopTile(
-                                    app = app,
-                                    onClick = { selectedSavedApp = app },
-                                    onLongClick = { pendingDeleteApp = app }
-                                )
-                            }
-                        }
+                    items(
+                        items = visibleApps,
+                        key = { app -> app.id }
+                    ) { app ->
+                        SavedAppListRow(
+                            app = app,
+                            onClick = { selectedSavedApp = app },
+                            onLongClick = { pendingDeleteApp = app }
+                        )
                     }
                 }
             }
@@ -611,24 +607,24 @@ private fun AppsTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Background)
+            .background(Color.White)
             .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(SurfaceColor, CircleShape)
+                .background(Color(0xFFF5F5F7), CircleShape)
                 .pressableScale(pressedScale = 0.95f, onClick = onBack),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = AppIcons.Back,
                 contentDescription = "Back",
-                tint = TextPrimary,
-                modifier = Modifier.size(20.dp)
+                tint = Color(0xFF1C1C1E),
+                modifier = Modifier.size(22.dp)
             )
         }
 
@@ -640,7 +636,7 @@ private fun AppsTopBar(
                 text = stringResource(R.string.apps),
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
+                color = Color(0xFF1C1C1E)
             )
         }
 
@@ -648,17 +644,242 @@ private fun AppsTopBar(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(SurfaceColor, CircleShape)
+                .background(Color(0xFFF5F5F7), CircleShape)
                 .pressableScale(pressedScale = 0.95f, onClick = onAdd),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = AppIcons.Plus,
                 contentDescription = "Add",
-                tint = TextPrimary,
-                modifier = Modifier.size(20.dp)
+                tint = Color(0xFF1C1C1E),
+                modifier = Modifier.size(22.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun AppsCategoryTabs(
+    selected: AppsCategory,
+    onSelect: (AppsCategory) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AppsCategory.entries.forEach { category ->
+            val active = category == selected
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(if (active) Color(0xFFF2F2F7) else Color.Transparent, RoundedCornerShape(999.dp))
+                    .pressableScale(pressedScale = 0.97f, onClick = { onSelect(category) })
+                    .padding(horizontal = 16.dp, vertical = 9.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = category.label,
+                    color = Color(0xFF1C1C1E),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RuntimeShellInstallRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFFF5F5F7), RoundedCornerShape(14.dp))
+            .pressableScale(pressedScale = 0.98f, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF1C1C1E))
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = "Runtime shell required",
+                color = Color(0xFF1C1C1E),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "Tap to install plugin package",
+                color = Color(0xFF8E8E93),
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Icon(
+            imageVector = AppIcons.ChevronRight,
+            contentDescription = null,
+            tint = Color(0xFFC7C7CC),
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+@Composable
+private fun AppsListEmptyState(
+    category: AppsCategory,
+    onCreate: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "No apps in ${category.label}",
+            color = Color(0xFF8E8E93),
+            fontSize = 14.sp
+        )
+        Box(
+            modifier = Modifier
+                .height(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF1C1C1E), RoundedCornerShape(10.dp))
+                .pressableScale(pressedScale = 0.97f, onClick = onCreate)
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Create app",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun SavedAppListRow(
+    app: SavedApp,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val baseColor = remember(app.id, app.html) {
+        inferAppChromeColorFromHtml(app.html) ?: Color(0xFF1F2024)
+    }
+    val iconStart = remember(baseColor) {
+        blendColor(baseColor, Color.White, if (baseColor.luminance() < 0.45f) 0.24f else 0.1f)
+    }
+    val iconEnd = remember(baseColor) {
+        blendColor(baseColor, Color.Black, if (baseColor.luminance() > 0.58f) 0.2f else 0.16f)
+    }
+    val glyphTint = if (baseColor.luminance() > 0.58f) Color.Black else Color.White
+    val runtimeStatus = app.runtimeBuildStatus.trim().lowercase()
+    val isBuilding = runtimeStatus == "queued" || runtimeStatus == "in_progress"
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val rowBg by animateColorAsState(
+        targetValue = if (pressed) Color(0xFFF5F5F7) else Color.Transparent,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+        label = "app_list_row_bg"
+    )
+    val subtitle =
+        when {
+            isBuilding -> "Runtime packaging in progress"
+            app.description.isNotBlank() -> app.description
+            else -> "Open app preview"
+        }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(rowBg, RoundedCornerShape(12.dp))
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(horizontal = 2.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(iconStart, iconEnd)), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = appMonogram(app.name),
+                color = glyphTint,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (isBuilding) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black, CircleShape)
+                        .border(width = 2.dp, color = Color.White, shape = CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "•",
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        lineHeight = 9.sp
+                    )
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = app.name,
+                color = Color(0xFF1C1C1E),
+                fontSize = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = subtitle,
+                color = Color(0xFF8E8E93),
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Icon(
+            imageVector = AppIcons.ChevronRight,
+            contentDescription = null,
+            tint = Color(0xFFC7C7CC),
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 
@@ -1272,6 +1493,41 @@ private fun Context.findActivity(): Activity? {
         current = current.baseContext
     }
     return null
+}
+
+private fun filterAppsByCategory(
+    apps: List<SavedApp>,
+    category: AppsCategory
+): List<SavedApp> {
+    return when (category) {
+        AppsCategory.Featured -> apps
+        AppsCategory.Lifestyle -> apps.filter { inferAppsCategory(it) == AppsCategory.Lifestyle }
+        AppsCategory.Productivity -> apps.filter { inferAppsCategory(it) == AppsCategory.Productivity }
+    }
+}
+
+private fun inferAppsCategory(app: SavedApp): AppsCategory {
+    val text = "${app.name} ${app.description}".lowercase()
+    val lifestyleKeywords = listOf(
+        "life", "lifestyle", "travel", "trip", "hotel", "booking", "music", "fitness", "health",
+        "food", "restaurant", "recipe", "habit", "daily", "journal", "旅行", "酒店", "音乐", "生活", "健康", "餐厅", "饮食"
+    )
+    val productivityKeywords = listOf(
+        "todo", "task", "calendar", "note", "project", "plan", "work", "study", "kanban", "crm",
+        "dashboard", "invoice", "report", "editor", "效率", "任务", "计划", "工作", "管理", "日程"
+    )
+    return when {
+        lifestyleKeywords.any { keyword -> text.contains(keyword) } -> AppsCategory.Lifestyle
+        productivityKeywords.any { keyword -> text.contains(keyword) } -> AppsCategory.Productivity
+        else -> AppsCategory.Featured
+    }
+}
+
+private fun appMonogram(name: String): String {
+    val trimmed = name.trim()
+    if (trimmed.isBlank()) return "A"
+    val first = trimmed.firstOrNull { it.isLetterOrDigit() } ?: trimmed.first()
+    return first.toString().uppercase()
 }
 
 private fun blendColor(start: Color, end: Color, ratio: Float): Color {
