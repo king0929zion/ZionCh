@@ -3,6 +3,8 @@ package com.zionchat.app.ui.screens
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -15,6 +17,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
@@ -32,9 +35,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -46,10 +51,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -78,6 +86,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -1147,16 +1156,26 @@ private fun SavedAppPreviewPage(
     versionCount: Int,
     onRestorePreviousVersion: (SavedApp) -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboardManager =
+        remember(context) {
+            context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        }
     var chromeColor by remember(app.id, app.html) {
         mutableStateOf(inferAppChromeColorFromHtml(app.html) ?: Color(0xFFF5F5F7))
     }
     var showEditDialog by remember(app.id) { mutableStateOf(false) }
+    var showCodeDialog by remember(app.id) { mutableStateOf(false) }
+    var showPreviewMenu by remember(app.id) { mutableStateOf(false) }
+    var previewReloadNonce by remember(app.id) { mutableStateOf(0) }
     var editRequestText by remember(app.id) { mutableStateOf("") }
     var debugIssue by remember(app.id) { mutableStateOf<String?>(null) }
     var issueFingerprints by remember(app.id) { mutableStateOf(setOf<String>()) }
     val baseUrl = remember(app.id) { "https://saved-app.zionchat.local/app/${app.id}/" }
     val deployUrl = remember(app.deployUrl) { app.deployUrl?.trim()?.takeIf { it.isNotBlank() } }
-    val contentSignature = remember(app.id, app.html, deployUrl) { "${app.id}:${app.html.hashCode()}:${deployUrl.orEmpty()}" }
+    val contentSignature = remember(app.id, app.html, deployUrl, previewReloadNonce) {
+        "${app.id}:${app.html.hashCode()}:${deployUrl.orEmpty()}:$previewReloadNonce"
+    }
     var firstVisualReady by remember(contentSignature) { mutableStateOf(false) }
     var previewEntering by remember(contentSignature) { mutableStateOf(false) }
     LaunchedEffect(contentSignature) {
@@ -1190,7 +1209,14 @@ private fun SavedAppPreviewPage(
         }
     }
 
-    BackHandler(onBack = onDismiss)
+    BackHandler {
+        when {
+            showPreviewMenu -> showPreviewMenu = false
+            showCodeDialog -> showCodeDialog = false
+            showEditDialog -> showEditDialog = false
+            else -> onDismiss()
+        }
+    }
     FullscreenPreviewSystemBarsEffect()
 
     Box(
@@ -1254,6 +1280,134 @@ private fun SavedAppPreviewPage(
             }
         }
 
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = 10.dp, end = 12.dp)
+        ) {
+            Surface(
+                modifier =
+                    Modifier
+                        .widthIn(min = 52.dp)
+                        .height(34.dp)
+                        .pressableScale(
+                            pressedScale = 0.95f,
+                            onClick = { showPreviewMenu = true }
+                        ),
+                shape = RoundedCornerShape(99.dp),
+                color = Color.White,
+                border = BorderStroke(width = 1.dp, color = Color(0x19000000)),
+                shadowElevation = 8.dp
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = AppIcons.More,
+                        contentDescription = "Preview menu",
+                        tint = Color(0xFF111827),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            DropdownMenu(
+                expanded = showPreviewMenu,
+                onDismissRequest = { showPreviewMenu = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("查看代码") },
+                    onClick = {
+                        showPreviewMenu = false
+                        showCodeDialog = true
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("退出应用") },
+                    onClick = {
+                        showPreviewMenu = false
+                        onDismiss()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("编辑应用") },
+                    onClick = {
+                        showPreviewMenu = false
+                        showEditDialog = true
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("刷新应用") },
+                    onClick = {
+                        showPreviewMenu = false
+                        previewReloadNonce += 1
+                    }
+                )
+            }
+        }
+    }
+
+    if (showCodeDialog) {
+        AlertDialog(
+            onDismissRequest = { showCodeDialog = false },
+            title = { Text(text = "查看代码") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "当前应用 HTML 源码",
+                        fontSize = 13.sp,
+                        color = TextSecondary
+                    )
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 200.dp, max = 430.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFFF6F7F9), RoundedCornerShape(12.dp))
+                                .border(width = 1.dp, color = Color(0x12000000), shape = RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                                .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = app.html,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFF111827)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val clip = ClipData.newPlainText("${app.name}.html", app.html)
+                        val copied =
+                            runCatching {
+                                clipboardManager?.setPrimaryClip(clip)
+                                clipboardManager != null
+                            }.getOrDefault(false)
+                        Toast.makeText(
+                            context,
+                            if (copied) "代码已复制" else "复制失败",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                ) {
+                    Text("复制代码")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCodeDialog = false }) {
+                    Text("关闭")
+                }
+            }
+        )
     }
 
     if (showEditDialog) {
