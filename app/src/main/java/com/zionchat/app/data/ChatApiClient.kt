@@ -309,6 +309,449 @@ class ChatApiClient {
         )
     }
 
+    private data class GrokReverseModelConfig(
+        val modelName: String,
+        val modelMode: String? = null
+    )
+
+    private fun resolveGrokReverseModelConfig(modelId: String): GrokReverseModelConfig {
+        val key = modelId.trim().lowercase()
+        return GROK_REVERSE_MODEL_CONFIGS[key] ?: GrokReverseModelConfig(
+            modelName = modelId.trim().ifBlank { "grok-3" },
+            modelMode = null
+        )
+    }
+
+    private fun normalizeGrokSsoToken(rawValue: String): String {
+        return normalizeBearerToken(rawValue)
+            .removePrefix("sso=")
+            .trim()
+    }
+
+    private fun isLikelyXaiApiKey(token: String): Boolean {
+        val normalized = token.trim()
+        if (normalized.isBlank()) return false
+        return normalized.startsWith("xai-", ignoreCase = true) ||
+            normalized.startsWith("sk-", ignoreCase = true) ||
+            normalized.startsWith("xai_", ignoreCase = true)
+    }
+
+    private fun isGrokReverseDirect(provider: ProviderConfig): Boolean {
+        if (!isGrok2Api(provider)) return false
+        val token = providerBearerToken(provider) ?: return false
+        val normalized = normalizeGrokSsoToken(token)
+        if (normalized.isBlank()) return false
+        if (normalized.equals(GROK2API_DEFAULT_APP_KEY, ignoreCase = true)) return false
+        if (isLikelyXaiApiKey(normalized)) return false
+        return true
+    }
+
+    private fun buildGrokReversePrompt(messages: List<Message>): String {
+        if (messages.isEmpty()) return ""
+        val extracted = mutableListOf<Pair<String, String>>()
+
+        messages.forEach { message ->
+            val role = message.role.trim().ifBlank { "user" }
+            val parts = mutableListOf<String>()
+            val (text, markdownImages) = extractMarkdownImages(message.content)
+            if (text.isNotBlank()) {
+                parts += text
+            }
+            val attachmentHints =
+                message.attachments
+                    .orEmpty()
+                    .mapNotNull { attachment -> attachment.url.trim().takeIf { it.isNotBlank() } }
+            val allImages = (markdownImages + attachmentHints).distinct()
+            if (allImages.isNotEmpty()) {
+                parts += allImages.joinToString("\n") { url -> "image: $url" }
+            }
+            val merged = parts.joinToString("\n").trim()
+            if (merged.isNotBlank()) {
+                extracted += role to merged
+            }
+        }
+
+        if (extracted.isEmpty()) return ""
+        val lastUserIndex = extracted.indexOfLast { (role, _) -> role.equals("user", ignoreCase = true) }
+        return extracted.mapIndexed { index, (role, text) ->
+            if (index == lastUserIndex) {
+                text
+            } else {
+                "$role: $text"
+            }
+        }.joinToString("\n\n").trim()
+    }
+
+    private fun buildGrokReversePayload(
+        message: String,
+        modelId: String,
+        reasoningEffort: String?
+    ): Map<String, Any> {
+        val modelConfig = resolveGrokReverseModelConfig(modelId)
+        val modelConfigOverride = linkedMapOf<String, Any>(
+            "temperature" to 0.8,
+            "topP" to 0.95
+        )
+        normalizeReasoningEffort(reasoningEffort)?.let { modelConfigOverride["reasoningEffort"] = it }
+
+        val responseMetadata =
+            linkedMapOf<String, Any>(
+                "requestModelDetails" to mapOf("modelId" to modelId),
+                "modelConfigOverride" to modelConfigOverride
+            )
+
+        val payload = linkedMapOf<String, Any>(
+            "deviceEnvInfo" to mapOf(
+                "darkModeEnabled" to false,
+                "devicePixelRatio" to 2,
+                "screenWidth" to 2056,
+                "screenHeight" to 1329,
+                "viewportWidth" to 2056,
+                "viewportHeight" to 1083
+            ),
+            "disableMemory" to false,
+            "disableSearch" to false,
+            "disableSelfHarmShortCircuit" to false,
+            "disableTextFollowUps" to false,
+            "enableImageGeneration" to true,
+            "enableImageStreaming" to true,
+            "enableSideBySide" to true,
+            "fileAttachments" to emptyList<String>(),
+            "forceConcise" to false,
+            "forceSideBySide" to false,
+            "imageAttachments" to emptyList<String>(),
+            "imageGenerationCount" to 2,
+            "isAsyncChat" to false,
+            "isReasoning" to (normalizeReasoningEffort(reasoningEffort) != null && !reasoningEffort.equals("none", ignoreCase = true)),
+            "message" to message,
+            "modelName" to modelConfig.modelName,
+            "responseMetadata" to responseMetadata,
+            "returnImageBytes" to false,
+            "returnRawGrokInXaiRequest" to false,
+            "sendFinalMetadata" to true,
+            "temporary" to true,
+            "toolOverrides" to emptyMap<String, Any>()
+        )
+        modelConfig.modelMode?.takeIf { it.isNotBlank() }?.let { payload["modelMode"] = it }
+        return payload
+    }
+
+    private fun buildGrokReverseRequest(
+        provider: ProviderConfig,
+        effectiveHeaders: List<HttpHeader>,
+        payload: Map<String, Any>
+    ): Request {
+        val token = providerBearerToken(provider)?.let(::normalizeGrokSsoToken).orEmpty()
+        if (token.isBlank()) {
+            throw IllegalStateException("Grok token is required.")
+        }
+
+        val requestBuilder = Request.Builder().url(GROK_REVERSE_CHAT_API)
+        applyHeaders(requestBuilder, effectiveHeaders)
+
+        if (!hasHeader(effectiveHeaders, "content-type")) {
+            requestBuilder.header("Content-Type", "application/json")
+        }
+        if (!hasHeader(effectiveHeaders, "accept")) {
+            requestBuilder.header("Accept", "*/*")
+        }
+        if (!hasHeader(effectiveHeaders, "origin")) {
+            requestBuilder.header("Origin", "https://grok.com")
+        }
+        if (!hasHeader(effectiveHeaders, "referer")) {
+            requestBuilder.header("Referer", "https://grok.com/")
+        }
+        if (!hasHeader(effectiveHeaders, "sec-fetch-mode")) {
+            requestBuilder.header("Sec-Fetch-Mode", "cors")
+        }
+        if (!hasHeader(effectiveHeaders, "sec-fetch-dest")) {
+            requestBuilder.header("Sec-Fetch-Dest", "empty")
+        }
+        if (!hasHeader(effectiveHeaders, "sec-fetch-site")) {
+            requestBuilder.header("Sec-Fetch-Site", "same-origin")
+        }
+        if (!hasHeader(effectiveHeaders, "priority")) {
+            requestBuilder.header("Priority", "u=1, i")
+        }
+        if (!hasHeader(effectiveHeaders, "accept-language")) {
+            requestBuilder.header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        }
+        if (!hasHeader(effectiveHeaders, "user-agent")) {
+            requestBuilder.header("User-Agent", GROK_REVERSE_USER_AGENT)
+        }
+        if (!hasHeader(effectiveHeaders, "cookie")) {
+            requestBuilder.header("Cookie", "sso=$token; sso-rw=$token")
+        }
+        if (!hasHeader(effectiveHeaders, "baggage")) {
+            requestBuilder.header("Baggage", GROK_REVERSE_BAGGAGE)
+        }
+        if (!hasHeader(effectiveHeaders, "x-statsig-id")) {
+            requestBuilder.header("x-statsig-id", GROK_REVERSE_STATSIG_ID)
+        }
+        if (!hasHeader(effectiveHeaders, "x-xai-request-id")) {
+            requestBuilder.header("x-xai-request-id", UUID.randomUUID().toString())
+        }
+
+        val body = gson.toJson(payload)
+        return requestBuilder
+            .post(body.toRequestBody(jsonMediaType))
+            .build()
+    }
+
+    private fun normalizeGrokReverseStreamLine(rawLine: String): String? {
+        val trimmed = rawLine.trim()
+        if (trimmed.isBlank()) return null
+        if (trimmed.equals("[DONE]", ignoreCase = true)) return null
+        if (trimmed.startsWith("data:", ignoreCase = true)) {
+            val data = trimmed.removePrefix("data:").trim()
+            if (data.isBlank() || data.equals("[DONE]", ignoreCase = true)) return null
+            return data
+        }
+        return trimmed
+    }
+
+    private fun com.google.gson.JsonObject.getObject(key: String): com.google.gson.JsonObject? {
+        val element = get(key) ?: return null
+        if (!element.isJsonObject) return null
+        return element.asJsonObject
+    }
+
+    private fun com.google.gson.JsonObject.getStringValue(key: String): String? {
+        val element = get(key) ?: return null
+        if (!element.isJsonPrimitive) return null
+        return runCatching { element.asString }.getOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun com.google.gson.JsonObject.getBooleanValue(key: String): Boolean? {
+        val element = get(key) ?: return null
+        if (!element.isJsonPrimitive) return null
+        return runCatching { element.asBoolean }.getOrNull()
+    }
+
+    private fun extractGrokReverseResponseObject(rawLine: String): com.google.gson.JsonObject? {
+        val normalized = normalizeGrokReverseStreamLine(rawLine) ?: return null
+        val root = runCatching { JsonParser.parseString(normalized).asJsonObject }.getOrNull() ?: return null
+        return root.getObject("result")?.getObject("response")
+    }
+
+    private fun collectImageUrlsFromJsonElement(
+        element: com.google.gson.JsonElement?,
+        sink: LinkedHashSet<String>
+    ) {
+        when {
+            element == null || element.isJsonNull -> return
+            element.isJsonArray -> {
+                element.asJsonArray.forEach { item ->
+                    collectImageUrlsFromJsonElement(item, sink)
+                }
+            }
+            element.isJsonObject -> {
+                element.asJsonObject.entrySet().forEach { entry ->
+                    val key = entry.key.trim().lowercase()
+                    val value = entry.value
+                    if (key == "generatedimageurls" || key == "imageurls") {
+                        when {
+                            value.isJsonArray -> {
+                                value.asJsonArray.forEach { item ->
+                                    val url = item.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
+                                    if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
+                                        sink += url
+                                    }
+                                }
+                            }
+                            value.isJsonPrimitive -> {
+                                val url = value.asString.trim()
+                                if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
+                                    sink += url
+                                }
+                            }
+                        }
+                    }
+                    collectImageUrlsFromJsonElement(value, sink)
+                }
+            }
+        }
+    }
+
+    private fun extractGrokImageUrls(responseObject: com.google.gson.JsonObject): List<String> {
+        val urls = linkedSetOf<String>()
+        responseObject.getObject("modelResponse")?.let { modelResponse ->
+            collectImageUrlsFromJsonElement(modelResponse, urls)
+        }
+        responseObject.getObject("cardAttachment")
+            ?.getStringValue("jsonData")
+            ?.let { jsonData ->
+                val parsed = runCatching { JsonParser.parseString(jsonData).asJsonObject }.getOrNull()
+                val original = parsed?.getObject("image")?.getStringValue("original")
+                if (!original.isNullOrBlank()) {
+                    urls += original
+                }
+            }
+        return urls.toList()
+    }
+
+    private fun grokReverseChatCompletion(
+        provider: ProviderConfig,
+        modelId: String,
+        messages: List<Message>,
+        extraHeaders: List<HttpHeader>
+    ): String {
+        val prompt = buildGrokReversePrompt(messages)
+        if (prompt.isBlank()) {
+            throw IllegalStateException("Grok prompt is empty.")
+        }
+        val payload = buildGrokReversePayload(prompt, modelId, reasoningEffort = null)
+        val request = buildGrokReverseRequest(provider, extraHeaders, payload)
+        val contentBuilder = StringBuilder()
+        val reasoningBuilder = StringBuilder()
+        var finalMessage = ""
+        val imageUrls = linkedSetOf<String>()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val raw = response.body?.string().orEmpty()
+                throw IllegalStateException("HTTP ${response.code}: $raw")
+            }
+            val source = response.body?.source() ?: throw IllegalStateException("Response body is null")
+            while (!source.exhausted()) {
+                val line = source.readUtf8Line() ?: continue
+                val responseObject = extractGrokReverseResponseObject(line) ?: continue
+                val tokenChunk = responseObject.getStringValue("token").orEmpty()
+                val isThinking = responseObject.getBooleanValue("isThinking") == true
+                if (tokenChunk.isNotEmpty()) {
+                    if (isThinking) {
+                        reasoningBuilder.append(tokenChunk)
+                    } else {
+                        contentBuilder.append(tokenChunk)
+                    }
+                }
+                responseObject.getObject("modelResponse")
+                    ?.getStringValue("message")
+                    ?.let { messageText -> finalMessage = messageText }
+                extractGrokImageUrls(responseObject).forEach { url -> imageUrls += url }
+            }
+        }
+
+        val text = contentBuilder.toString().trim().ifBlank { finalMessage.trim() }
+        val primary = text.ifBlank { reasoningBuilder.toString().trim() }
+        val imagesMarkdown = imageUrls.joinToString("\n") { url -> "![image]($url)" }
+        return listOf(primary, imagesMarkdown)
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+            .trim()
+            .ifBlank { throw IllegalStateException("Grok response is empty.") }
+    }
+
+    private fun grokReverseGenerateImage(
+        provider: ProviderConfig,
+        modelId: String,
+        prompt: String,
+        extraHeaders: List<HttpHeader>,
+        size: String,
+        quality: String,
+        n: Int
+    ): String {
+        val enrichedPrompt =
+            buildString {
+                append(prompt.trim())
+                if (size.isNotBlank()) {
+                    append("\n[image_size] ")
+                    append(size.trim())
+                }
+                if (quality.isNotBlank()) {
+                    append("\n[image_quality] ")
+                    append(quality.trim())
+                }
+                if (n > 1) {
+                    append("\n[image_count] ")
+                    append(n)
+                }
+            }.trim()
+        if (enrichedPrompt.isBlank()) {
+            throw IllegalStateException("Prompt is required.")
+        }
+        val payload = buildGrokReversePayload(enrichedPrompt, modelId, reasoningEffort = null)
+        val request = buildGrokReverseRequest(provider, extraHeaders, payload)
+        val imageUrls = linkedSetOf<String>()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val raw = response.body?.string().orEmpty()
+                throw IllegalStateException("HTTP ${response.code}: $raw")
+            }
+            val source = response.body?.source() ?: throw IllegalStateException("Response body is null")
+            while (!source.exhausted()) {
+                val line = source.readUtf8Line() ?: continue
+                val responseObject = extractGrokReverseResponseObject(line) ?: continue
+                extractGrokImageUrls(responseObject).forEach { url -> imageUrls += url }
+            }
+        }
+
+        return imageUrls.firstOrNull()
+            ?: throw IllegalStateException("No image URL found in Grok reverse response.")
+    }
+
+    private fun grokReverseChatCompletionsStream(
+        provider: ProviderConfig,
+        modelId: String,
+        messages: List<Message>,
+        extraHeaders: List<HttpHeader>,
+        reasoningEffort: String?
+    ): Flow<ChatStreamDelta> = flow {
+        val prompt = buildGrokReversePrompt(messages)
+        if (prompt.isBlank()) {
+            throw IllegalStateException("Grok prompt is empty.")
+        }
+        val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
+        val payload = buildGrokReversePayload(prompt, modelId, reasoningEffort = reasoningEffort)
+        val request = buildGrokReverseRequest(provider, effectiveHeaders, payload)
+
+        var hasTextChunk = false
+        var finalMessage = ""
+        val seenImages = linkedSetOf<String>()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val raw = response.body?.string().orEmpty()
+                throw IllegalStateException("HTTP ${response.code}: $raw")
+            }
+
+            val source = response.body?.source() ?: throw IllegalStateException("Response body is null")
+            while (!source.exhausted()) {
+                val line = source.readUtf8Line() ?: continue
+                val responseObject = extractGrokReverseResponseObject(line) ?: continue
+
+                val tokenChunk = responseObject.getStringValue("token").orEmpty()
+                if (tokenChunk.isNotEmpty()) {
+                    val isThinking = responseObject.getBooleanValue("isThinking") == true
+                    if (isThinking) {
+                        emit(ChatStreamDelta(reasoning = tokenChunk))
+                    } else {
+                        emit(ChatStreamDelta(content = tokenChunk))
+                        hasTextChunk = true
+                    }
+                }
+
+                responseObject.getObject("modelResponse")
+                    ?.getStringValue("message")
+                    ?.let { messageText -> finalMessage = messageText }
+
+                extractGrokImageUrls(responseObject).forEach { url ->
+                    if (seenImages.add(url)) {
+                        emit(ChatStreamDelta(content = "\n![image]($url)\n"))
+                        hasTextChunk = true
+                    }
+                }
+            }
+        }
+
+        if (!hasTextChunk && finalMessage.isNotBlank()) {
+            emit(ChatStreamDelta(content = finalMessage.trim()))
+        }
+    }.flowOn(Dispatchers.IO)
+
     suspend fun webSearch(query: String): Result<String> {
         return webSearch(query, WebSearchConfig())
     }
@@ -837,6 +1280,14 @@ class ChatApiClient {
         return withContext(Dispatchers.IO) {
             runCatching {
                 val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
+                if (isGrokReverseDirect(provider)) {
+                    return@runCatching grokReverseChatCompletion(
+                        provider = provider,
+                        modelId = modelId,
+                        messages = messages,
+                        extraHeaders = effectiveHeaders
+                    )
+                }
                 val payload =
                     linkedMapOf<String, Any>(
                         "model" to modelId,
@@ -915,6 +1366,7 @@ class ChatApiClient {
         val type = provider.type.trim().lowercase()
         return when {
             isCodex(provider) -> codexResponsesStream(provider, modelId, messages, extraHeaders, reasoningEffort, conversationId)
+            isGrokReverseDirect(provider) -> grokReverseChatCompletionsStream(provider, modelId, messages, extraHeaders, reasoningEffort)
             type == "antigravity" -> antigravityStream(provider, modelId, messages, extraHeaders)
             type == "gemini-cli" -> geminiCliStream(provider, modelId, messages, extraHeaders)
             else -> openAIChatCompletionsStream(provider, modelId, messages, extraHeaders, reasoningEffort)
@@ -1786,6 +2238,9 @@ class ChatApiClient {
     }
 
     private fun listGrok2ApiModels(provider: ProviderConfig, extraHeaders: List<HttpHeader>): List<String> {
+        if (isGrokReverseDirect(provider)) {
+            return GROK2API_DEFAULT_MODELS
+        }
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
         val baseCandidates = providerApiBaseCandidates(provider)
         var remoteModels: List<String> = emptyList()
@@ -1839,6 +2294,17 @@ class ChatApiClient {
         return withContext(Dispatchers.IO) {
             runCatching {
                 val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
+                if (isGrokReverseDirect(provider)) {
+                    return@runCatching grokReverseGenerateImage(
+                        provider = provider,
+                        modelId = modelId,
+                        prompt = prompt,
+                        extraHeaders = effectiveHeaders,
+                        size = size,
+                        quality = quality,
+                        n = n
+                    )
+                }
                 val body = gson.toJson(
                     mapOf(
                         "model" to modelId,
@@ -1897,6 +2363,13 @@ class ChatApiClient {
     companion object {
         private const val GROK2API_DEFAULT_APP_KEY = "grok2api"
         private const val GROK_TOKEN_SYNC_INTERVAL_MS = 2 * 60 * 1000L
+        private const val GROK_REVERSE_CHAT_API = "https://grok.com/rest/app-chat/conversations/new"
+        private const val GROK_REVERSE_USER_AGENT =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+        private const val GROK_REVERSE_BAGGAGE =
+            "sentry-environment=production,sentry-release=d6add6fb0460641fd482d767a335ef72b9b6abb8,sentry-public_key=b311e0f2690c81f25e2c4cf6d4f7ce1c"
+        private const val GROK_REVERSE_STATSIG_ID =
+            "ZTpUeXBlRXJyb3I6IENhbm5vdCByZWFkIHByb3BlcnRpZXMgb2YgdW5kZWZpbmVkIChyZWFkaW5nICdjaGlsZE5vZGVzJyk="
         private const val CODEX_USER_AGENT = "codex_cli_rs/0.50.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464"
         private const val CODEX_CLIENT_VERSION = "0.50.0"
         private const val ANTIGRAVITY_USER_AGENT = "antigravity/1.104.0 darwin/arm64"
@@ -1938,6 +2411,24 @@ class ChatApiClient {
                 "grok-imagine-1.0-edit",
                 "grok-imagine-1.0-video"
             )
+        private val GROK_REVERSE_MODEL_CONFIGS =
+            mapOf(
+                "grok-3" to GrokReverseModelConfig("grok-3", "MODEL_MODE_GROK_3"),
+                "grok-3-mini" to GrokReverseModelConfig("grok-3", "MODEL_MODE_GROK_3_MINI_THINKING"),
+                "grok-3-thinking" to GrokReverseModelConfig("grok-3", "MODEL_MODE_GROK_3_THINKING"),
+                "grok-4" to GrokReverseModelConfig("grok-4", "MODEL_MODE_GROK_4"),
+                "grok-4-mini" to GrokReverseModelConfig("grok-4-mini", "MODEL_MODE_GROK_4_MINI_THINKING"),
+                "grok-4-thinking" to GrokReverseModelConfig("grok-4", "MODEL_MODE_GROK_4_THINKING"),
+                "grok-4-heavy" to GrokReverseModelConfig("grok-4", "MODEL_MODE_HEAVY"),
+                "grok-4.1-mini" to GrokReverseModelConfig("grok-4-1-thinking-1129", "MODEL_MODE_GROK_4_1_MINI_THINKING"),
+                "grok-4.1-fast" to GrokReverseModelConfig("grok-4-1-thinking-1129", "MODEL_MODE_FAST"),
+                "grok-4.1-expert" to GrokReverseModelConfig("grok-4-1-thinking-1129", "MODEL_MODE_EXPERT"),
+                "grok-4.1-thinking" to GrokReverseModelConfig("grok-4-1-thinking-1129", "MODEL_MODE_GROK_4_1_THINKING"),
+                "grok-4.20-beta" to GrokReverseModelConfig("grok-420", "MODEL_MODE_GROK_420"),
+                "grok-imagine-1.0" to GrokReverseModelConfig("grok-3", "MODEL_MODE_FAST"),
+                "grok-imagine-1.0-edit" to GrokReverseModelConfig("imagine-image-edit", "MODEL_MODE_FAST"),
+                "grok-imagine-1.0-video" to GrokReverseModelConfig("grok-3", "MODEL_MODE_FAST")
+            )
         private val QWEN_CODE_DEFAULT_MODELS =
             listOf(
                 "qwen3-coder-plus",
@@ -1975,6 +2466,7 @@ class ChatApiClient {
         if (provider.presetId?.trim()?.equals("grok2api", ignoreCase = true) == true) return true
         if (provider.presetId?.trim()?.equals("grok", ignoreCase = true) == true) return true
         if (provider.apiUrl.contains("grok2api", ignoreCase = true)) return true
+        if (provider.apiUrl.contains("grok.com", ignoreCase = true)) return true
         val lowerName = provider.name.trim().lowercase()
         val lowerPreset = provider.presetId?.trim()?.lowercase().orEmpty()
         val lowerUrl = provider.apiUrl.trim().lowercase()
@@ -1986,6 +2478,7 @@ class ChatApiClient {
         if (localGateway && (lowerName.contains("grok") || lowerName.contains("xai"))) return true
         if (localGateway && (lowerPreset == "xai" || lowerPreset == "grok2api" || lowerPreset == "grok")) return true
         if (lowerUrl.contains("api.x.ai") && (lowerName.contains("grok") || lowerName.contains("xai"))) return true
+        if (lowerUrl.contains("api.x.ai") && (lowerPreset == "xai" || lowerPreset == "grok2api" || lowerPreset == "grok")) return true
         return false
     }
 

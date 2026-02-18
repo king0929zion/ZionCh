@@ -15,6 +15,7 @@ fun ProviderConfig.isGrok2ApiProvider(): Boolean {
     if (presetId?.trim()?.equals("grok2api", ignoreCase = true) == true) return true
     if (presetId?.trim()?.equals("grok", ignoreCase = true) == true) return true
     if (apiUrl.contains("grok2api", ignoreCase = true)) return true
+    if (apiUrl.contains("grok.com", ignoreCase = true)) return true
     val lowerName = name.trim().lowercase()
     val lowerPreset = presetId?.trim()?.lowercase().orEmpty()
     val lowerUrl = apiUrl.trim().lowercase()
@@ -26,5 +27,6 @@ fun ProviderConfig.isGrok2ApiProvider(): Boolean {
     if (localGateway && (lowerName.contains("grok") || lowerName.contains("xai"))) return true
     if (localGateway && (lowerPreset == "xai" || lowerPreset == "grok2api" || lowerPreset == "grok")) return true
     if (lowerUrl.contains("api.x.ai") && (lowerName.contains("grok") || lowerName.contains("xai"))) return true
+    if (lowerUrl.contains("api.x.ai") && (lowerPreset == "xai" || lowerPreset == "grok2api" || lowerPreset == "grok")) return true
     return false
 }
