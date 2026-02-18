@@ -345,7 +345,6 @@ private fun MarkdownCodeBlock(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .border(width = 1.dp, color = Color(0xFFD1D1D1), shape = shape)
             .background(Color(0xFFEDEDED), shape)
     ) {
         Row(
