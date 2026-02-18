@@ -2603,11 +2603,13 @@ fun ChatScreen(navController: NavController) {
                     when (tool) {
                         "camera" -> {
                             showToolMenu = false
+                            toolMenuPage = ToolMenuPage.Tools
                             hideKeyboardIfNeeded(force = true)
                             cameraLauncher.launch(null)
                         }
                         "photos" -> {
                             showToolMenu = false
+                            toolMenuPage = ToolMenuPage.Tools
                             hideKeyboardIfNeeded(force = true)
                             photoPickerLauncher.launch("image/*")
                         }
@@ -2641,7 +2643,7 @@ fun ChatScreen(navController: NavController) {
                             showChatModelPicker = false
                             Toast.makeText(
                                 context,
-                                "默认对话模型已切换为 ${model.displayName}",
+                                context.getString(R.string.chat_model_switched_toast, model.displayName),
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -4514,7 +4516,7 @@ private fun ToolMenuPanel(
     }
     val scrimAlpha by animateFloatAsState(
         targetValue = if (visible) (0.5f * (1f - dragProgress * 0.72f)) else 0f,
-        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing)
+        animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing)
     )
     LaunchedEffect(visible) {
         if (!visible) {
@@ -4526,8 +4528,8 @@ private fun ToolMenuPanel(
     AnimatedVisibility(
         modifier = modifier,
         visible = visible,
-        enter = fadeIn(animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing)),
-        exit = fadeOut(animationSpec = tween(durationMillis = 130, easing = FastOutSlowInEasing))
+        enter = fadeIn(animationSpec = tween(durationMillis = 110, easing = FastOutSlowInEasing)),
+        exit = fadeOut(animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing))
     ) {
         Box(
             modifier = Modifier
@@ -4565,7 +4567,7 @@ private fun ToolMenuPanel(
                                             initialValue = dragOffsetPx,
                                             targetValue = 0f,
                                             animationSpec = tween(
-                                                durationMillis = 220,
+                                                durationMillis = 150,
                                                 easing = FastOutSlowInEasing
                                             )
                                         ) { value, _ ->
@@ -4579,15 +4581,15 @@ private fun ToolMenuPanel(
                             enter =
                                 slideInVertically(
                                     initialOffsetY = { it / 2 },
-                                    animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                                    animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing)
                                 ) +
-                                    fadeIn(animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)),
+                                    fadeIn(animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing)),
                             exit =
                                 slideOutVertically(
                                     targetOffsetY = { it },
-                                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                                    animationSpec = tween(durationMillis = 130, easing = FastOutSlowInEasing)
                                 ) +
-                                    fadeOut(animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing))
+                                    fadeOut(animationSpec = tween(durationMillis = 95, easing = FastOutSlowInEasing))
                         )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -4603,7 +4605,6 @@ private fun ToolMenuPanel(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = panelMaxHeight)
-                            .animateContentSize(animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing))
                             .background(Surface)
                             .padding(16.dp)
                     ) {
@@ -4627,20 +4628,20 @@ private fun ToolMenuPanel(
                                 if (targetState == ToolMenuPage.McpServers) {
                                     slideInHorizontally(
                                         initialOffsetX = { it / 2 },
-                                        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                                        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing)
                                     ) togetherWith
                                         slideOutHorizontally(
                                             targetOffsetX = { -it / 2 },
-                                            animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                                            animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing)
                                         )
                                 } else {
                                     slideInHorizontally(
                                         initialOffsetX = { -it / 2 },
-                                        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                                        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing)
                                     ) togetherWith
                                         slideOutHorizontally(
                                             targetOffsetX = { it / 2 },
-                                            animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                                            animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing)
                                         )
                                 }
                             },
@@ -4656,13 +4657,13 @@ private fun ToolMenuPanel(
                                     ) {
                                         QuickActionButton(
                                             icon = { Icon(AppIcons.Camera, null, Modifier.size(28.dp), TextPrimary) },
-                                            label = "Camera",
+                                            label = stringResource(R.string.chat_tool_camera),
                                             onClick = { onToolSelect("camera") },
                                             modifier = Modifier.weight(1f)
                                         )
                                         QuickActionButton(
                                             icon = { Icon(AppIcons.ChatGPTLogo, null, Modifier.size(28.dp), TextPrimary) },
-                                            label = "Photos",
+                                            label = stringResource(R.string.chat_tool_photos),
                                             onClick = { onToolSelect("photos") },
                                             modifier = Modifier.weight(1f)
                                         )
@@ -4675,7 +4676,7 @@ private fun ToolMenuPanel(
                                                     tint = Color.Unspecified
                                                 )
                                             },
-                                            label = "Files",
+                                            label = stringResource(R.string.chat_tool_files),
                                             onClick = { onToolSelect("files") },
                                             modifier = Modifier.weight(1f)
                                         )
@@ -4704,7 +4705,7 @@ private fun ToolMenuPanel(
                                     ToolListItem(
                                         icon = { Icon(AppIcons.MCPTools, null, Modifier.size(24.dp), TextPrimary) },
                                         title = stringResource(R.string.settings_item_mcp_tools),
-                                        subtitle = "Choose MCP providers",
+                                        subtitle = stringResource(R.string.chat_tool_mcp_choose_providers),
                                         onClick = {
                                             onToolSelect("mcp")
                                             onMcpPageChange(ToolMenuPage.McpServers)
@@ -4780,16 +4781,15 @@ private fun McpServerPickerPanel(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color.White, RoundedCornerShape(10.dp))
-                    .border(width = 1.dp, color = Color.Black, shape = RoundedCornerShape(10.dp))
                     .pressableScale(pressedScale = 0.95f, onClick = onOpenSettings)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 9.dp, vertical = 9.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "设置",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.Black
+                Icon(
+                    imageVector = AppIcons.More,
+                    contentDescription = stringResource(R.string.settings),
+                    tint = Color.Black,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
@@ -4851,7 +4851,6 @@ private fun McpServerPickerPanel(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(Color.White, RoundedCornerShape(14.dp))
-                                .border(width = 1.dp, color = Color.Black, shape = RoundedCornerShape(14.dp))
                                 .pressableScale(
                                     pressedScale = 0.985f,
                                     onClick = { onToggle(item.serverId, !checked) }
@@ -4908,26 +4907,12 @@ private fun ChatModelPickerSheetContent(
             .heightIn(min = 260.dp, max = 640.dp)
             .padding(horizontal = 18.dp, vertical = 8.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 14.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(40.dp)
-                    .height(4.dp)
-                    .background(GrayLight, RoundedCornerShape(2.dp))
-            )
-        }
-
         Text(
-            text = "选择默认对话模型",
+            text = stringResource(R.string.chat_model_picker_title),
             fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
             color = TextPrimary,
-            modifier = Modifier.padding(bottom = 12.dp)
+            modifier = Modifier.padding(bottom = 12.dp, top = 4.dp)
         )
 
         if (groupedModels.isEmpty()) {
@@ -4938,7 +4923,7 @@ private fun ChatModelPickerSheetContent(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "暂无可用模型",
+                    text = stringResource(R.string.chat_model_picker_empty),
                     fontSize = 13.sp,
                     color = TextSecondary
                 )

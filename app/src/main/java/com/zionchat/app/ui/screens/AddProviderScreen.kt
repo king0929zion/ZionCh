@@ -88,13 +88,23 @@ fun AddProviderScreen(
     }
     val credentialLabel = if (isGrok2ApiProvider) "Token" else "API Key"
     val credentialPlaceholder = if (isGrok2ApiProvider) "Enter Grok token" else "Enter API key"
-    val apiUrlPlaceholder = if (isGrok2ApiProvider) "https://api.x.ai/v1" else "https://api.example.com/v1"
+    val apiUrlPlaceholder = if (isGrok2ApiProvider) "http://localhost:8000/v1" else "https://api.example.com/v1"
 
     LaunchedEffect(editingProvider?.id) {
         editingProvider?.let {
             providerName = it.name
             apiKey = it.apiKey
-            apiUrl = it.apiUrl
+            val isEditingGrokProvider =
+                it.type.equals("grok2api", ignoreCase = true) ||
+                    it.type.equals("grok", ignoreCase = true) ||
+                    it.presetId.equals("grok2api", ignoreCase = true) ||
+                    it.presetId.equals("grok", ignoreCase = true)
+            apiUrl =
+                if (isEditingGrokProvider && it.apiUrl.contains("api.x.ai", ignoreCase = true)) {
+                    "http://localhost:8000/v1"
+                } else {
+                    it.apiUrl
+                }
             selectedType = it.type
             selectedIconAsset = resolveProviderIconAsset(it).orEmpty()
         }

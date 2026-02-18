@@ -1153,12 +1153,12 @@ private fun PreviewSafetyCapsule(
 ) {
     Surface(
         modifier = Modifier
-            .width(180.dp)
-            .height(56.dp),
+            .width(148.dp)
+            .height(46.dp),
         shape = RoundedCornerShape(99.dp),
-        color = Color.White,
-        border = BorderStroke(width = 1.dp, color = Color(0x19000000)),
-        shadowElevation = 10.dp
+        color = Color(0xB21A1A1A),
+        border = BorderStroke(width = 1.dp, color = Color(0x24FFFFFF)),
+        shadowElevation = 8.dp
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),
@@ -1177,21 +1177,21 @@ private fun PreviewSafetyCapsule(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
+                            .size(6.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF111111))
+                            .background(Color.White)
                     )
                     Box(
                         modifier = Modifier
-                            .size(14.dp)
+                            .size(10.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF111111))
+                            .background(Color.White)
                     )
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
+                            .size(6.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF111111))
+                            .background(Color.White)
                     )
                 }
             }
@@ -1199,8 +1199,8 @@ private fun PreviewSafetyCapsule(
             Box(
                 modifier = Modifier
                     .width(1.dp)
-                    .height(30.dp)
-                    .background(Color(0x1A000000))
+                    .height(24.dp)
+                    .background(Color(0x29FFFFFF))
             )
 
             Box(
@@ -1212,15 +1212,15 @@ private fun PreviewSafetyCapsule(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .border(width = 4.dp, color = Color(0xFF111111), shape = CircleShape),
+                        .size(26.dp)
+                        .border(width = 3.dp, color = Color.White, shape = CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(10.dp)
+                            .size(8.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF111111))
+                            .background(Color.White)
                     )
                 }
             }
@@ -1260,6 +1260,7 @@ private fun SavedAppPreviewPage(
     val contentSignature = remember(app.id, app.html, deployUrl, previewReloadNonce) {
         "${app.id}:${app.html.hashCode()}:${deployUrl.orEmpty()}:$previewReloadNonce"
     }
+    var previewContentVisible by remember(contentSignature) { mutableStateOf(false) }
     val reportIssue = rememberUpdatedState<(String) -> Unit> { raw ->
         if (autoFixState?.isFixing == true) return@rememberUpdatedState
         val normalized = raw.trim().replace(Regex("\\s+"), " ").take(480)
@@ -1288,7 +1289,10 @@ private fun SavedAppPreviewPage(
             .background(chromeColor)
     ) {
         AppHtmlWebView(
-            modifier = Modifier.fillMaxSize(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = if (previewContentVisible) 1f else 0f },
             contentSignature = contentSignature,
             html = if (deployUrl.isNullOrBlank()) app.html else null,
             baseUrl = baseUrl,
@@ -1297,9 +1301,11 @@ private fun SavedAppPreviewPage(
             enableThirdPartyCookies = true,
             transparentBackground = false,
             backgroundColor = chromeColor,
-            preRenderEnabled = false,
+            preRenderEnabled = true,
             onRuntimeIssue = { raw -> reportIssue.value(raw) },
+            onPageCommitVisible = { previewContentVisible = true },
             onPageFinished = { webView ->
+                previewContentVisible = true
                 webView.evaluateJavascript(APP_CHROME_COLOR_JS) { jsResult ->
                     parseCssColorFromJs(jsResult)?.let { parsed ->
                         chromeColor = parsed
@@ -1329,28 +1335,28 @@ private fun SavedAppPreviewPage(
                 onDismissRequest = { showPreviewMenu = false }
             ) {
                 DropdownMenuItem(
-                    text = { Text("查看代码") },
+                    text = { Text(stringResource(R.string.apps_preview_menu_view_code)) },
                     onClick = {
                         showPreviewMenu = false
                         showCodeDialog = true
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("退出应用") },
+                    text = { Text(stringResource(R.string.apps_preview_menu_exit_app)) },
                     onClick = {
                         showPreviewMenu = false
                         onDismiss()
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("编辑应用") },
+                    text = { Text(stringResource(R.string.apps_preview_menu_edit_app)) },
                     onClick = {
                         showPreviewMenu = false
                         showEditDialog = true
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("刷新应用") },
+                    text = { Text(stringResource(R.string.apps_preview_menu_refresh_app)) },
                     onClick = {
                         showPreviewMenu = false
                         previewReloadNonce += 1
@@ -1363,11 +1369,11 @@ private fun SavedAppPreviewPage(
     if (showCodeDialog) {
         AlertDialog(
             onDismissRequest = { showCodeDialog = false },
-            title = { Text(text = "查看代码") },
+            title = { Text(text = stringResource(R.string.apps_preview_code_dialog_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "当前应用 HTML 源码",
+                        text = stringResource(R.string.apps_preview_code_dialog_subtitle),
                         fontSize = 13.sp,
                         color = TextSecondary
                     )
@@ -1403,17 +1409,21 @@ private fun SavedAppPreviewPage(
                             }.getOrDefault(false)
                         Toast.makeText(
                             context,
-                            if (copied) "代码已复制" else "复制失败",
+                            if (copied) {
+                                context.getString(R.string.apps_preview_code_copy_success)
+                            } else {
+                                context.getString(R.string.apps_preview_code_copy_failed)
+                            },
                             Toast.LENGTH_SHORT
                         ).show()
                     }
                 ) {
-                    Text("复制代码")
+                    Text(stringResource(R.string.apps_preview_code_copy_button))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCodeDialog = false }) {
-                    Text("关闭")
+                    Text(stringResource(R.string.close))
                 }
             }
         )
@@ -1422,11 +1432,11 @@ private fun SavedAppPreviewPage(
     if (showEditDialog) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
-            title = { Text(text = "Edit app with AI") },
+            title = { Text(text = stringResource(R.string.apps_preview_edit_dialog_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Describe the changes you want for ${app.name}.",
+                        text = stringResource(R.string.apps_preview_edit_dialog_subtitle, app.name),
                         fontSize = 13.sp,
                         color = TextSecondary
                     )
@@ -1450,12 +1460,12 @@ private fun SavedAppPreviewPage(
                         onRequestEdit(request)
                     }
                 ) {
-                    Text("Send")
+                    Text(stringResource(R.string.send))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showEditDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -1468,10 +1478,10 @@ private fun SavedAppPreviewPage(
                     debugIssue = null
                 }
             },
-            title = { Text("App error detected") },
+            title = { Text(stringResource(R.string.apps_preview_runtime_issue_title)) },
             text = {
                 Text(
-                    text = "Detected a runtime issue:\n$issue\n\nRun one-click AI fix?",
+                    text = stringResource(R.string.apps_preview_runtime_issue_body, issue),
                     fontSize = 13.sp,
                     color = TextSecondary
                 )
@@ -1484,7 +1494,13 @@ private fun SavedAppPreviewPage(
                         onRequestAutoFix(issue)
                     }
                 ) {
-                    Text(if (autoFixState?.isFixing == true) "Fixing..." else "Fix now")
+                    Text(
+                        if (autoFixState?.isFixing == true) {
+                            stringResource(R.string.apps_preview_runtime_issue_fixing)
+                        } else {
+                            stringResource(R.string.apps_preview_runtime_issue_fix_now)
+                        }
+                    )
                 }
             },
             dismissButton = {
@@ -1495,7 +1511,7 @@ private fun SavedAppPreviewPage(
                         }
                     }
                 ) {
-                    Text("Later")
+                    Text(stringResource(R.string.apps_preview_runtime_issue_later))
                 }
             }
         )

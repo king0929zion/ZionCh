@@ -15,7 +15,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -210,7 +210,7 @@ fun AppHtmlWebView(
 
     Box(modifier = containerModifier) {
         AndroidView(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxSize(),
             factory = { context ->
                 WebView(context).apply {
                     if (transparentBackground) {
@@ -233,10 +233,10 @@ fun AppHtmlWebView(
                         }
                     settings.mediaPlaybackRequiresUserGesture = false
                     settings.useWideViewPort = true
-                    settings.loadWithOverviewMode = true
+                    settings.loadWithOverviewMode = false
                     settings.javaScriptCanOpenWindowsAutomatically = false
-                    settings.setSupportZoom(true)
-                    settings.builtInZoomControls = true
+                    settings.setSupportZoom(false)
+                    settings.builtInZoomControls = false
                     settings.displayZoomControls = false
                     settings.cacheMode = WebSettings.LOAD_DEFAULT
                     settings.textZoom = 100

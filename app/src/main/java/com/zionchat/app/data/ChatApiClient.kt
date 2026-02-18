@@ -376,7 +376,7 @@ class ChatApiClient {
                 type == "gemini-cli" -> runCatching { listGeminiCliModels(provider, extraHeaders) }
                 else ->
                     runCatching {
-                        val url = provider.apiUrl.trimEnd('/') + "/models"
+                        val url = normalizeProviderApiUrl(provider) + "/models"
                         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
                         val requestBuilder =
                             Request.Builder()
@@ -571,7 +571,7 @@ class ChatApiClient {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             runCatching {
-                val url = provider.apiUrl.trimEnd('/') + "/chat/completions"
+                val url = normalizeProviderApiUrl(provider) + "/chat/completions"
                 val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
                 val body = gson.toJson(
                     mapOf(
@@ -636,7 +636,7 @@ class ChatApiClient {
         extraHeaders: List<HttpHeader>,
         reasoningEffort: String? = null
     ): Flow<ChatStreamDelta> = flow {
-        val url = provider.apiUrl.trimEnd('/') + "/chat/completions"
+        val url = normalizeProviderApiUrl(provider) + "/chat/completions"
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
         val payload =
             linkedMapOf<String, Any>(
@@ -1029,7 +1029,7 @@ class ChatApiClient {
         }
 
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
-        val url = provider.apiUrl.trimEnd('/') + "/v1internal:streamGenerateContent?alt=sse"
+        val url = normalizeProviderApiUrl(provider) + "/v1internal:streamGenerateContent?alt=sse"
 
         val systemText =
             messages.filter { it.role == "system" || it.role == "developer" }
@@ -1153,7 +1153,7 @@ class ChatApiClient {
     }
 
     private fun listGeminiCliModels(provider: ProviderConfig, extraHeaders: List<HttpHeader>): List<String> {
-        val url = provider.apiUrl.trimEnd('/') + "/v1internal:fetchAvailableModels"
+        val url = normalizeProviderApiUrl(provider) + "/v1internal:fetchAvailableModels"
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
         val requestBuilder =
             Request.Builder()
@@ -1190,7 +1190,7 @@ class ChatApiClient {
     }
 
     private fun listGrok2ApiModels(provider: ProviderConfig, extraHeaders: List<HttpHeader>): List<String> {
-        val url = provider.apiUrl.trimEnd('/') + "/models"
+        val url = normalizeProviderApiUrl(provider) + "/models"
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
         val requestBuilder =
             Request.Builder()
@@ -1232,7 +1232,7 @@ class ChatApiClient {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             runCatching {
-                val url = provider.apiUrl.trimEnd('/') + "/images/generations"
+                val url = normalizeProviderApiUrl(provider) + "/images/generations"
                 val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
                 val body = gson.toJson(
                     mapOf(
@@ -1347,8 +1347,20 @@ class ChatApiClient {
         if (provider.presetId?.trim()?.equals("grok2api", ignoreCase = true) == true) return true
         if (provider.presetId?.trim()?.equals("grok", ignoreCase = true) == true) return true
         if (provider.apiUrl.contains("grok2api", ignoreCase = true)) return true
-        if (provider.apiUrl.contains("api.x.ai", ignoreCase = true)) return true
         return false
+    }
+
+    private fun normalizeProviderApiUrl(provider: ProviderConfig): String {
+        var base = provider.apiUrl.trim().trimEnd('/')
+        if (isGrok2Api(provider)) {
+            if (base.contains("api.x.ai", ignoreCase = true)) {
+                base = "http://localhost:8000/v1"
+            }
+            if (base.contains("127.0.0.1", ignoreCase = true)) {
+                base = base.replace("127.0.0.1", "localhost", ignoreCase = true)
+            }
+        }
+        return base
     }
 
     private fun normalizeReasoningEffort(value: String?): String? {

@@ -15,6 +15,5 @@ fun ProviderConfig.isGrok2ApiProvider(): Boolean {
     if (presetId?.trim()?.equals("grok2api", ignoreCase = true) == true) return true
     if (presetId?.trim()?.equals("grok", ignoreCase = true) == true) return true
     if (apiUrl.contains("grok2api", ignoreCase = true)) return true
-    if (apiUrl.contains("api.x.ai", ignoreCase = true)) return true
     return false
 }
