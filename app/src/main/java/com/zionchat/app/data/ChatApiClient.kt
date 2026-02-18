@@ -1717,6 +1717,17 @@ class ChatApiClient {
         if (provider.presetId?.trim()?.equals("grok2api", ignoreCase = true) == true) return true
         if (provider.presetId?.trim()?.equals("grok", ignoreCase = true) == true) return true
         if (provider.apiUrl.contains("grok2api", ignoreCase = true)) return true
+        val lowerName = provider.name.trim().lowercase()
+        val lowerPreset = provider.presetId?.trim()?.lowercase().orEmpty()
+        val lowerUrl = provider.apiUrl.trim().lowercase()
+        val localGateway =
+            lowerUrl.contains("localhost") ||
+                lowerUrl.contains("127.0.0.1") ||
+                lowerUrl.contains("10.0.2.2") ||
+                lowerUrl.contains("host.docker.internal")
+        if (localGateway && (lowerName.contains("grok") || lowerName.contains("xai"))) return true
+        if (localGateway && (lowerPreset == "xai" || lowerPreset == "grok2api" || lowerPreset == "grok")) return true
+        if (lowerUrl.contains("api.x.ai") && (lowerName.contains("grok") || lowerName.contains("xai"))) return true
         return false
     }
 
