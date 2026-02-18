@@ -37,12 +37,18 @@ class ChatApiClient {
             .readTimeout(35, TimeUnit.SECONDS)
             .callTimeout(45, TimeUnit.SECONDS)
             .build()
+    private val grokAdminClient: OkHttpClient =
+        client.newBuilder()
+            .readTimeout(12, TimeUnit.SECONDS)
+            .callTimeout(20, TimeUnit.SECONDS)
+            .build()
     private val gson = Gson()
     private val jsonMediaType = "application/json".toMediaType()
     private val strictJsonMediaType = "application/json".toMediaType()
     private val markdownImageRegex = Regex("!\\[[^\\]]*\\]\\(([^)]+)\\)")
     private val dataUrlRegex = Regex("^data:([^;]+);base64,(.+)$", RegexOption.IGNORE_CASE)
     private val codexModelCache = ConcurrentHashMap<String, CodexModelMeta>()
+    private val grokTokenSyncCache = ConcurrentHashMap<String, Long>()
 
     @Suppress("UNUSED_PARAMETER")
     private fun buildEffectiveHeaders(
@@ -95,6 +101,154 @@ class ChatApiClient {
         if (hasHeader(effectiveHeaders, "authorization")) return
         val token = providerBearerToken(provider) ?: return
         requestBuilder.header("Authorization", "Bearer $token")
+    }
+
+    private fun findHeaderValue(headers: List<HttpHeader>, key: String): String? {
+        val normalized = key.trim().lowercase()
+        return headers
+            .firstOrNull { it.key.trim().lowercase() == normalized }
+            ?.value
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun buildGrokAdminAppKeyCandidates(
+        provider: ProviderConfig,
+        effectiveHeaders: List<HttpHeader>
+    ): List<String> {
+        val candidates = LinkedHashSet<String>()
+        val keyNames = listOf("x-grok-app-key", "x-app-key", "x-admin-key", "x-grok2api-app-key")
+
+        keyNames.forEach { key ->
+            findHeaderValue(effectiveHeaders, key)?.let { candidates += normalizeBearerToken(it) }
+            findHeaderValue(provider.headers, key)?.let { candidates += normalizeBearerToken(it) }
+        }
+
+        candidates += GROK2API_DEFAULT_APP_KEY
+        providerBearerToken(provider)?.let { raw ->
+            val normalized = normalizeBearerToken(raw)
+            if (normalized.isNotBlank() && !normalized.equals(GROK2API_DEFAULT_APP_KEY, ignoreCase = true)) {
+                candidates += normalized
+            }
+        }
+
+        return candidates.filter { it.isNotBlank() }
+    }
+
+    private fun isLocalGrokGatewayBase(baseUrl: String): Boolean {
+        val lower = baseUrl.trim().lowercase()
+        return lower.startsWith("http://") &&
+            (
+                lower.contains("localhost") ||
+                    lower.contains("127.0.0.1") ||
+                    lower.contains("10.0.2.2") ||
+                    lower.contains("host.docker.internal")
+            )
+    }
+
+    private fun grokGatewayPriority(baseUrl: String): Int {
+        val lower = baseUrl.trim().lowercase()
+        return when {
+            lower.contains("host.docker.internal") -> 0
+            lower.contains("10.0.2.2") -> 1
+            lower.contains("127.0.0.1") -> 2
+            lower.contains("localhost") -> 3
+            else -> 10
+        }
+    }
+
+    private fun toGrokAdminEndpoint(baseUrl: String, path: String): String {
+        val normalized = baseUrl.trim().trimEnd('/')
+        val root = normalized.replace(Regex("(?i)/v1$"), "")
+        return "$root/v1/admin/$path"
+    }
+
+    private fun sha256Short(raw: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }.take(16)
+    }
+
+    private fun shouldSkipGrokTokenSync(cacheKey: String): Boolean {
+        val now = System.currentTimeMillis()
+        val last = grokTokenSyncCache[cacheKey] ?: return false
+        return now - last < GROK_TOKEN_SYNC_INTERVAL_MS
+    }
+
+    private fun markGrokTokenSync(cacheKey: String) {
+        grokTokenSyncCache[cacheKey] = System.currentTimeMillis()
+    }
+
+    private fun postGrokAdminJson(url: String, appKey: String, payload: Any): Pair<Int, String> {
+        val body = gson.toJson(payload)
+        val request =
+            Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer ${normalizeBearerToken(appKey)}")
+                .header("Content-Type", "application/json")
+                .post(body.toRequestBody(jsonMediaType))
+                .build()
+        return grokAdminClient.newCall(request).execute().use { response ->
+            response.code to response.body?.string().orEmpty()
+        }
+    }
+
+    private fun trySyncGrokTokenOnGateway(
+        baseUrl: String,
+        token: String,
+        appKeyCandidates: List<String>
+    ): Boolean {
+        if (appKeyCandidates.isEmpty()) return false
+        val upsertUrl = toGrokAdminEndpoint(baseUrl, "tokens")
+        val refreshUrl = toGrokAdminEndpoint(baseUrl, "tokens/refresh")
+        val upsertPayload =
+            mapOf(
+                "ssoBasic" to listOf(mapOf("token" to token)),
+                "ssoSuper" to listOf(mapOf("token" to token))
+            )
+        val refreshPayload = mapOf("token" to token)
+
+        appKeyCandidates.forEach { appKey ->
+            runCatching {
+                val (statusCode, _) = postGrokAdminJson(upsertUrl, appKey, upsertPayload)
+                if (statusCode in 200..299) {
+                    runCatching { postGrokAdminJson(refreshUrl, appKey, refreshPayload) }
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun ensureGrokGatewayTokenSynced(
+        provider: ProviderConfig,
+        effectiveHeaders: List<HttpHeader>,
+        baseCandidates: List<String>
+    ) {
+        if (!isGrok2Api(provider)) return
+        val rawToken = providerBearerToken(provider) ?: return
+        if (rawToken.equals(GROK2API_DEFAULT_APP_KEY, ignoreCase = true)) return
+        val normalizedToken = rawToken.removePrefix("sso=").trim().takeIf { it.isNotBlank() } ?: return
+        val localBases = baseCandidates.filter { isLocalGrokGatewayBase(it) }.distinct()
+        if (localBases.isEmpty()) return
+
+        val cacheKey =
+            buildString {
+                append(provider.id.trim())
+                append('|')
+                append(sha256Short(normalizedToken))
+                append('|')
+                append(localBases.joinToString(","))
+            }
+        if (shouldSkipGrokTokenSync(cacheKey)) return
+
+        val appKeyCandidates = buildGrokAdminAppKeyCandidates(provider, effectiveHeaders)
+        localBases.forEach { base ->
+            if (trySyncGrokTokenOnGateway(base, normalizedToken, appKeyCandidates)) {
+                markGrokTokenSync(cacheKey)
+                return
+            }
+        }
+        markGrokTokenSync(cacheKey)
     }
 
     suspend fun webSearch(query: String): Result<String> {
@@ -637,6 +791,7 @@ class ChatApiClient {
                 }
                 val body = gson.toJson(payload)
                 val baseCandidates = providerApiBaseCandidates(provider)
+                ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
                 val attemptErrors = mutableListOf<String>()
                 var lastError: Throwable? = null
                 for ((index, baseUrl) in baseCandidates.withIndex()) {
@@ -733,6 +888,7 @@ class ChatApiClient {
         }
         val body = gson.toJson(payload)
         val baseCandidates = providerApiBaseCandidates(provider)
+        ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
         val attemptErrors = mutableListOf<String>()
         var lastError: Throwable? = null
 
@@ -1681,6 +1837,8 @@ class ChatApiClient {
     }
 
     companion object {
+        private const val GROK2API_DEFAULT_APP_KEY = "grok2api"
+        private const val GROK_TOKEN_SYNC_INTERVAL_MS = 2 * 60 * 1000L
         private const val CODEX_USER_AGENT = "codex_cli_rs/0.50.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464"
         private const val CODEX_CLIENT_VERSION = "0.50.0"
         private const val ANTIGRAVITY_USER_AGENT = "antigravity/1.104.0 darwin/arm64"
@@ -1793,10 +1951,10 @@ class ChatApiClient {
 
         val fallbackGateways =
             listOf(
+                "http://host.docker.internal:8000/v1",
                 "http://10.0.2.2:8000/v1",
                 "http://127.0.0.1:8000/v1",
-                "http://localhost:8000/v1",
-                "http://host.docker.internal:8000/v1"
+                "http://localhost:8000/v1"
             )
 
         val candidates = LinkedHashSet<String>()
@@ -1825,10 +1983,16 @@ class ChatApiClient {
         }
         fallbackGateways.forEach { addGrokBaseCandidate(candidates, it) }
 
-        return candidates
+        val normalizedCandidates =
+            candidates
             .map { it.trim().trimEnd('/') }
             .filter { it.isNotBlank() }
             .distinct()
+
+        if (isLocalGrokGatewayBase(raw)) {
+            return normalizedCandidates.sortedWith(compareBy<String> { grokGatewayPriority(it) }.thenBy { it })
+        }
+        return normalizedCandidates
     }
 
     private fun addGrokBaseCandidate(target: LinkedHashSet<String>, rawValue: String) {
