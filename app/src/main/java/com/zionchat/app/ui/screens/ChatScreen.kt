@@ -6086,13 +6086,15 @@ private fun parseAppDevToolSpec(arguments: Map<String, Any?>): AppDevToolSpec? {
             else -> "create"
         }
     if (mode == "create") {
-        val hasEditHints =
+        val hasExplicitTarget = targetAppId.isNotBlank() || targetAppName.isNotBlank()
+        val hasStrongEditIntent =
             editRequest.isNotBlank() ||
-                targetAppId.isNotBlank() ||
-                targetAppName.isNotBlank() ||
-                Regex("(?i)\\b(edit|update|revise|modify|refactor|patch|fix|debug)\\b").containsMatchIn(cleanedDescription) ||
-                Regex("(编辑|修改|更新|优化|重构|修复)").containsMatchIn(cleanedDescription)
-        if (hasEditHints) mode = "edit"
+                Regex(
+                    "(?i)\\b(edit|update|revise|modify|refactor|patch)\\s+(existing|current|saved|previous|last)\\b"
+                ).containsMatchIn(cleanedDescription) ||
+                Regex("(编辑|修改|更新|重构)(当前|已有|现有|上一个|最近|这个)应用").containsMatchIn(cleanedDescription) ||
+                Regex("(继续|接着)(编辑|修改|更新)").containsMatchIn(cleanedDescription)
+        if (hasExplicitTarget || hasStrongEditIntent) mode = "edit"
     }
 
     val features =
@@ -6321,6 +6323,32 @@ private fun resolveExistingSavedApp(
         val lower = keyword.lowercase()
         val byContain = savedApps.filter { it.name.lowercase().contains(lower) }
         if (byContain.size == 1) return byContain.first()
+    }
+
+    val normalizedCandidates =
+        candidates.map { value ->
+            value
+                .lowercase()
+                .replace(Regex("[\\s\\-_/\\\\|]+"), "")
+                .trim()
+        }.filter { it.isNotBlank() }
+    if (normalizedCandidates.isNotEmpty()) {
+        savedApps.firstOrNull { app ->
+            val normalizedName =
+                app.name
+                    .lowercase()
+                    .replace(Regex("[\\s\\-_/\\\\|]+"), "")
+                    .trim()
+            normalizedCandidates.any { candidate ->
+                normalizedName == candidate ||
+                    normalizedName.contains(candidate) ||
+                    candidate.contains(normalizedName)
+            }
+        }?.let { return it }
+    }
+
+    if (spec.targetAppId.isNullOrBlank() && spec.targetAppName.isNullOrBlank()) {
+        savedApps.maxByOrNull { it.updatedAt }?.let { return it }
     }
 
     return if (savedApps.size == 1) savedApps.first() else null

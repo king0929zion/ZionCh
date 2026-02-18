@@ -602,12 +602,17 @@ class ChatApiClient {
         return withContext(Dispatchers.IO) {
             runCatching {
                 val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
-                val body = gson.toJson(
-                    mapOf(
+                val payload =
+                    linkedMapOf<String, Any>(
                         "model" to modelId,
                         "messages" to toOpenAIChatMessages(provider, messages)
                     )
-                )
+                if (isQwenCode(provider)) {
+                    val qwenTools = buildQwenBridgeTools(messages)
+                    payload["tools"] = qwenTools
+                    payload["tool_choice"] = if (isNoopQwenToolList(qwenTools)) "none" else "auto"
+                }
+                val body = gson.toJson(payload)
                 val baseCandidates = providerApiBaseCandidates(provider)
                 var lastError: Throwable? = null
                 for ((index, baseUrl) in baseCandidates.withIndex()) {
@@ -639,7 +644,9 @@ class ChatApiClient {
                             }
 
                             val parsed = gson.fromJson(raw, OpenAIChatCompletionsResponse::class.java)
-                            return@runCatching parsed.choices?.firstOrNull()?.message?.content?.trim().orEmpty()
+                            val text = parsed.choices?.firstOrNull()?.message?.content?.trim().orEmpty()
+                            val toolCallTags = extractToolCallTagsFromOpenAIResponse(raw)
+                            return@runCatching mergeTextAndToolCallTags(text, toolCallTags)
                         }
                     } catch (t: Throwable) {
                         lastError = t
@@ -687,10 +694,9 @@ class ChatApiClient {
                 "stream" to true
             )
         if (isQwenCode(provider)) {
-            val tools = payload["tools"] as? List<*>
-            if (tools.isNullOrEmpty()) {
-                payload["tools"] = listOf(buildQwenSafetyNoopTool())
-            }
+            val qwenTools = buildQwenBridgeTools(messages)
+            payload["tools"] = qwenTools
+            payload["tool_choice"] = if (isNoopQwenToolList(qwenTools)) "none" else "auto"
             payload["stream_options"] = mapOf("include_usage" to true)
         }
         if (isGrok2Api(provider)) {
@@ -735,20 +741,25 @@ class ChatApiClient {
                         val raw = response.body?.string().orEmpty()
                         val parsed = runCatching { gson.fromJson(raw, OpenAIChatCompletionsResponse::class.java) }.getOrNull()
                         val text = parsed?.choices?.firstOrNull()?.message?.content?.trim().orEmpty()
-                        if (text.isNotEmpty()) {
-                            emit(ChatStreamDelta(content = text))
+                        val toolCallTags = extractToolCallTagsFromOpenAIResponse(raw)
+                        val mergedText = mergeTextAndToolCallTags(text, toolCallTags)
+                        if (mergedText.isNotEmpty()) {
+                            emit(ChatStreamDelta(content = mergedText))
                         }
                         return@flow
                     }
 
                     val source = response.body?.source()
                         ?: throw IllegalStateException("Response body is null")
+                    val nativeToolCallStates = linkedMapOf<Int, NativeToolCallState>()
 
                     while (!source.exhausted()) {
                         val line = source.readUtf8Line() ?: continue
                         if (line.startsWith("data:")) {
                             val data = line.removePrefix("data:").trimStart()
                             if (data == "[DONE]") break
+
+                            val finishReason = collectNativeToolCallsFromChunk(data, nativeToolCallStates)
 
                             try {
                                 val chunk = gson.fromJson(data, OpenAIStreamChunk::class.java)
@@ -761,6 +772,18 @@ class ChatApiClient {
                             } catch (_: Exception) {
                                 parseOpenAIStreamDeltaLenient(data)?.let { emit(it) }
                             }
+
+                            if ((finishReason == "tool_calls" || finishReason == "stop") && nativeToolCallStates.isNotEmpty()) {
+                                consumeNativeToolCallTags(nativeToolCallStates)?.let { tags ->
+                                    emit(ChatStreamDelta(content = tags))
+                                }
+                            }
+                        }
+                    }
+
+                    if (nativeToolCallStates.isNotEmpty()) {
+                        consumeNativeToolCallTags(nativeToolCallStates)?.let { tags ->
+                            emit(ChatStreamDelta(content = tags))
                         }
                     }
                 }
@@ -808,6 +831,239 @@ class ChatApiClient {
 
         if (content.isNullOrEmpty() && reasoning.isNullOrEmpty()) return null
         return ChatStreamDelta(content = content, reasoning = reasoning)
+    }
+
+    private data class NativeToolCallState(
+        var id: String = "",
+        var name: String = "",
+        val arguments: StringBuilder = StringBuilder()
+    )
+
+    private fun mergeTextAndToolCallTags(text: String, toolCallTags: String): String {
+        val cleanText = text.trim()
+        val cleanTags = toolCallTags.trim()
+        if (cleanText.isBlank()) return cleanTags
+        if (cleanTags.isBlank()) return cleanText
+        return "$cleanText\n\n$cleanTags"
+    }
+
+    private fun collectNativeToolCallsFromChunk(
+        data: String,
+        states: MutableMap<Int, NativeToolCallState>
+    ): String? {
+        val root = runCatching { JsonParser.parseString(data).asJsonObject }.getOrNull() ?: return null
+        val choices = runCatching { root.getAsJsonArray("choices") }.getOrNull() ?: return null
+        if (choices.size() == 0) return null
+        val firstChoice = runCatching { choices[0].asJsonObject }.getOrNull() ?: return null
+        val finishReason =
+            firstChoice.get("finish_reason")
+                ?.takeIf { it.isJsonPrimitive }
+                ?.asString
+                ?.trim()
+                ?.lowercase()
+
+        val delta = runCatching { firstChoice.getAsJsonObject("delta") }.getOrNull() ?: return finishReason
+        val toolCalls = runCatching { delta.getAsJsonArray("tool_calls") }.getOrNull() ?: return finishReason
+        toolCalls.forEachIndexed { fallbackIndex, element ->
+            val item = runCatching { element.asJsonObject }.getOrNull() ?: return@forEachIndexed
+            val index =
+                runCatching { item.get("index")?.takeIf { it.isJsonPrimitive }?.asInt }.getOrNull()
+                    ?: fallbackIndex
+            val state = states.getOrPut(index) { NativeToolCallState() }
+            item.get("id")
+                ?.takeIf { it.isJsonPrimitive }
+                ?.asString
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { state.id = it }
+            val function = runCatching { item.getAsJsonObject("function") }.getOrNull() ?: return@forEachIndexed
+            function.get("name")
+                ?.takeIf { it.isJsonPrimitive }
+                ?.asString
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { namePart ->
+                    state.name =
+                        when {
+                            state.name.isBlank() -> namePart
+                            state.name.endsWith(namePart) -> state.name
+                            else -> state.name + namePart
+                        }
+                }
+            function.get("arguments")
+                ?.takeIf { it.isJsonPrimitive }
+                ?.asString
+                ?.let { part ->
+                    if (part.isNotEmpty()) state.arguments.append(part)
+                }
+        }
+        return finishReason
+    }
+
+    private fun extractToolCallTagsFromOpenAIResponse(raw: String): String {
+        val root = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return ""
+        val choices = runCatching { root.getAsJsonArray("choices") }.getOrNull() ?: return ""
+        if (choices.size() == 0) return ""
+        val firstChoice = runCatching { choices[0].asJsonObject }.getOrNull() ?: return ""
+        val message = runCatching { firstChoice.getAsJsonObject("message") }.getOrNull() ?: return ""
+        val toolCalls = runCatching { message.getAsJsonArray("tool_calls") }.getOrNull() ?: return ""
+        if (toolCalls.size() == 0) return ""
+
+        val states = linkedMapOf<Int, NativeToolCallState>()
+        toolCalls.forEachIndexed { index, element ->
+            val item = runCatching { element.asJsonObject }.getOrNull() ?: return@forEachIndexed
+            val state = NativeToolCallState()
+            state.id =
+                item.get("id")
+                    ?.takeIf { it.isJsonPrimitive }
+                    ?.asString
+                    ?.trim()
+                    .orEmpty()
+            val function = runCatching { item.getAsJsonObject("function") }.getOrNull()
+            state.name =
+                function?.get("name")
+                    ?.takeIf { it.isJsonPrimitive }
+                    ?.asString
+                    ?.trim()
+                    .orEmpty()
+            val argsValue = function?.get("arguments")
+            when {
+                argsValue == null -> Unit
+                argsValue.isJsonPrimitive -> state.arguments.append(argsValue.asString)
+                argsValue.isJsonObject || argsValue.isJsonArray -> state.arguments.append(argsValue.toString())
+            }
+            states[index] = state
+        }
+
+        return consumeNativeToolCallTags(states).orEmpty()
+    }
+
+    private fun consumeNativeToolCallTags(states: MutableMap<Int, NativeToolCallState>): String? {
+        if (states.isEmpty()) return null
+        val tags =
+            states.toSortedMap()
+                .values
+                .mapNotNull { buildToolCallTagFromNativeState(it) }
+                .filter { it.isNotBlank() }
+        states.clear()
+        if (tags.isEmpty()) return null
+        return tags.joinToString("\n")
+    }
+
+    private fun buildToolCallTagFromNativeState(state: NativeToolCallState): String? {
+        val canonicalPayload = toCanonicalToolCallPayload(state) ?: return null
+        return "<tool_call>${gson.toJson(canonicalPayload)}</tool_call>"
+    }
+
+    private fun toCanonicalToolCallPayload(state: NativeToolCallState): Map<String, Any?>? {
+        val functionName = state.name.trim()
+        if (functionName.isBlank()) return null
+        val argsObject = parseArgumentsJsonObject(state.arguments.toString())
+
+        if (functionName.equals("app_developer", ignoreCase = true)) {
+            return mapOf(
+                "serverId" to "builtin_app_developer",
+                "toolName" to "app_developer",
+                "arguments" to argsObject
+            )
+        }
+
+        val explicitToolName =
+            extractStringField(
+                argsObject,
+                "toolName",
+                "tool_name",
+                "tool",
+                "name"
+            )
+
+        val serverId =
+            extractStringField(
+                argsObject,
+                "serverId",
+                "server_id",
+                "server",
+                "mcpId",
+                "mcp_id",
+                "id"
+            ).orEmpty()
+
+        val rawArgumentsValue =
+            listOf("arguments", "args", "input", "params", "parameters")
+                .asSequence()
+                .mapNotNull { key -> argsObject[key] }
+                .firstOrNull()
+        val normalizedArguments =
+            when {
+                rawArgumentsValue == null -> argsObject
+                rawArgumentsValue is Map<*, *> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    rawArgumentsValue as Map<String, Any?>
+                }
+                rawArgumentsValue is String -> parseArgumentsJsonObject(rawArgumentsValue)
+                else -> argsObject
+            }
+
+        val toolName =
+            when {
+                functionName.equals("mcp_call", ignoreCase = true) -> explicitToolName
+                functionName.equals("tool_call", ignoreCase = true) -> explicitToolName
+                explicitToolName.isNullOrBlank() -> functionName
+                else -> explicitToolName
+            }?.trim().orEmpty()
+        if (toolName.isBlank()) return null
+
+        return mapOf(
+            "serverId" to serverId,
+            "toolName" to toolName,
+            "arguments" to normalizedArguments
+        )
+    }
+
+    private fun parseArgumentsJsonObject(raw: String): Map<String, Any?> {
+        val normalized = raw.trim()
+        if (normalized.isBlank()) return emptyMap()
+        val firstPass = runCatching { JsonParser.parseString(normalized) }.getOrNull() ?: return mapOf("input" to normalized)
+        val resolved =
+            when {
+                firstPass.isJsonObject -> firstPass.asJsonObject
+                firstPass.isJsonPrimitive && firstPass.asJsonPrimitive.isString ->
+                    runCatching { JsonParser.parseString(firstPass.asString).asJsonObject }.getOrNull()
+                else -> null
+            } ?: return mapOf("input" to normalized)
+
+        return resolved.entrySet().associate { entry ->
+            entry.key to entry.value.toKotlinValue()
+        }
+    }
+
+    private fun extractStringField(
+        map: Map<String, Any?>,
+        vararg keys: String
+    ): String? {
+        return keys.asSequence()
+            .mapNotNull { key ->
+                map.entries.firstOrNull { entry -> entry.key.equals(key, ignoreCase = true) }?.value
+            }
+            .mapNotNull { value -> value?.toString()?.trim() }
+            .firstOrNull { value -> value.isNotBlank() }
+    }
+
+    private fun com.google.gson.JsonElement.toKotlinValue(): Any? {
+        return when {
+            isJsonNull -> null
+            isJsonPrimitive -> {
+                val primitive = asJsonPrimitive
+                when {
+                    primitive.isBoolean -> primitive.asBoolean
+                    primitive.isNumber -> primitive.asNumber
+                    else -> primitive.asString
+                }
+            }
+            isJsonArray -> asJsonArray.map { it.toKotlinValue() }
+            isJsonObject -> asJsonObject.entrySet().associate { it.key to it.value.toKotlinValue() }
+            else -> null
+        }
     }
 
     private fun codexResponsesStream(
@@ -1640,6 +1896,74 @@ class ChatApiClient {
                 )
             )
         )
+    }
+
+    private fun buildQwenBridgeTools(messages: List<Message>): List<Map<String, Any>> {
+        val hasToolIntent =
+            messages
+                .takeLast(8)
+                .asSequence()
+                .map { it.content.lowercase() }
+                .any { content ->
+                    content.contains("mcp_call") ||
+                        content.contains("tool_call") ||
+                        content.contains("app_developer") ||
+                        content.contains("mcp tools") ||
+                        content.contains("应用开发")
+                }
+
+        if (!hasToolIntent) {
+            return listOf(buildQwenSafetyNoopTool())
+        }
+
+        val mcpBridgeTool =
+            mapOf(
+                "type" to "function",
+                "function" to mapOf(
+                    "name" to "mcp_call",
+                    "description" to "Call an MCP tool by serverId, toolName and arguments.",
+                    "parameters" to mapOf(
+                        "type" to "object",
+                        "properties" to mapOf(
+                            "serverId" to mapOf("type" to "string", "description" to "MCP server id."),
+                            "toolName" to mapOf("type" to "string", "description" to "Exact MCP tool name."),
+                            "arguments" to mapOf(
+                                "type" to "object",
+                                "description" to "Arguments object for the selected tool.",
+                                "additionalProperties" to true
+                            )
+                        ),
+                        "required" to listOf("toolName", "arguments")
+                    )
+                )
+            )
+
+        val appDeveloperTool =
+            mapOf(
+                "type" to "function",
+                "function" to mapOf(
+                    "name" to "app_developer",
+                    "description" to "Generate or edit a single-file HTML app.",
+                    "parameters" to mapOf(
+                        "type" to "object",
+                        "properties" to mapOf(
+                            "name" to mapOf("type" to "string", "description" to "App name."),
+                            "description" to mapOf("type" to "string", "description" to "Detailed app requirement."),
+                            "app_icon" to mapOf("type" to "string", "description" to "Lucide icon name.")
+                        ),
+                        "required" to listOf("name", "description", "app_icon")
+                    )
+                )
+            )
+
+        return listOf(mcpBridgeTool, appDeveloperTool)
+    }
+
+    private fun isNoopQwenToolList(tools: List<Map<String, Any>>): Boolean {
+        if (tools.size != 1) return false
+        val function = tools.first()["function"] as? Map<*, *> ?: return false
+        val name = function["name"]?.toString()?.trim().orEmpty()
+        return name.equals("do_not_call_me", ignoreCase = true)
     }
 
     private fun generateAntigravityProjectId(): String {

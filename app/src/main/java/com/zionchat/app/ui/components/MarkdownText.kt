@@ -26,6 +26,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
@@ -339,6 +340,7 @@ private fun MarkdownCodeBlock(
         }
     val normalizedCode = remember(code) { code.trimEnd().ifBlank { " " } }
     val languageLabel = remember(language) { formatCodeBlockLanguage(language) }
+    val highlightedCode = remember(normalizedCode, language) { buildCodeHighlightedAnnotatedString(normalizedCode, language) }
     val shape = RoundedCornerShape(12.dp)
 
     Column(
@@ -399,15 +401,17 @@ private fun MarkdownCodeBlock(
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            Text(
-                text = normalizedCode,
-                style = textStyle.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 14.sp,
-                    lineHeight = 22.sp,
-                    color = Color(0xFF2E2E2E)
+            SelectionContainer {
+                Text(
+                    text = highlightedCode,
+                    style = textStyle.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp,
+                        color = Color(0xFF262626)
+                    )
                 )
-            )
+            }
         }
     }
 }
@@ -629,13 +633,7 @@ private fun parseTableAligns(line: String): List<TextAlign> {
 }
 
 private fun formatCodeBlockLanguage(language: String?): String {
-    val raw =
-        language
-            ?.trim()
-            ?.split(Regex("\\s+"))
-            ?.firstOrNull()
-            ?.trim()
-            .orEmpty()
+    val raw = extractCodeLanguageToken(language)
     if (raw.isBlank()) return "Plain text"
     val normalized = raw.replace('_', '-').trim('-')
     if (normalized.isBlank()) return "Plain text"
@@ -648,6 +646,119 @@ private fun formatCodeBlockLanguage(language: String?): String {
             }
         }
         .ifBlank { "Plain text" }
+}
+
+private fun extractCodeLanguageToken(language: String?): String {
+    return language
+        ?.trim()
+        ?.split(Regex("\\s+"))
+        ?.firstOrNull()
+        ?.trim()
+        .orEmpty()
+}
+
+private data class CodeHighlightRange(
+    val start: Int,
+    val endExclusive: Int,
+    val style: SpanStyle
+)
+
+private fun buildCodeHighlightedAnnotatedString(
+    code: String,
+    language: String?
+): AnnotatedString {
+    if (code.isBlank()) return AnnotatedString(" ")
+
+    val token = extractCodeLanguageToken(language).lowercase()
+    val ranges = mutableListOf<CodeHighlightRange>()
+
+    val commentStyle = SpanStyle(color = Color(0xFF6B7280))
+    val stringStyle = SpanStyle(color = Color(0xFFC2410C))
+    val numberStyle = SpanStyle(color = Color(0xFFB45309))
+    val keywordStyle = SpanStyle(color = Color(0xFF0F766E), fontWeight = FontWeight.SemiBold)
+    val functionStyle = SpanStyle(color = Color(0xFFBE123C))
+
+    val commentPatterns = mutableListOf(
+        Regex("(?m)//.*$"),
+        Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL))
+    )
+    if (
+        token in setOf(
+            "py", "python", "sh", "bash", "shell", "yaml", "yml",
+            "toml", "ini", "makefile", "dockerfile", "rb", "ruby", "r"
+        )
+    ) {
+        commentPatterns += Regex("(?m)#.*$")
+    }
+    commentPatterns.forEach { pattern ->
+        addHighlightRanges(code, pattern, commentStyle, ranges)
+    }
+
+    addHighlightRanges(code, Regex("\"(?:\\\\.|[^\"\\\\])*\""), stringStyle, ranges)
+    addHighlightRanges(code, Regex("'(?:\\\\.|[^'\\\\])*'"), stringStyle, ranges)
+    addHighlightRanges(code, Regex("`(?:\\\\.|[^`\\\\])*`"), stringStyle, ranges)
+
+    val keywords = codeKeywordSet(token)
+    if (keywords.isNotEmpty()) {
+        val keywordPattern =
+            Regex("\\b(${keywords.joinToString("|") { Regex.escape(it) }})\\b", setOf(RegexOption.IGNORE_CASE))
+        addHighlightRanges(code, keywordPattern, keywordStyle, ranges)
+    }
+
+    addHighlightRanges(code, Regex("\\b\\d+(?:\\.\\d+)?\\b"), numberStyle, ranges)
+    addHighlightRanges(code, Regex("\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\()"), functionStyle, ranges)
+
+    val builder = AnnotatedString.Builder(code)
+    ranges
+        .sortedBy { it.start }
+        .forEach { range ->
+            builder.addStyle(range.style, range.start, range.endExclusive)
+        }
+    return builder.toAnnotatedString()
+}
+
+private fun codeKeywordSet(languageToken: String): Set<String> {
+    val common = setOf("if", "else", "for", "while", "return", "break", "continue", "switch", "case")
+    return when (languageToken) {
+        "kotlin", "kt" -> common + setOf("fun", "val", "var", "class", "object", "when", "in", "is", "null", "true", "false")
+        "java" -> common + setOf("public", "private", "protected", "class", "interface", "extends", "implements", "static", "void", "new", "null", "true", "false")
+        "javascript", "js", "typescript", "ts" -> common + setOf("function", "const", "let", "var", "class", "import", "export", "async", "await", "new", "null", "undefined", "true", "false")
+        "python", "py" -> common + setOf("def", "class", "import", "from", "as", "lambda", "try", "except", "finally", "None", "True", "False", "pass")
+        "go", "golang" -> common + setOf("func", "package", "import", "struct", "interface", "go", "defer", "range", "nil", "true", "false")
+        "rust", "rs" -> common + setOf("fn", "let", "mut", "struct", "enum", "impl", "trait", "match", "use", "pub", "crate", "Self", "self", "None", "Some")
+        "sql" -> setOf("select", "from", "where", "group", "by", "order", "limit", "join", "left", "right", "inner", "outer", "on", "insert", "into", "update", "delete", "create", "table", "alter", "drop")
+        "html", "xml" -> setOf("html", "head", "body", "div", "span", "script", "style", "meta", "link")
+        "css", "scss", "less" -> setOf("display", "position", "color", "background", "padding", "margin", "border", "flex", "grid", "width", "height")
+        "json" -> setOf("true", "false", "null")
+        "bash", "sh", "shell" -> setOf("if", "then", "else", "fi", "for", "in", "do", "done", "case", "esac", "function")
+        else -> common
+    }
+}
+
+private fun addHighlightRanges(
+    source: String,
+    pattern: Regex,
+    style: SpanStyle,
+    ranges: MutableList<CodeHighlightRange>
+) {
+    pattern.findAll(source).forEach { match ->
+        val start = match.range.first
+        val endExclusive = match.range.last + 1
+        if (start < 0 || endExclusive <= start || endExclusive > source.length) return@forEach
+        val intersects = ranges.any { existing -> rangesOverlap(start, endExclusive, existing.start, existing.endExclusive) }
+        if (!intersects) {
+            ranges += CodeHighlightRange(start = start, endExclusive = endExclusive, style = style)
+        }
+    }
+}
+
+private fun rangesOverlap(
+    startA: Int,
+    endA: Int,
+    startB: Int,
+    endB: Int
+): Boolean {
+    return startA < endB && startB < endA
 }
 
 private fun buildInlineAnnotatedString(parent: Node, linkColor: Color): AnnotatedString {
