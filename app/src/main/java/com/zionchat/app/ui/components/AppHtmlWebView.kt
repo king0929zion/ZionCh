@@ -20,10 +20,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -94,6 +96,7 @@ fun AppHtmlWebView(
     val runtimeIssueCallback by rememberUpdatedState(onRuntimeIssue)
     val pageCommitVisibleCallback by rememberUpdatedState(onPageCommitVisible)
     val pageFinishedCallback by rememberUpdatedState(onPageFinished)
+    var webViewGeneration by remember(contentSignature) { mutableIntStateOf(0) }
 
     val normalizedHtml = html.orEmpty()
     val normalizedUrl = url?.trim().orEmpty()
@@ -199,18 +202,23 @@ fun AppHtmlWebView(
                 }
 
                 override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
-                    val message =
-                        if (detail?.didCrash() == true) {
-                            "WebView render process crashed and preview was reset."
-                        } else {
-                            "WebView render process was reclaimed and preview was reset."
-                        }
-                    state.lastError = message
-                    runtimeIssueCallback?.invoke(message)
-                    view?.stopLoading()
-                    view?.loadUrl("about:blank")
-                    view?.removeAllViews()
-                    view?.destroy()
+                    val crashed = detail?.didCrash() == true
+                    val message = "WebView renderer restarted."
+                    state.isLoading = true
+                    state.loadingProgress = 0f
+                    state.currentUrl = null
+                    state.pageTitle = null
+                    state.lastError = if (crashed) message else null
+                    if (crashed) {
+                        runtimeIssueCallback?.invoke(message)
+                    }
+                    runCatching {
+                        view?.stopLoading()
+                        view?.loadUrl("about:blank")
+                        view?.removeAllViews()
+                        view?.destroy()
+                    }
+                    webViewGeneration += 1
                     return true
                 }
             }
@@ -224,87 +232,89 @@ fun AppHtmlWebView(
         }
 
     Box(modifier = containerModifier) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { context ->
-                WebView(context).apply {
-                    if (transparentBackground) {
-                        setBackgroundColor(AndroidColor.TRANSPARENT)
-                    } else {
-                        setBackgroundColor(backgroundColor.toArgb())
-                    }
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.databaseEnabled = true
-                    settings.allowFileAccess = false
-                    settings.allowContentAccess = false
-                    settings.allowFileAccessFromFileURLs = false
-                    settings.allowUniversalAccessFromFileURLs = false
-                    settings.mixedContentMode =
-                        if (allowMixedContent) {
-                            WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+        key(webViewGeneration) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    WebView(context).apply {
+                        if (transparentBackground) {
+                            setBackgroundColor(AndroidColor.TRANSPARENT)
                         } else {
-                            WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                            setBackgroundColor(backgroundColor.toArgb())
                         }
-                    settings.mediaPlaybackRequiresUserGesture = false
-                    settings.useWideViewPort = true
-                    settings.loadWithOverviewMode = false
-                    settings.javaScriptCanOpenWindowsAutomatically = false
-                    settings.setSupportZoom(false)
-                    settings.builtInZoomControls = false
-                    settings.displayZoomControls = false
-                    settings.cacheMode = WebSettings.LOAD_DEFAULT
-                    settings.textZoom = 100
-                    settings.loadsImagesAutomatically = true
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        settings.offscreenPreRaster = preRenderEnabled
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        settings.safeBrowsingEnabled = true
-                        setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
-                    }
-                    overScrollMode = WebView.OVER_SCROLL_IF_CONTENT_SCROLLS
-
-                    if (enableCookies) {
-                        CookieManager.getInstance().setAcceptCookie(true)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                            CookieManager.getInstance().setAcceptThirdPartyCookies(this, enableThirdPartyCookies)
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.databaseEnabled = true
+                        settings.allowFileAccess = false
+                        settings.allowContentAccess = false
+                        settings.allowFileAccessFromFileURLs = false
+                        settings.allowUniversalAccessFromFileURLs = false
+                        settings.mixedContentMode =
+                            if (allowMixedContent) {
+                                WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                            } else {
+                                WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                            }
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = false
+                        settings.javaScriptCanOpenWindowsAutomatically = false
+                        settings.setSupportZoom(false)
+                        settings.builtInZoomControls = false
+                        settings.displayZoomControls = false
+                        settings.cacheMode = WebSettings.LOAD_DEFAULT
+                        settings.textZoom = 100
+                        settings.loadsImagesAutomatically = true
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            settings.offscreenPreRaster = preRenderEnabled
                         }
-                    }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            settings.safeBrowsingEnabled = true
+                            setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+                        }
+                        overScrollMode = WebView.OVER_SCROLL_IF_CONTENT_SCROLLS
 
-                    setWebViewClient(webViewClient)
-                    setWebChromeClient(webChromeClient)
-                }
-            },
-            update = { webView ->
-                if (transparentBackground) {
-                    webView.setBackgroundColor(AndroidColor.TRANSPARENT)
-                } else {
-                    webView.setBackgroundColor(backgroundColor.toArgb())
-                }
-                if (webView.tag != contentSignature) {
-                    webView.tag = contentSignature
-                    if (normalizedUrl.isNotBlank()) {
-                        webView.loadUrl(normalizedUrl)
+                        if (enableCookies) {
+                            CookieManager.getInstance().setAcceptCookie(true)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, enableThirdPartyCookies)
+                            }
+                        }
+
+                        setWebViewClient(webViewClient)
+                        setWebChromeClient(webChromeClient)
+                    }
+                },
+                update = { webView ->
+                    if (transparentBackground) {
+                        webView.setBackgroundColor(AndroidColor.TRANSPARENT)
                     } else {
-                        webView.loadDataWithBaseURL(
-                            normalizedBaseUrl,
-                            normalizedHtml,
-                            "text/html",
-                            "utf-8",
-                            null
-                        )
+                        webView.setBackgroundColor(backgroundColor.toArgb())
                     }
+                    if (webView.tag != contentSignature) {
+                        webView.tag = contentSignature
+                        if (normalizedUrl.isNotBlank()) {
+                            webView.loadUrl(normalizedUrl)
+                        } else {
+                            webView.loadDataWithBaseURL(
+                                normalizedBaseUrl,
+                                normalizedHtml,
+                                "text/html",
+                                "utf-8",
+                                null
+                            )
+                        }
+                    }
+                },
+                onRelease = { webView ->
+                    webView.stopLoading()
+                    webView.loadUrl("about:blank")
+                    webView.clearHistory()
+                    webView.removeAllViews()
+                    webView.destroy()
                 }
-            },
-            onRelease = { webView ->
-                webView.stopLoading()
-                webView.loadUrl("about:blank")
-                webView.clearHistory()
-                webView.removeAllViews()
-                webView.destroy()
-            }
-        )
+            )
+        }
 
     }
 }
