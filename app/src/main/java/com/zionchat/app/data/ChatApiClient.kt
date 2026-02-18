@@ -46,6 +46,8 @@ class ChatApiClient {
     private val jsonMediaType = "application/json".toMediaType()
     private val strictJsonMediaType = "application/json".toMediaType()
     private val markdownImageRegex = Regex("!\\[[^\\]]*\\]\\(([^)]+)\\)")
+    private val htmlImageSrcRegex = Regex("(?i)<img[^>]+src=[\"']([^\"']+)[\"']")
+    private val httpUrlRegex = Regex("https?://[^\\s\"'<>]+", RegexOption.IGNORE_CASE)
     private val dataUrlRegex = Regex("^data:([^;]+);base64,(.+)$", RegexOption.IGNORE_CASE)
     private val codexModelCache = ConcurrentHashMap<String, CodexModelMeta>()
     private val grokTokenSyncCache = ConcurrentHashMap<String, Long>()
@@ -536,12 +538,71 @@ class ChatApiClient {
         return root.getObject("result")?.getObject("response")
     }
 
+    private fun isLikelyImageBase64(raw: String): Boolean {
+        val candidate = raw.trim()
+        if (candidate.length < 64) return false
+        if (candidate.startsWith("iVBORw0KGgo")) return true
+        if (candidate.startsWith("/9j/")) return true
+        if (candidate.startsWith("R0lGOD")) return true
+        return false
+    }
+
+    private fun normalizeCandidateImageUrl(raw: String): String? {
+        val value = raw.trim()
+            .trim('"', '\'', ',', ')', ']', '}')
+            .trim()
+        if (value.isBlank()) return null
+        if (value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true)) {
+            return value
+        }
+        if (value.startsWith("data:image/", ignoreCase = true)) {
+            return value
+        }
+        if (isLikelyImageBase64(value)) {
+            val mime = if (value.startsWith("/9j/")) "image/jpeg" else "image/png"
+            return "data:$mime;base64,$value"
+        }
+        if (value.startsWith("/") && value.contains("image", ignoreCase = true)) {
+            return "https://grok.com$value"
+        }
+        return null
+    }
+
+    private fun collectImageUrlsFromText(raw: String, sink: LinkedHashSet<String>) {
+        markdownImageRegex.findAll(raw).forEach { match ->
+            val url = match.groupValues.getOrNull(1).orEmpty()
+            normalizeCandidateImageUrl(url)?.let { sink += it }
+        }
+        htmlImageSrcRegex.findAll(raw).forEach { match ->
+            val url = match.groupValues.getOrNull(1).orEmpty()
+            normalizeCandidateImageUrl(url)?.let { sink += it }
+        }
+        httpUrlRegex.findAll(raw).forEach { match ->
+            val url = match.value
+            normalizeCandidateImageUrl(url)?.let { sink += it }
+        }
+    }
+
     private fun collectImageUrlsFromJsonElement(
         element: com.google.gson.JsonElement?,
         sink: LinkedHashSet<String>
     ) {
         when {
             element == null || element.isJsonNull -> return
+            element.isJsonPrimitive -> {
+                val primitive = element.asJsonPrimitive
+                if (!primitive.isString) return
+                val text = primitive.asString.trim()
+                if (text.isBlank()) return
+                normalizeCandidateImageUrl(text)?.let { sink += it }
+                collectImageUrlsFromText(text, sink)
+                if ((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]"))) {
+                    val nested = runCatching { JsonParser.parseString(text) }.getOrNull()
+                    if (nested != null) {
+                        collectImageUrlsFromJsonElement(nested, sink)
+                    }
+                }
+            }
             element.isJsonArray -> {
                 element.asJsonArray.forEach { item ->
                     collectImageUrlsFromJsonElement(item, sink)
@@ -551,23 +612,15 @@ class ChatApiClient {
                 element.asJsonObject.entrySet().forEach { entry ->
                     val key = entry.key.trim().lowercase()
                     val value = entry.value
-                    if (key == "generatedimageurls" || key == "imageurls") {
-                        when {
-                            value.isJsonArray -> {
-                                value.asJsonArray.forEach { item ->
-                                    val url = item.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
-                                    if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
-                                        sink += url
-                                    }
-                                }
-                            }
-                            value.isJsonPrimitive -> {
-                                val url = value.asString.trim()
-                                if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
-                                    sink += url
-                                }
-                            }
-                        }
+                    if (
+                        key == "generatedimageurls" ||
+                        key == "imageurls" ||
+                        key == "imageurl" ||
+                        key == "original" ||
+                        key == "src" ||
+                        key == "url"
+                    ) {
+                        collectImageUrlsFromJsonElement(value, sink)
                     }
                     collectImageUrlsFromJsonElement(value, sink)
                 }
@@ -577,17 +630,28 @@ class ChatApiClient {
 
     private fun extractGrokImageUrls(responseObject: com.google.gson.JsonObject): List<String> {
         val urls = linkedSetOf<String>()
+        collectImageUrlsFromJsonElement(responseObject, urls)
+
         responseObject.getObject("modelResponse")?.let { modelResponse ->
             collectImageUrlsFromJsonElement(modelResponse, urls)
+            modelResponse.getStringValue("message")?.let { message ->
+                collectImageUrlsFromText(message, urls)
+            }
+            runCatching { modelResponse.getAsJsonArray("cardAttachmentsJson") }.getOrNull()
+                ?.forEach { rawItem ->
+                    collectImageUrlsFromJsonElement(rawItem, urls)
+                }
         }
+
         responseObject.getObject("cardAttachment")
             ?.getStringValue("jsonData")
             ?.let { jsonData ->
                 val parsed = runCatching { JsonParser.parseString(jsonData).asJsonObject }.getOrNull()
                 val original = parsed?.getObject("image")?.getStringValue("original")
                 if (!original.isNullOrBlank()) {
-                    urls += original
+                    normalizeCandidateImageUrl(original)?.let { urls += it }
                 }
+                collectImageUrlsFromJsonElement(parsed, urls)
             }
         return urls.toList()
     }
@@ -675,6 +739,7 @@ class ChatApiClient {
         val payload = buildGrokReversePayload(enrichedPrompt, modelId, reasoningEffort = null)
         val request = buildGrokReverseRequest(provider, extraHeaders, payload)
         val imageUrls = linkedSetOf<String>()
+        val samples = mutableListOf<String>()
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
@@ -684,13 +749,20 @@ class ChatApiClient {
             val source = response.body?.source() ?: throw IllegalStateException("Response body is null")
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: continue
+                normalizeGrokReverseStreamLine(line)?.let { normalized ->
+                    if (samples.size < 6) {
+                        samples += normalized.take(240)
+                    }
+                }
                 val responseObject = extractGrokReverseResponseObject(line) ?: continue
                 extractGrokImageUrls(responseObject).forEach { url -> imageUrls += url }
             }
         }
 
         return imageUrls.firstOrNull()
-            ?: throw IllegalStateException("No image URL found in Grok reverse response.")
+            ?: throw IllegalStateException(
+                "No image URL found in Grok reverse response. samples=${samples.joinToString(" || ")}"
+            )
     }
 
     private fun grokReverseChatCompletionsStream(
