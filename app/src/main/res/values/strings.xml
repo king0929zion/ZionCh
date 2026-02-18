@@ -80,6 +80,8 @@
     <string name="add_oauth_step1_tip">Connect your account via OAuth to enable this provider</string>
     <string name="add_oauth_connect">Connect with OAuth</string>
     <string name="add_oauth_step2_tip">Please enter your OAuth callback URL</string>
+    <string name="add_oauth_step2_device_tip">Finish authorization in browser, then tap Continue.</string>
+    <string name="add_oauth_step2_device_hint">No callback URL is required for this provider.</string>
     <string name="add_oauth_connected">OAuth Connected!</string>
     <string name="add_oauth_connected_tip">You can now select models from this provider</string>
     <string name="add_oauth_disconnect">Disconnect</string>

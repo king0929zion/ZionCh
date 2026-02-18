@@ -80,6 +80,8 @@
     <string name="add_oauth_step1_tip">通过 OAuth 连接你的账号以启用该供应商</string>
     <string name="add_oauth_connect">使用 OAuth 连接</string>
     <string name="add_oauth_step2_tip">请输入 OAuth 回调 URL</string>
+    <string name="add_oauth_step2_device_tip">请先在浏览器完成授权，然后点击继续。</string>
+    <string name="add_oauth_step2_device_hint">该供应商无需粘贴回调 URL。</string>
     <string name="add_oauth_connected">OAuth 已连接</string>
     <string name="add_oauth_connected_tip">现在你可以为该供应商选择模型</string>
     <string name="add_oauth_disconnect">断开连接</string>

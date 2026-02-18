@@ -58,7 +58,7 @@ fun ModelServicesScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
 
     val configuredProviders by repository.providersFlow.collectAsState(initial = emptyList())
-    val oauthPresetIds = remember { setOf("codex", "iflow") }
+    val oauthPresetIds = remember { setOf("codex", "iflow", "qwen_code") }
     val builtInPresetIdSet = remember {
         DEFAULT_PROVIDER_PRESETS.map { it.id.trim().lowercase() }.toSet()
     }

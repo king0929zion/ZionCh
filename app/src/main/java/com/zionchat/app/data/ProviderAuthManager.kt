@@ -64,6 +64,16 @@ class ProviderAuthManager(
                                 oauthExpiresAtMs = token.expiresAtMs
                             )
                         }
+                    "qwen" ->
+                        oauthClient.refreshQwen(refreshToken).getOrThrow().let { token ->
+                            patched.copy(
+                                apiUrl = token.apiBaseUrl.ifBlank { patched.apiUrl },
+                                apiKey = token.accessToken,
+                                oauthAccessToken = token.accessToken,
+                                oauthRefreshToken = token.refreshToken ?: patched.oauthRefreshToken,
+                                oauthExpiresAtMs = token.expiresAtMs
+                            )
+                        }
                     else -> patched
                 }
 

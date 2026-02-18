@@ -96,7 +96,15 @@ fun AddOAuthProviderScreen(
     var currentStep by remember { mutableStateOf(OAuthStep.STEP_1_CONNECT) }
     var callbackUrl by remember { mutableStateOf("") }
     var showAvatarModal by remember { mutableStateOf(false) }
-    var selectedAvatar by remember(lockedProviderId) { mutableStateOf(lockedProviderId ?: "codex") }
+    var selectedAvatar by remember(lockedProviderId) {
+        mutableStateOf(
+            when (lockedProviderId?.trim()?.lowercase()) {
+                "qwen_code", "qwen-code" -> "qwen"
+                null, "" -> "codex"
+                else -> lockedProviderId
+            }
+        )
+    }
     var isWorking by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
 
@@ -120,6 +128,7 @@ fun AddOAuthProviderScreen(
         return when (selectedAvatar.lowercase()) {
             "codex" -> OAuthClient.OAuthProvider.Codex
             "iflow" -> OAuthClient.OAuthProvider.IFlow
+            "qwen", "qwen_code", "qwen-code" -> OAuthClient.OAuthProvider.QwenCode
             else -> null
         }
     }
@@ -130,6 +139,7 @@ fun AddOAuthProviderScreen(
             when (resolvedOauthProvider()) {
                 OAuthClient.OAuthProvider.Codex -> "Codex"
                 OAuthClient.OAuthProvider.IFlow -> "iFlow"
+                OAuthClient.OAuthProvider.QwenCode -> "Qwen Code"
                 else -> ""
             }
     }
@@ -191,6 +201,7 @@ fun AddOAuthProviderScreen(
                 OAuthSection(
                     currentStep = currentStep,
                     callbackUrl = callbackUrl,
+                    showCallbackInput = oauthStart?.provider != OAuthClient.OAuthProvider.QwenCode,
                     onCallbackUrlChange = { callbackUrl = it },
                     onStartOAuth = {
                         if (isWorking) return@OAuthSection
@@ -200,21 +211,30 @@ fun AddOAuthProviderScreen(
                             errorText = context.getString(R.string.error_select_oauth_provider)
                             return@OAuthSection
                         }
-                        val start =
-                            when (provider) {
-                                OAuthClient.OAuthProvider.Codex -> oauthClient.startCodexOAuth()
-                                OAuthClient.OAuthProvider.IFlow -> oauthClient.startIFlowOAuth()
+                        isWorking = true
+                        scope.launch {
+                            val startResult: Result<OAuthClient.OAuthStartResult> =
+                                when (provider) {
+                                    OAuthClient.OAuthProvider.Codex -> Result.success(oauthClient.startCodexOAuth())
+                                    OAuthClient.OAuthProvider.IFlow -> Result.success(oauthClient.startIFlowOAuth())
+                                    OAuthClient.OAuthProvider.QwenCode -> oauthClient.startQwenOAuth()
+                                }
+                            startResult.onSuccess { start ->
+                                oauthStart = start
+                                callbackUrl = ""
+                                currentStep = OAuthStep.STEP_2_CALLBACK
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(start.authUrl)))
+                                }.onFailure { throwable ->
+                                    errorText = context.getString(
+                                        R.string.error_open_browser_with_reason,
+                                        throwable.message ?: throwable.toString()
+                                    )
+                                }
+                            }.onFailure { throwable ->
+                                errorText = throwable.message ?: throwable.toString()
                             }
-                        oauthStart = start
-                        callbackUrl = ""
-                        currentStep = OAuthStep.STEP_2_CALLBACK
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(start.authUrl)))
-                        }.onFailure { throwable ->
-                            errorText = context.getString(
-                                R.string.error_open_browser_with_reason,
-                                throwable.message ?: throwable.toString()
-                            )
+                            isWorking = false
                         }
                     },
                     onSubmitCallback = {
@@ -224,24 +244,30 @@ fun AddOAuthProviderScreen(
                             errorText = context.getString(R.string.error_start_oauth_first)
                             return@OAuthSection
                         }
-                        val parsed = oauthClient.parseCallback(callbackUrl)
-                        if (parsed == null) {
-                            errorText = context.getString(R.string.error_invalid_callback_url)
-                            return@OAuthSection
-                        }
-                        if (!parsed.error.isNullOrBlank()) {
-                            errorText = parsed.errorDescription?.takeIf { it.isNotBlank() } ?: parsed.error
-                            return@OAuthSection
-                        }
-                        val code = parsed.code?.trim().orEmpty()
-                        if (code.isBlank()) {
-                            errorText = context.getString(R.string.error_missing_authorization_code)
-                            return@OAuthSection
-                        }
-                        if (parsed.state?.trim().orEmpty() != start.state.trim()) {
-                            errorText = context.getString(R.string.error_oauth_state_mismatch)
-                            return@OAuthSection
-                        }
+                        val code =
+                            if (start.provider == OAuthClient.OAuthProvider.QwenCode) {
+                                ""
+                            } else {
+                                val parsed = oauthClient.parseCallback(callbackUrl)
+                                if (parsed == null) {
+                                    errorText = context.getString(R.string.error_invalid_callback_url)
+                                    return@OAuthSection
+                                }
+                                if (!parsed.error.isNullOrBlank()) {
+                                    errorText = parsed.errorDescription?.takeIf { it.isNotBlank() } ?: parsed.error
+                                    return@OAuthSection
+                                }
+                                val parsedCode = parsed.code?.trim().orEmpty()
+                                if (parsedCode.isBlank()) {
+                                    errorText = context.getString(R.string.error_missing_authorization_code)
+                                    return@OAuthSection
+                                }
+                                if (parsed.state?.trim().orEmpty() != start.state.trim()) {
+                                    errorText = context.getString(R.string.error_oauth_state_mismatch)
+                                    return@OAuthSection
+                                }
+                                parsedCode
+                            }
 
                         isWorking = true
                         errorText = null
@@ -260,6 +286,13 @@ fun AddOAuthProviderScreen(
                                             providers.firstOrNull { provider ->
                                                 provider.presetId?.trim()?.equals("iflow", ignoreCase = true) == true ||
                                                     provider.oauthProvider?.trim()?.equals("iflow", ignoreCase = true) == true
+                                            }
+                                        }
+                                        OAuthClient.OAuthProvider.QwenCode -> {
+                                            providers.firstOrNull { provider ->
+                                                provider.presetId?.trim()?.equals("qwen_code", ignoreCase = true) == true ||
+                                                    provider.presetId?.trim()?.equals("qwen", ignoreCase = true) == true ||
+                                                    provider.oauthProvider?.trim()?.equals("qwen", ignoreCase = true) == true
                                             }
                                         }
                                     }
@@ -308,6 +341,28 @@ fun AddOAuthProviderScreen(
                                                 oauthAccessToken = token.accessToken,
                                                 oauthRefreshToken = token.refreshToken,
                                                 oauthEmail = token.email,
+                                                oauthExpiresAtMs = token.expiresAtMs,
+                                                headers = reusableProvider?.headers.orEmpty()
+                                            )
+                                        }
+                                    }
+                                    OAuthClient.OAuthProvider.QwenCode -> {
+                                        oauthClient.exchangeQwenDeviceCode(
+                                            deviceCode = start.deviceCode.orEmpty(),
+                                            pkceCodeVerifier = start.pkceCodeVerifier.orEmpty(),
+                                            pollIntervalSeconds = start.pollIntervalSeconds ?: 5
+                                        ).map { token ->
+                                            ProviderConfig(
+                                                id = reusableProviderId,
+                                                presetId = "qwen_code",
+                                                iconAsset = "qwen-color.svg",
+                                                name = providerName.trim().ifBlank { "Qwen Code" },
+                                                type = "openai",
+                                                apiUrl = token.apiBaseUrl,
+                                                apiKey = token.accessToken,
+                                                oauthProvider = "qwen",
+                                                oauthAccessToken = token.accessToken,
+                                                oauthRefreshToken = token.refreshToken,
                                                 oauthExpiresAtMs = token.expiresAtMs,
                                                 headers = reusableProvider?.headers.orEmpty()
                                             )
@@ -449,6 +504,8 @@ private fun suggestEnabledModels(provider: OAuthClient.OAuthProvider, modelIds: 
         OAuthClient.OAuthProvider.Codex ->
             listOfNotNull(byLower["gpt-5.1-codex"], byLower["gpt-5-codex"], modelIds.firstOrNull()).distinct()
         OAuthClient.OAuthProvider.IFlow -> listOfNotNull(modelIds.firstOrNull()).distinct()
+        OAuthClient.OAuthProvider.QwenCode ->
+            listOfNotNull(byLower["qwen3-coder-plus"], byLower["qwen3-coder-flash"], modelIds.firstOrNull()).distinct()
     }
 }
 
@@ -598,7 +655,8 @@ private fun AvatarSelectionModal(
 ) {
     val builtinAvatars = listOf(
         "codex",
-        "iflow"
+        "iflow",
+        "qwen"
     )
 
     Dialog(
@@ -809,6 +867,7 @@ private fun ProviderNameInput(
 private fun OAuthSection(
     currentStep: OAuthStep,
     callbackUrl: String,
+    showCallbackInput: Boolean,
     onCallbackUrlChange: (String) -> Unit,
     onStartOAuth: () -> Unit,
     onSubmitCallback: () -> Unit,
@@ -863,6 +922,7 @@ private fun OAuthSection(
                 OAuthStep.STEP_1_CONNECT -> Step1Content(onStartOAuth = onStartOAuth)
                 OAuthStep.STEP_2_CALLBACK -> Step2Content(
                     callbackUrl = callbackUrl,
+                    showCallbackInput = showCallbackInput,
                     onCallbackUrlChange = onCallbackUrlChange,
                     onSubmit = onSubmitCallback,
                     onCancel = onCancel
@@ -1016,49 +1076,67 @@ private fun Step1Content(onStartOAuth: () -> Unit) {
 @Composable
 private fun Step2Content(
     callbackUrl: String,
+    showCallbackInput: Boolean,
     onCallbackUrlChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onCancel: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = stringResource(R.string.add_oauth_step2_tip),
+            text = stringResource(if (showCallbackInput) R.string.add_oauth_step2_tip else R.string.add_oauth_step2_device_tip),
             fontSize = 14.sp,
             color = Color(0xFF6B6B6B),
             fontFamily = SourceSans3,
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
-        // 输入框
-        Surface(
-            color = Color(0xFFF5F5F7),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            BasicTextField(
-                value = callbackUrl,
-                onValueChange = onCallbackUrlChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                textStyle = androidx.compose.ui.text.TextStyle(
-                    fontSize = 16.sp,
-                    color = Color(0xFF1C1C1E),
-                    fontFamily = SourceSans3
-                ),
-                decorationBox = { innerTextField ->
-                    Box {
-                        if (callbackUrl.isEmpty()) {
-                            Text(
-                                text = "https://your-app.com/oauth/callback",
-                                fontSize = 16.sp,
-                                color = Color(0xFFC7C7CC),
-                                fontFamily = SourceSans3
-                            )
+        if (showCallbackInput) {
+            // 输入框
+            Surface(
+                color = Color(0xFFF5F5F7),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                BasicTextField(
+                    value = callbackUrl,
+                    onValueChange = onCallbackUrlChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 16.sp,
+                        color = Color(0xFF1C1C1E),
+                        fontFamily = SourceSans3
+                    ),
+                    decorationBox = { innerTextField ->
+                        Box {
+                            if (callbackUrl.isEmpty()) {
+                                Text(
+                                    text = "https://your-app.com/oauth/callback",
+                                    fontSize = 16.sp,
+                                    color = Color(0xFFC7C7CC),
+                                    fontFamily = SourceSans3
+                                )
+                            }
+                            innerTextField()
                         }
-                        innerTextField()
                     }
-                }
-            )
+                )
+            }
+        } else {
+            Surface(
+                color = Color(0xFFF5F5F7),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.add_oauth_step2_device_hint),
+                    fontSize = 14.sp,
+                    color = Color(0xFF6B6B6B),
+                    fontFamily = SourceSans3,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))

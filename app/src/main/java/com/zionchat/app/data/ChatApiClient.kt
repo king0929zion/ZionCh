@@ -372,6 +372,7 @@ class ChatApiClient {
             val type = provider.type.trim().lowercase()
             when {
                 isCodex(provider) -> runCatching { listCodexModels(provider, extraHeaders) }
+                isQwenCode(provider) -> runCatching { listQwenCodeModels(provider, extraHeaders) }
                 isGrok2Api(provider) -> runCatching { listGrok2ApiModels(provider, extraHeaders) }
                 type == "antigravity" -> runCatching { listAntigravityModels(provider, extraHeaders) }
                 type == "gemini-cli" -> runCatching { listGeminiCliModels(provider, extraHeaders) }
@@ -392,6 +393,9 @@ class ChatApiClient {
                         }
                         if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
                             requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
+                        }
+                        if (isQwenCode(provider)) {
+                            applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
                         }
 
                         client.newCall(requestBuilder.build()).execute().use { response ->
@@ -564,6 +568,31 @@ class ChatApiClient {
         return emptyList()
     }
 
+    private fun listQwenCodeModels(provider: ProviderConfig, extraHeaders: List<HttpHeader>): List<String> {
+        val url = normalizeProviderApiUrl(provider) + "/models"
+        val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
+        val requestBuilder =
+            Request.Builder()
+                .url(url)
+                .get()
+
+        applyHeaders(requestBuilder, effectiveHeaders)
+        requestBuilder.header("Accept", "application/json")
+        if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
+            requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
+        }
+        applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
+
+        return runCatching {
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
+                val ids = parseModelIdsFromJson(raw).distinct()
+                if (ids.isNotEmpty()) ids else QWEN_CODE_DEFAULT_MODELS
+            }
+        }.getOrElse { QWEN_CODE_DEFAULT_MODELS }
+    }
+
     suspend fun chatCompletions(
         provider: ProviderConfig,
         modelId: String,
@@ -593,6 +622,9 @@ class ChatApiClient {
                         }
                         if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
                             requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
+                        }
+                        if (isQwenCode(provider)) {
+                            applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
                         }
 
                         requestBuilder.header("Content-Type", "application/json")
@@ -673,6 +705,9 @@ class ChatApiClient {
                 }
                 if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
                     requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
+                }
+                if (isQwenCode(provider)) {
+                    applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
                 }
 
                 requestBuilder
@@ -1347,6 +1382,7 @@ class ChatApiClient {
         private const val ANTIGRAVITY_BASE_DAILY = "https://daily-cloudcode-pa.googleapis.com"
         private const val ANTIGRAVITY_BASE_SANDBOX = "https://daily-cloudcode-pa.sandbox.googleapis.com"
         private const val IFLOW_USER_AGENT = "iFlow-Cli"
+        private const val QWEN_USER_AGENT = "QwenCode/0.10.3 (darwin; arm64)"
         private const val GEMINI_CLI_USER_AGENT = "google-api-nodejs-client/9.15.1"
         private const val GEMINI_CLI_API_CLIENT = "gl-node/22.17.0"
         private const val GEMINI_CLI_CLIENT_METADATA =
@@ -1381,6 +1417,13 @@ class ChatApiClient {
                 "grok-imagine-1.0-edit",
                 "grok-imagine-1.0-video"
             )
+        private val QWEN_CODE_DEFAULT_MODELS =
+            listOf(
+                "qwen3-coder-plus",
+                "qwen3-coder-flash",
+                "coder-model",
+                "vision-model"
+            )
     }
 
     private data class CodexModelMeta(
@@ -1412,6 +1455,14 @@ class ChatApiClient {
         if (provider.presetId?.trim()?.equals("grok", ignoreCase = true) == true) return true
         if (provider.apiUrl.contains("grok2api", ignoreCase = true)) return true
         return false
+    }
+
+    private fun isQwenCode(provider: ProviderConfig): Boolean {
+        if (provider.oauthProvider?.trim()?.equals("qwen", ignoreCase = true) == true) return true
+        if (provider.presetId?.trim()?.equals("qwen_code", ignoreCase = true) == true) return true
+        if (provider.type.trim().equals("qwen", ignoreCase = true)) return true
+        return provider.apiUrl.contains("portal.qwen.ai", ignoreCase = true) ||
+            provider.apiUrl.contains("chat.qwen.ai", ignoreCase = true)
     }
 
     private fun normalizeProviderApiUrl(provider: ProviderConfig): String {
@@ -1487,6 +1538,48 @@ class ChatApiClient {
         if (provider.oauthProvider?.trim()?.equals("iflow", ignoreCase = true) == true) return true
         if (provider.presetId?.trim()?.equals("iflow", ignoreCase = true) == true) return true
         return provider.apiUrl.contains("iflow", ignoreCase = true)
+    }
+
+    private fun applyQwenCompatibleHeaders(
+        requestBuilder: Request.Builder,
+        effectiveHeaders: List<HttpHeader>
+    ) {
+        if (!hasHeader(effectiveHeaders, "user-agent")) {
+            requestBuilder.header("User-Agent", QWEN_USER_AGENT)
+        }
+        if (!hasHeader(effectiveHeaders, "x-dashscope-useragent")) {
+            requestBuilder.header("X-Dashscope-Useragent", QWEN_USER_AGENT)
+        }
+        if (!hasHeader(effectiveHeaders, "x-stainless-runtime-version")) {
+            requestBuilder.header("X-Stainless-Runtime-Version", "v22.17.0")
+        }
+        if (!hasHeader(effectiveHeaders, "sec-fetch-mode")) {
+            requestBuilder.header("Sec-Fetch-Mode", "cors")
+        }
+        if (!hasHeader(effectiveHeaders, "x-stainless-lang")) {
+            requestBuilder.header("X-Stainless-Lang", "js")
+        }
+        if (!hasHeader(effectiveHeaders, "x-stainless-arch")) {
+            requestBuilder.header("X-Stainless-Arch", "arm64")
+        }
+        if (!hasHeader(effectiveHeaders, "x-stainless-package-version")) {
+            requestBuilder.header("X-Stainless-Package-Version", "5.11.0")
+        }
+        if (!hasHeader(effectiveHeaders, "x-dashscope-cachecontrol")) {
+            requestBuilder.header("X-Dashscope-Cachecontrol", "enable")
+        }
+        if (!hasHeader(effectiveHeaders, "x-stainless-retry-count")) {
+            requestBuilder.header("X-Stainless-Retry-Count", "0")
+        }
+        if (!hasHeader(effectiveHeaders, "x-stainless-os")) {
+            requestBuilder.header("X-Stainless-Os", "MacOS")
+        }
+        if (!hasHeader(effectiveHeaders, "x-dashscope-authtype")) {
+            requestBuilder.header("X-Dashscope-Authtype", "qwen-oauth")
+        }
+        if (!hasHeader(effectiveHeaders, "x-stainless-runtime")) {
+            requestBuilder.header("X-Stainless-Runtime", "node")
+        }
     }
 
     private fun generateAntigravityProjectId(): String {

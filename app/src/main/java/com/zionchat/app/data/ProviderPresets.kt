@@ -31,6 +31,13 @@ val DEFAULT_PROVIDER_PRESETS: List<ProviderPreset> = listOf(
         iconAsset = "codex.svg"
     ),
     ProviderPreset(
+        id = "qwen_code",
+        name = "Qwen Code",
+        type = "openai",
+        apiUrl = "https://portal.qwen.ai/v1",
+        iconAsset = "qwen-color.svg"
+    ),
+    ProviderPreset(
         id = "anthropic",
         name = "Anthropic",
         type = "anthropic",
@@ -171,6 +178,7 @@ fun findProviderPreset(presetId: String?): ProviderPreset? {
     val id = when (rawId.lowercase()) {
         "bytedance" -> "doubao"
         "grok" -> "grok2api"
+        "qwen" -> "qwen_code"
         else -> rawId
     }
     return DEFAULT_PROVIDER_PRESETS.firstOrNull { it.id == id }
