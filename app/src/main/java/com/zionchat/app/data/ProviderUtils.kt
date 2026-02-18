@@ -9,8 +9,12 @@ fun ProviderConfig.isCodexProvider(): Boolean {
 }
 
 fun ProviderConfig.isGrok2ApiProvider(): Boolean {
-    if (type.trim().equals("grok2api", ignoreCase = true)) return true
+    val normalizedType = type.trim()
+    if (normalizedType.equals("grok2api", ignoreCase = true)) return true
+    if (normalizedType.equals("grok", ignoreCase = true)) return true
     if (presetId?.trim()?.equals("grok2api", ignoreCase = true) == true) return true
+    if (presetId?.trim()?.equals("grok", ignoreCase = true) == true) return true
     if (apiUrl.contains("grok2api", ignoreCase = true)) return true
+    if (apiUrl.contains("api.x.ai", ignoreCase = true)) return true
     return false
 }

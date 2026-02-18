@@ -1,6 +1,7 @@
 package com.zionchat.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.Orientation
@@ -41,6 +42,7 @@ import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.data.DEFAULT_PROVIDER_PRESETS
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.ProviderPreset
+import com.zionchat.app.data.isGrok2ApiProvider
 import com.zionchat.app.data.resolveProviderIconAsset
 import com.zionchat.app.ui.components.AssetIcon
 import com.zionchat.app.ui.components.PageTopBar
@@ -127,6 +129,7 @@ fun ModelServicesScreen(navController: NavController) {
                 SwipeableConfiguredProviderItem(
                     provider = provider,
                     iconAsset = resolveProviderIconAsset(provider),
+                    tokenBadge = provider.isGrok2ApiProvider(),
                     isOpened = openedProviderId == provider.id,
                     onOpenChanged = { isOpen ->
                         openedProviderId =
@@ -163,6 +166,7 @@ fun ModelServicesScreen(navController: NavController) {
                 ProviderItem(
                     provider = provider,
                     oauthBadge = oauthPresetIds.contains(provider.id),
+                    tokenBadge = provider.id.trim().equals("grok2api", ignoreCase = true) || provider.id.trim().equals("grok", ignoreCase = true),
                     onClick = {
                         if (oauthPresetIds.contains(provider.id)) {
                             navController.navigate("add_oauth_provider?provider=${provider.id}&providerId=")
@@ -181,6 +185,7 @@ fun ModelServicesScreen(navController: NavController) {
 private fun ProviderItem(
     provider: ProviderPreset,
     oauthBadge: Boolean = false,
+    tokenBadge: Boolean = false,
     onClick: () -> Unit
 ) {
     Row(
@@ -210,7 +215,10 @@ private fun ProviderItem(
         )
 
         Spacer(modifier = Modifier.weight(1f))
-        if (oauthBadge) OAuthBadge()
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (tokenBadge) TokenBadge()
+            if (oauthBadge) OAuthBadge()
+        }
     }
 }
 
@@ -219,6 +227,7 @@ private fun ProviderItem(
 private fun SwipeableConfiguredProviderItem(
     provider: ProviderConfig,
     iconAsset: String?,
+    tokenBadge: Boolean,
     isOpened: Boolean,
     onOpenChanged: (Boolean) -> Unit,
     onClick: () -> Unit,
@@ -321,8 +330,13 @@ private fun SwipeableConfiguredProviderItem(
                 modifier = Modifier.weight(1f)
             )
 
-            if (!provider.oauthProvider.isNullOrBlank()) {
-                OAuthBadge()
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (tokenBadge) {
+                    TokenBadge()
+                }
+                if (!provider.oauthProvider.isNullOrBlank()) {
+                    OAuthBadge()
+                }
             }
         }
     }
@@ -343,6 +357,27 @@ private fun OAuthBadge() {
             fontFamily = SourceSans3,
             fontWeight = FontWeight.Medium,
             color = Color.White,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun TokenBadge() {
+    Box(
+        modifier = Modifier
+            .height(22.dp)
+            .background(Color(0xFFF3F4F6), RoundedCornerShape(11.dp))
+            .border(width = 1.dp, color = Color(0xFF111111), shape = RoundedCornerShape(11.dp))
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Token",
+            fontSize = 12.sp,
+            fontFamily = SourceSans3,
+            fontWeight = FontWeight.Medium,
+            color = Color(0xFF111111),
             maxLines = 1
         )
     }

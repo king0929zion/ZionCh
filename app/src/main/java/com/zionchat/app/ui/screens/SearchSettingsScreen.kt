@@ -3,7 +3,6 @@ package com.zionchat.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,8 +12,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Divider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,23 +26,30 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.R
 import com.zionchat.app.data.WebSearchConfig
+import com.zionchat.app.ui.components.AssetIcon
 import com.zionchat.app.ui.components.LiquidGlassSwitch
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
+import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.Surface
@@ -46,8 +57,16 @@ import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
+private data class SearchEngineUi(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val iconAsset: String?
+)
+
 @Composable
 fun SearchSettingsScreen(navController: NavController) {
+    val context = LocalContext.current
     val repository = LocalAppRepository.current
     val scope = rememberCoroutineScope()
 
@@ -61,7 +80,35 @@ fun SearchSettingsScreen(navController: NavController) {
     var maxResults by rememberSaveable { mutableStateOf(6) }
     var initialized by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf<String?>(null) }
-    val savedText = stringResource(R.string.common_save)
+
+    val engineRows = remember {
+        listOf(
+            SearchEngineUi(
+                id = "bing",
+                title = "Bing",
+                subtitle = "No API key required",
+                iconAsset = "bing.png"
+            ),
+            SearchEngineUi(
+                id = "exa",
+                title = "Exa",
+                subtitle = "Semantic web search",
+                iconAsset = "exa.png"
+            ),
+            SearchEngineUi(
+                id = "tavily",
+                title = "Tavily",
+                subtitle = "Research-focused search",
+                iconAsset = "tavily.png"
+            ),
+            SearchEngineUi(
+                id = "linkup",
+                title = "Linkup",
+                subtitle = "Answer + citation retrieval",
+                iconAsset = "linkup.png"
+            )
+        )
+    }
 
     fun normalizedEngine(raw: String): String {
         return when (raw.trim().lowercase()) {
@@ -83,6 +130,13 @@ fun SearchSettingsScreen(navController: NavController) {
         )
     }
 
+    fun saveConfig() {
+        scope.launch {
+            repository.setWebSearchConfig(buildConfig())
+            statusText = context.getString(R.string.common_save)
+        }
+    }
+
     LaunchedEffect(Unit) {
         val config = repository.getWebSearchConfig()
         engine = normalizedEngine(config.engine)
@@ -94,13 +148,6 @@ fun SearchSettingsScreen(navController: NavController) {
         autoSearchEnabled = config.autoSearchEnabled
         maxResults = config.maxResults.coerceIn(1, 10)
         initialized = true
-    }
-
-    fun saveConfig() {
-        scope.launch {
-            repository.setWebSearchConfig(buildConfig())
-            statusText = savedText
-        }
     }
 
     Column(
@@ -140,182 +187,90 @@ fun SearchSettingsScreen(navController: NavController) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SearchSectionTitle(text = stringResource(R.string.search_settings_engine))
+            SearchSectionTitle(stringResource(R.string.search_settings_engine))
             SearchCard {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        TypeOption(
-                            text = "Bing",
-                            selected = engine == "bing",
-                            onClick = { engine = "bing" },
-                            modifier = Modifier.weight(1f)
-                        )
-                        TypeOption(
-                            text = "Exa",
-                            selected = engine == "exa",
-                            onClick = { engine = "exa" },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        TypeOption(
-                            text = "Tavily",
-                            selected = engine == "tavily",
-                            onClick = { engine = "tavily" },
-                            modifier = Modifier.weight(1f)
-                        )
-                        TypeOption(
-                            text = "Linkup",
-                            selected = engine == "linkup",
-                            onClick = { engine = "linkup" },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-
-            SearchCard {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.search_settings_auto_title),
-                            color = TextPrimary,
-                            fontFamily = SourceSans3,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = stringResource(R.string.search_settings_auto_subtitle),
-                            color = TextSecondary,
-                            fontFamily = SourceSans3,
-                            fontSize = 13.sp
-                        )
-                    }
-                    LiquidGlassSwitch(
-                        checked = autoSearchEnabled,
-                        onCheckedChange = { autoSearchEnabled = !autoSearchEnabled }
+                engineRows.forEachIndexed { index, item ->
+                    SearchEngineRow(
+                        item = item,
+                        selected = engine == item.id,
+                        onClick = { engine = item.id }
                     )
+                    if (index != engineRows.lastIndex) {
+                        Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
 
             SearchCard {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.search_settings_result_count),
-                            color = TextPrimary,
-                            fontFamily = SourceSans3,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = stringResource(R.string.search_settings_result_count_subtitle),
-                            color = TextSecondary,
-                            fontFamily = SourceSans3,
-                            fontSize = 13.sp
-                        )
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CounterButton(text = "-") {
-                            maxResults = (maxResults - 1).coerceAtLeast(1)
-                        }
-                        Text(
-                            text = maxResults.toString(),
-                            color = TextPrimary,
-                            fontFamily = SourceSans3,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 2.dp)
-                        )
-                        CounterButton(text = "+") {
-                            maxResults = (maxResults + 1).coerceAtMost(10)
-                        }
-                    }
-                }
+                SearchToggleRow(
+                    title = stringResource(R.string.search_settings_auto_title),
+                    subtitle = stringResource(R.string.search_settings_auto_subtitle),
+                    checked = autoSearchEnabled,
+                    onCheckedChange = { autoSearchEnabled = it }
+                )
+                Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
+                SearchResultCountRow(
+                    count = maxResults,
+                    onDecrease = { maxResults = (maxResults - 1).coerceAtLeast(1) },
+                    onIncrease = { maxResults = (maxResults + 1).coerceAtMost(10) }
+                )
             }
 
             when (engine) {
                 "exa" -> {
-                    SearchSectionTitle(text = stringResource(R.string.search_settings_exa_key))
-                    FormField(
-                        label = stringResource(R.string.search_settings_exa_key),
-                        value = exaApiKey,
-                        onValueChange = { exaApiKey = it },
-                        placeholder = "exa_..."
-                    )
+                    SearchSectionTitle(stringResource(R.string.search_settings_exa_key))
+                    SearchCard {
+                        FormField(
+                            label = stringResource(R.string.search_settings_exa_key),
+                            value = exaApiKey,
+                            onValueChange = { exaApiKey = it },
+                            placeholder = "exa_..."
+                        )
+                    }
                 }
+
                 "tavily" -> {
-                    SearchSectionTitle(text = stringResource(R.string.search_settings_tavily_key))
-                    FormField(
-                        label = stringResource(R.string.search_settings_tavily_key),
-                        value = tavilyApiKey,
-                        onValueChange = { tavilyApiKey = it },
-                        placeholder = "tvly-..."
-                    )
-                    SearchSectionTitle(text = stringResource(R.string.search_settings_depth))
+                    SearchSectionTitle(stringResource(R.string.search_settings_tavily_key))
                     SearchCard {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            TypeOption(
-                                text = stringResource(R.string.search_settings_depth_basic),
-                                selected = tavilyDepth == "basic",
-                                onClick = { tavilyDepth = "basic" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            TypeOption(
-                                text = stringResource(R.string.search_settings_depth_advanced),
-                                selected = tavilyDepth == "advanced",
-                                onClick = { tavilyDepth = "advanced" },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        FormField(
+                            label = stringResource(R.string.search_settings_tavily_key),
+                            value = tavilyApiKey,
+                            onValueChange = { tavilyApiKey = it },
+                            placeholder = "tvly-..."
+                        )
+                        Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
+                        SearchDepthRow(
+                            basicLabel = stringResource(R.string.search_settings_depth_basic),
+                            advancedLabel = stringResource(R.string.search_settings_depth_advanced),
+                            selected = tavilyDepth,
+                            onSelect = { tavilyDepth = it },
+                            basicValue = "basic",
+                            advancedValue = "advanced"
+                        )
                     }
                 }
+
                 "linkup" -> {
-                    SearchSectionTitle(text = stringResource(R.string.search_settings_linkup_key))
-                    FormField(
-                        label = stringResource(R.string.search_settings_linkup_key),
-                        value = linkupApiKey,
-                        onValueChange = { linkupApiKey = it },
-                        placeholder = "linkup_..."
-                    )
-                    SearchSectionTitle(text = stringResource(R.string.search_settings_depth))
+                    SearchSectionTitle(stringResource(R.string.search_settings_linkup_key))
                     SearchCard {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            TypeOption(
-                                text = stringResource(R.string.search_settings_depth_standard),
-                                selected = linkupDepth == "standard",
-                                onClick = { linkupDepth = "standard" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            TypeOption(
-                                text = stringResource(R.string.search_settings_depth_deep),
-                                selected = linkupDepth == "deep",
-                                onClick = { linkupDepth = "deep" },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        FormField(
+                            label = stringResource(R.string.search_settings_linkup_key),
+                            value = linkupApiKey,
+                            onValueChange = { linkupApiKey = it },
+                            placeholder = "linkup_..."
+                        )
+                        Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
+                        SearchDepthRow(
+                            basicLabel = stringResource(R.string.search_settings_depth_standard),
+                            advancedLabel = stringResource(R.string.search_settings_depth_deep),
+                            selected = linkupDepth,
+                            onSelect = { linkupDepth = it },
+                            basicValue = "standard",
+                            advancedValue = "deep"
+                        )
                     }
                 }
+
                 else -> {
                     SearchCard {
                         Text(
@@ -354,7 +309,7 @@ fun SearchSettingsScreen(navController: NavController) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(18.dp))
         }
     }
 }
@@ -372,15 +327,206 @@ private fun SearchSectionTitle(text: String) {
 }
 
 @Composable
-private fun SearchCard(content: @Composable ColumnScope.() -> Unit) {
-    Column(
+private fun SearchCard(content: @Composable Column.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun SearchEngineRow(
+    item: SearchEngineUi,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Surface, RoundedCornerShape(16.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        content = content
-    )
+            .clip(RoundedCornerShape(12.dp))
+            .pressableScale(pressedScale = 0.98f, onClick = onClick)
+            .padding(horizontal = 2.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(GrayLighter, RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!item.iconAsset.isNullOrBlank()) {
+                AssetIcon(
+                    assetFileName = item.iconAsset,
+                    contentDescription = item.title,
+                    modifier = Modifier.size(22.dp),
+                    contentScale = ContentScale.Fit,
+                    error = {
+                        Icon(
+                            imageVector = AppIcons.Globe,
+                            contentDescription = null,
+                            tint = TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+            } else {
+                Icon(
+                    imageVector = AppIcons.Globe,
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = item.title,
+                fontSize = 16.sp,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = item.subtitle,
+                fontSize = 12.sp,
+                color = TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(if (selected) TextPrimary else Color.Transparent, CircleShape)
+                .padding(3.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = AppIcons.Check,
+                contentDescription = null,
+                tint = if (selected) Color.White else TextSecondary.copy(alpha = 0.35f),
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = TextPrimary,
+                fontFamily = SourceSans3,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = subtitle,
+                color = TextSecondary,
+                fontFamily = SourceSans3,
+                fontSize = 13.sp
+            )
+        }
+        LiquidGlassSwitch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
+private fun SearchResultCountRow(
+    count: Int,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.search_settings_result_count),
+                color = TextPrimary,
+                fontFamily = SourceSans3,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = stringResource(R.string.search_settings_result_count_subtitle),
+                color = TextSecondary,
+                fontFamily = SourceSans3,
+                fontSize = 13.sp
+            )
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CounterButton(text = "-", onClick = onDecrease)
+            Text(
+                text = count.toString(),
+                color = TextPrimary,
+                fontFamily = SourceSans3,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 2.dp)
+            )
+            CounterButton(text = "+", onClick = onIncrease)
+        }
+    }
+}
+
+@Composable
+private fun SearchDepthRow(
+    basicLabel: String,
+    advancedLabel: String,
+    selected: String,
+    onSelect: (String) -> Unit,
+    basicValue: String,
+    advancedValue: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TypeOption(
+            text = basicLabel,
+            selected = selected == basicValue,
+            onClick = { onSelect(basicValue) },
+            modifier = Modifier.weight(1f)
+        )
+        TypeOption(
+            text = advancedLabel,
+            selected = selected == advancedValue,
+            onClick = { onSelect(advancedValue) },
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
 
 @Composable

@@ -118,6 +118,7 @@ internal val APP_DEVELOPER_BASELINE_SYSTEM_PROMPT =
     Layout and Interaction
     - Thumb Zone: Bottom navigation (avoid top-right corners), 48px minimum touch targets (44px acceptable for dense data), 8-16px spacing between tappable elements.
     - Safe Areas: Use `env(safe-area-inset-*)` for notched devices. Use `100svh`/`100dvh` instead of `100vh` for iOS Safari.
+    - Host Overlay Safe Zone (MANDATORY): Reserve the top-right safe-area corner for host controls. Do not place fixed buttons/menus within `top: calc(env(safe-area-inset-top) + 8px)` and `right: 8px` collision region.
     - Hardware Acceleration: Only animate `transform` and `opacity` (60fps). Never animate `width/height/top/left`.
     - Haptics: `navigator.vibrate(50)` for critical actions only (delete, confirm), wrapped in user gesture context.
 

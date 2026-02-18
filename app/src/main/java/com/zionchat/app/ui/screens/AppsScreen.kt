@@ -1145,6 +1145,88 @@ private fun AppDevRingGlyph(
 }
 
 @Composable
+private fun PreviewSafetyCapsule(
+    onOpenMenu: () -> Unit,
+    onExit: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .width(180.dp)
+            .height(56.dp),
+        shape = RoundedCornerShape(99.dp),
+        color = Color.White,
+        border = BorderStroke(width = 1.dp, color = Color(0x19000000)),
+        shadowElevation = 10.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .pressableScale(pressedScale = 0.96f, onClick = onOpenMenu),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF111111))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF111111))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF111111))
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(30.dp)
+                    .background(Color(0x1A000000))
+            )
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .pressableScale(pressedScale = 0.96f, onClick = onExit),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .border(width = 4.dp, color = Color(0xFF111111), shape = CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF111111))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SavedAppPreviewPage(
     app: SavedApp,
     canRedeploy: Boolean,
@@ -1176,27 +1258,6 @@ private fun SavedAppPreviewPage(
     val contentSignature = remember(app.id, app.html, deployUrl, previewReloadNonce) {
         "${app.id}:${app.html.hashCode()}:${deployUrl.orEmpty()}:$previewReloadNonce"
     }
-    var firstVisualReady by remember(contentSignature) { mutableStateOf(false) }
-    var previewEntering by remember(contentSignature) { mutableStateOf(false) }
-    LaunchedEffect(contentSignature) {
-        previewEntering = true
-    }
-    val webContentVisible = previewEntering && firstVisualReady
-    val webContentAlpha by animateFloatAsState(
-        targetValue = if (webContentVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "preview_web_alpha"
-    )
-    val webContentScale by animateFloatAsState(
-        targetValue = if (webContentVisible) 1f else 1.014f,
-        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
-        label = "preview_web_scale"
-    )
-    val placeholderAlpha by animateFloatAsState(
-        targetValue = if (webContentVisible) 0f else 1f,
-        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-        label = "preview_placeholder_alpha"
-    )
     val reportIssue = rememberUpdatedState<(String) -> Unit> { raw ->
         if (autoFixState?.isFixing == true) return@rememberUpdatedState
         val normalized = raw.trim().replace(Regex("\\s+"), " ").take(480)
@@ -1225,14 +1286,7 @@ private fun SavedAppPreviewPage(
             .background(chromeColor)
     ) {
         AppHtmlWebView(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = webContentAlpha
-                        scaleX = webContentScale
-                        scaleY = webContentScale
-                    },
+            modifier = Modifier.fillMaxSize(),
             contentSignature = contentSignature,
             html = if (deployUrl.isNullOrBlank()) app.html else null,
             baseUrl = baseUrl,
@@ -1241,44 +1295,16 @@ private fun SavedAppPreviewPage(
             enableThirdPartyCookies = true,
             transparentBackground = false,
             backgroundColor = chromeColor,
-            preRenderEnabled = true,
+            preRenderEnabled = false,
             onRuntimeIssue = { raw -> reportIssue.value(raw) },
-            onPageCommitVisible = { firstVisualReady = true },
             onPageFinished = { webView ->
                 webView.evaluateJavascript(APP_CHROME_COLOR_JS) { jsResult ->
                     parseCssColorFromJs(jsResult)?.let { parsed ->
                         chromeColor = parsed
                     }
                 }
-                firstVisualReady = true
             }
         )
-
-        if (placeholderAlpha > 0.01f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = placeholderAlpha }
-                    .background(chromeColor),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(70.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(
-                            Color.Black.copy(alpha = if (chromeColor.luminance() < 0.46f) 0.24f else 0.08f),
-                            RoundedCornerShape(20.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    AppDevRingGlyph(
-                        modifier = Modifier.size(30.dp),
-                        tint = if (chromeColor.luminance() < 0.46f) Color.White else Color.Black
-                    )
-                }
-            }
-        }
 
         Box(
             modifier =
@@ -1288,32 +1314,13 @@ private fun SavedAppPreviewPage(
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(top = 10.dp, end = 12.dp)
         ) {
-            Surface(
-                modifier =
-                    Modifier
-                        .widthIn(min = 52.dp)
-                        .height(34.dp)
-                        .pressableScale(
-                            pressedScale = 0.95f,
-                            onClick = { showPreviewMenu = true }
-                        ),
-                shape = RoundedCornerShape(99.dp),
-                color = Color.White,
-                border = BorderStroke(width = 1.dp, color = Color(0x19000000)),
-                shadowElevation = 8.dp
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = AppIcons.More,
-                        contentDescription = "Preview menu",
-                        tint = Color(0xFF111827),
-                        modifier = Modifier.size(20.dp)
-                    )
+            PreviewSafetyCapsule(
+                onOpenMenu = { showPreviewMenu = true },
+                onExit = {
+                    showPreviewMenu = false
+                    onDismiss()
                 }
-            }
+            )
 
             DropdownMenu(
                 expanded = showPreviewMenu,

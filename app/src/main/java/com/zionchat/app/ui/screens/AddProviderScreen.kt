@@ -75,12 +75,20 @@ fun AddProviderScreen(
         activeProviderId ?: matchedPresetProvider?.id ?: UUID.randomUUID().toString()
     }
     val normalizedType = selectedType.trim().lowercase()
-    val isGrok2ApiProvider = remember(normalizedType, normalizedPresetId) {
-        normalizedType == "grok2api" || normalizedPresetId == "grok2api"
+    val normalizedEditingPresetId = remember(editingProvider?.presetId) {
+        editingProvider?.presetId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+    }
+    val isGrok2ApiProvider = remember(normalizedType, normalizedPresetId, normalizedEditingPresetId) {
+        normalizedType == "grok2api" ||
+            normalizedType == "grok" ||
+            normalizedPresetId == "grok2api" ||
+            normalizedPresetId == "grok" ||
+            normalizedEditingPresetId == "grok2api" ||
+            normalizedEditingPresetId == "grok"
     }
     val credentialLabel = if (isGrok2ApiProvider) "Token" else "API Key"
     val credentialPlaceholder = if (isGrok2ApiProvider) "Enter Grok token" else "Enter API key"
-    val apiUrlPlaceholder = if (isGrok2ApiProvider) "http://127.0.0.1:8000/v1" else "https://api.example.com/v1"
+    val apiUrlPlaceholder = if (isGrok2ApiProvider) "https://api.x.ai/v1" else "https://api.example.com/v1"
 
     LaunchedEffect(editingProvider?.id) {
         editingProvider?.let {
@@ -99,6 +107,15 @@ fun AddProviderScreen(
             apiUrl = it.apiUrl
             selectedType = it.type
             selectedIconAsset = it.iconAsset.orEmpty()
+        }
+    }
+
+    LaunchedEffect(isGrok2ApiProvider) {
+        if (isGrok2ApiProvider &&
+            !selectedType.equals("grok2api", ignoreCase = true) &&
+            !selectedType.equals("grok", ignoreCase = true)
+        ) {
+            selectedType = "grok2api"
         }
     }
 
@@ -255,73 +272,68 @@ fun AddProviderScreen(
                     placeholder = "Enter provider name"
                 )
 
-                // Provider Type
-                Column {
-                    Text(
-                        text = "Provider Type",
-                        fontSize = 13.sp,
-                        fontFamily = SourceSans3,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-
-                    val typeBackdrop = rememberLayerBackdrop()
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(20.dp))
-                                .layerBackdrop(typeBackdrop)
-                                .background(GrayLighter, RoundedCornerShape(20.dp))
+                if (!isGrok2ApiProvider) {
+                    // Provider Type
+                    Column {
+                        Text(
+                            text = "Provider Type",
+                            fontSize = 13.sp,
+                            fontFamily = SourceSans3,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(bottom = 8.dp)
                         )
 
-                        Column(
+                        val typeBackdrop = rememberLayerBackdrop()
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                .heightIn(min = 48.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .layerBackdrop(typeBackdrop)
+                                    .background(GrayLighter, RoundedCornerShape(20.dp))
+                            )
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                TypeOption(
-                                    text = "OpenAI",
-                                    selected = selectedType == "openai",
-                                    onClick = { selectedType = "openai" },
-                                    modifier = Modifier.weight(1f),
-                                    backdrop = typeBackdrop
-                                )
-                                TypeOption(
-                                    text = "Anthropic",
-                                    selected = selectedType == "anthropic",
-                                    onClick = { selectedType = "anthropic" },
-                                    modifier = Modifier.weight(1f),
-                                    backdrop = typeBackdrop
-                                )
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                TypeOption(
-                                    text = "Google",
-                                    selected = selectedType == "google",
-                                    onClick = { selectedType = "google" },
-                                    modifier = Modifier.weight(1f),
-                                    backdrop = typeBackdrop
-                                )
-                                TypeOption(
-                                    text = "Grok",
-                                    selected = selectedType == "grok2api",
-                                    onClick = { selectedType = "grok2api" },
-                                    modifier = Modifier.weight(1f),
-                                    backdrop = typeBackdrop
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    TypeOption(
+                                        text = "OpenAI",
+                                        selected = selectedType == "openai",
+                                        onClick = { selectedType = "openai" },
+                                        modifier = Modifier.weight(1f),
+                                        backdrop = typeBackdrop
+                                    )
+                                    TypeOption(
+                                        text = "Anthropic",
+                                        selected = selectedType == "anthropic",
+                                        onClick = { selectedType = "anthropic" },
+                                        modifier = Modifier.weight(1f),
+                                        backdrop = typeBackdrop
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    TypeOption(
+                                        text = "Google",
+                                        selected = selectedType == "google",
+                                        onClick = { selectedType = "google" },
+                                        modifier = Modifier.weight(1f),
+                                        backdrop = typeBackdrop
+                                    )
+                                }
                             }
                         }
                     }
@@ -553,8 +565,6 @@ fun AvatarSelectionModal(
             }
         }
     }
-}
-
 }
 
 @Composable

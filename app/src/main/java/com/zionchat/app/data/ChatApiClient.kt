@@ -1341,9 +1341,13 @@ class ChatApiClient {
     }
 
     private fun isGrok2Api(provider: ProviderConfig): Boolean {
-        if (provider.type.trim().equals("grok2api", ignoreCase = true)) return true
+        val normalizedType = provider.type.trim()
+        if (normalizedType.equals("grok2api", ignoreCase = true)) return true
+        if (normalizedType.equals("grok", ignoreCase = true)) return true
         if (provider.presetId?.trim()?.equals("grok2api", ignoreCase = true) == true) return true
+        if (provider.presetId?.trim()?.equals("grok", ignoreCase = true) == true) return true
         if (provider.apiUrl.contains("grok2api", ignoreCase = true)) return true
+        if (provider.apiUrl.contains("api.x.ai", ignoreCase = true)) return true
         return false
     }
 
