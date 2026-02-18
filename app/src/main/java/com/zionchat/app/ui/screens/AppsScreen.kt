@@ -102,6 +102,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.core.view.WindowCompat
@@ -897,10 +898,11 @@ private fun SavedAppListRow(
         label = "app_list_row_press_scale"
     )
     val rowBg by animateColorAsState(
-        targetValue = if (pressed) Color(0xFFF5F5F7) else Color.Transparent,
+        targetValue = if (pressed) Color(0xFFF5F5F7) else Color.White,
         animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
         label = "app_list_row_bg"
     )
+    val actionReveal = ((-swipeableState.offset.value) / actionWidthPx).coerceIn(0f, 1f)
     val appIcon = remember(app.id, app.description, app.html) { resolveSavedAppIcon(app) }
     val subtitle =
         when {
@@ -919,12 +921,18 @@ private fun SavedAppListRow(
             modifier = Modifier
                 .fillMaxHeight()
                 .width(actionWidth)
+                .zIndex(0f)
                 .align(Alignment.CenterEnd),
             contentAlignment = Alignment.Center
         ) {
             Box(
                 modifier = Modifier
                     .size(40.dp)
+                    .graphicsLayer {
+                        alpha = actionReveal
+                        scaleX = 0.92f + (0.08f * actionReveal)
+                        scaleY = 0.92f + (0.08f * actionReveal)
+                    }
                     .clip(CircleShape)
                     .background(Color(0xFFFF3B30))
                     .clickable(
@@ -949,6 +957,7 @@ private fun SavedAppListRow(
         Row(
             modifier = Modifier
                 .fillMaxSize()
+                .zIndex(1f)
                 .offset { IntOffset(swipeableState.offset.value.roundToInt(), 0) }
                 .graphicsLayer {
                     alpha = entryAlpha
@@ -1367,7 +1376,7 @@ private fun SavedAppPreviewPage(
     var previewContentVisible by remember(contentSignature) { mutableStateOf(false) }
     val reportIssue = rememberUpdatedState<(String) -> Unit> { raw ->
         if (autoFixState?.isFixing == true) return@rememberUpdatedState
-        val normalized = raw.trim().replace(Regex("\\s+"), " ").take(480)
+        val normalized = normalizeRuntimeIssueForAutoFix(raw)
         if (normalized.isBlank()) return@rememberUpdatedState
         val key = normalized.lowercase()
         if (issueFingerprints.contains(key)) return@rememberUpdatedState
@@ -1807,6 +1816,17 @@ private fun Context.findActivity(): Activity? {
     return null
 }
 
+private fun normalizeRuntimeIssueForAutoFix(raw: String): String {
+    val normalized = raw.trim().replace(Regex("\\s+"), " ").take(480)
+    if (normalized.isBlank()) return ""
+    val lower = normalized.lowercase()
+    val splitOnUndefined =
+        lower.contains("cannot read properties of undefined") &&
+            lower.contains("split")
+    if (!splitOnUndefined) return normalized
+    return "$normalized | Potential root cause: calling .split on undefined/null. Add guards like String(value ?? '').split(...) and validate input source before parsing."
+}
+
 private fun filterAppsByCategory(
     apps: List<SavedApp>,
     category: AppsCategory
@@ -2079,6 +2099,8 @@ private suspend fun reviseHtmlForAutoFix(
             appendLine("- Preserve current visual style unless bug fix requires minimal UI changes.")
             appendLine("- Keep existing working modules unchanged.")
             appendLine("- No mock handlers, no TODO placeholders.")
+            appendLine("- Guard string operations defensively: never call .split/.trim/.map/.toLowerCase on nullable or undefined values.")
+            appendLine("- Before parsing, normalize with safe defaults such as String(value ?? '').")
             appendLine("- Return full HTML document.")
             appendLine()
             appendLine("Current HTML:")

@@ -1,5 +1,8 @@
 package com.zionchat.app.ui.components
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -7,6 +10,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,13 +19,17 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Divider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -30,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -42,6 +52,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.AccentBlue
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
@@ -322,47 +333,93 @@ private fun MarkdownCodeBlock(
     textStyle: TextStyle,
     language: String? = null
 ) {
+    val context = LocalContext.current
+    val clipboardManager =
+        remember(context) {
+            context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        }
+    val normalizedCode = remember(code) { code.trimEnd().ifBlank { " " } }
+    val languageLabel = remember(language) { formatCodeBlockLanguage(language) }
+    val shape = RoundedCornerShape(18.dp)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(width = 1.dp, color = GrayLight, shape = RoundedCornerShape(12.dp))
-            .background(GrayLighter, RoundedCornerShape(12.dp))
-            .clip(RoundedCornerShape(12.dp))
+            .clip(shape)
+            .border(width = 1.dp, color = Color(0xFFD7D7DD), shape = shape)
+            .background(Color(0xFFEFEFF2), shape)
     ) {
-        val lang = language?.trim().orEmpty()
-        if (lang.isNotBlank()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White.copy(alpha = 0.45f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = lang.lowercase(),
-                    style = textStyle.copy(
-                        fontSize = 11.sp,
-                        color = TextSecondary,
-                        fontWeight = FontWeight.Medium
-                    )
-                )
-            }
-            Divider(color = GrayLight, thickness = 0.5.dp)
-        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(12.dp)
+                .background(Color(0xFFE6E6EA))
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = code.trimEnd(),
+                text = languageLabel,
                 style = textStyle.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
+                    fontSize = 15.sp,
+                    color = Color(0xFF121212),
+                    fontWeight = FontWeight.SemiBold
                 )
             )
+
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                        runCatching {
+                            clipboardManager?.setPrimaryClip(ClipData.newPlainText("code", normalizedCode))
+                        }
+                    }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = AppIcons.Copy,
+                    contentDescription = "Copy code",
+                    tint = Color(0xFF121212),
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "Copy code",
+                    style = textStyle.copy(
+                        fontSize = 15.sp,
+                        color = Color(0xFF121212),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                )
+            }
+        }
+
+        Divider(color = Color(0xFFDADAE1), thickness = 1.dp)
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFEAEAF0))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 68.dp, max = 360.dp)
+                    .verticalScroll(rememberScrollState())
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = normalizedCode,
+                    style = textStyle.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 15.sp,
+                        lineHeight = 23.sp,
+                        color = Color(0xFF2B2B31)
+                    )
+                )
+            }
         }
     }
 }
@@ -583,6 +640,28 @@ private fun parseTableAligns(line: String): List<TextAlign> {
     }
 }
 
+private fun formatCodeBlockLanguage(language: String?): String {
+    val raw =
+        language
+            ?.trim()
+            ?.split(Regex("\\s+"))
+            ?.firstOrNull()
+            ?.trim()
+            .orEmpty()
+    if (raw.isBlank()) return "Plain text"
+    val normalized = raw.replace('_', '-').trim('-')
+    if (normalized.isBlank()) return "Plain text"
+    return normalized
+        .split('-')
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { token ->
+            token.replaceFirstChar { ch ->
+                if (ch.isLowerCase()) ch.titlecase() else ch.toString()
+            }
+        }
+        .ifBlank { "Plain text" }
+}
+
 private fun buildInlineAnnotatedString(parent: Node, linkColor: Color): AnnotatedString {
     val builder = AnnotatedString.Builder()
 
@@ -622,7 +701,9 @@ private fun buildInlineAnnotatedString(parent: Node, linkColor: Color): Annotate
                 builder.addStyle(
                     SpanStyle(
                         fontFamily = FontFamily.Monospace,
-                        background = GrayLighter
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF2C2C33),
+                        background = Color(0xFFE8E8ED)
                     ),
                     start,
                     builder.length

@@ -6285,6 +6285,7 @@ private fun buildAppGenerationUserPrompt(
         appendLine("- Use Lucide icon(s) and keep one explicit app icon in the primary header/home area.")
         appendLine("- Include explicit icon metadata: `app_icon: <lucide-icon-name>` in the specification/comments.")
         appendLine("- Ensure the chosen app icon is rendered by Lucide (for example with `data-lucide=\"...\"`).")
+        appendLine("- Never call string operations on uncertain values; guard `.split/.trim/.toLowerCase/.map` with safe defaults (e.g. `String(value ?? '')`).")
         appendLine("- Reserve top-right safe-area host overlay zone and avoid fixed controls in that collision region.")
         if (useIos18Skill) {
             appendLine("- Follow iOS 18 visual and component constraints from the active skill package.")
@@ -6345,6 +6346,7 @@ private fun buildAppRevisionUserPrompt(
         appendLine("- Keep interactions complete (no TODO/placeholder handlers).")
         appendLine("- Keep one explicit Lucide app icon in the primary header/home area.")
         appendLine("- Keep explicit icon metadata `app_icon: <lucide-icon-name>` and render that icon with Lucide.")
+        appendLine("- Ensure null-safe parsing: avoid `.split/.trim/.toLowerCase/.map` on undefined/null values.")
         appendLine("- Reserve top-right safe-area host overlay zone and avoid fixed controls in that collision region.")
         appendLine("- Return a full HTML file, not a patch.")
         appendLine()
