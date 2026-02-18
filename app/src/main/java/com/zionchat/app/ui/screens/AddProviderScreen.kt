@@ -88,7 +88,8 @@ fun AddProviderScreen(
     }
     val credentialLabel = if (isGrok2ApiProvider) "Token" else "API Key"
     val credentialPlaceholder = if (isGrok2ApiProvider) "Enter Grok token" else "Enter API key"
-    val apiUrlPlaceholder = if (isGrok2ApiProvider) "http://localhost:8000/v1" else "https://api.example.com/v1"
+    val grokGatewayUrl = "http://10.0.2.2:8000/v1"
+    val apiUrlPlaceholder = if (isGrok2ApiProvider) grokGatewayUrl else "https://api.example.com/v1"
 
     LaunchedEffect(editingProvider?.id) {
         editingProvider?.let {
@@ -100,8 +101,15 @@ fun AddProviderScreen(
                     it.presetId.equals("grok2api", ignoreCase = true) ||
                     it.presetId.equals("grok", ignoreCase = true)
             apiUrl =
-                if (isEditingGrokProvider && it.apiUrl.contains("api.x.ai", ignoreCase = true)) {
-                    "http://localhost:8000/v1"
+                if (
+                    isEditingGrokProvider &&
+                    (
+                        it.apiUrl.contains("api.x.ai", ignoreCase = true) ||
+                            it.apiUrl.contains("localhost", ignoreCase = true) ||
+                            it.apiUrl.contains("127.0.0.1", ignoreCase = true)
+                    )
+                ) {
+                    grokGatewayUrl
                 } else {
                     it.apiUrl
                 }
@@ -126,6 +134,17 @@ fun AddProviderScreen(
             !selectedType.equals("grok", ignoreCase = true)
         ) {
             selectedType = "grok2api"
+        }
+        if (isGrok2ApiProvider) {
+            val normalized = apiUrl.trim()
+            val shouldNormalizeGateway =
+                normalized.isBlank() ||
+                    normalized.contains("api.x.ai", ignoreCase = true) ||
+                    normalized.contains("localhost", ignoreCase = true) ||
+                    normalized.contains("127.0.0.1", ignoreCase = true)
+            if (shouldNormalizeGateway) {
+                apiUrl = grokGatewayUrl
+            }
         }
     }
 
@@ -284,19 +303,22 @@ fun AddProviderScreen(
 
                 if (!isGrok2ApiProvider) {
                     // Provider Type
-                    Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = "Provider Type",
                             fontSize = 13.sp,
                             fontFamily = SourceSans3,
                             color = TextSecondary,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                            modifier = Modifier.width(92.dp)
                         )
-
                         val typeBackdrop = rememberLayerBackdrop()
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .weight(1f)
                                 .heightIn(min = 48.dp)
                         ) {
                             Box(
@@ -331,11 +353,6 @@ fun AddProviderScreen(
                                         modifier = Modifier.weight(1f),
                                         backdrop = typeBackdrop
                                     )
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
                                     TypeOption(
                                         text = "Google",
                                         selected = selectedType == "google",
@@ -357,13 +374,18 @@ fun AddProviderScreen(
                     placeholder = credentialPlaceholder
                 )
 
-                // API URL
-                FormField(
-                    label = "API URL",
-                    value = apiUrl,
-                    onValueChange = { apiUrl = it },
-                    placeholder = apiUrlPlaceholder
-                )
+                AnimatedVisibility(
+                    visible = !isGrok2ApiProvider,
+                    enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 3 }),
+                    exit = fadeOut(tween(140)) + slideOutVertically(targetOffsetY = { it / 3 })
+                ) {
+                    FormField(
+                        label = "API URL",
+                        value = apiUrl,
+                        onValueChange = { apiUrl = it },
+                        placeholder = apiUrlPlaceholder
+                    )
+                }
 
                 // Models Section
                 Row(

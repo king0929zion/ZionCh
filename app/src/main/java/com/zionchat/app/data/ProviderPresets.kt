@@ -153,7 +153,7 @@ val DEFAULT_PROVIDER_PRESETS: List<ProviderPreset> = listOf(
         id = "grok2api",
         name = "Grok",
         type = "grok2api",
-        apiUrl = "http://localhost:8000/v1",
+        apiUrl = "http://10.0.2.2:8000/v1",
         iconAsset = "grok.svg"
     ),
     ProviderPreset(

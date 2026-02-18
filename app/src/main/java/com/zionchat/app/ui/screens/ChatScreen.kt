@@ -109,12 +109,14 @@ import coil3.compose.AsyncImage
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -133,6 +135,11 @@ import kotlin.math.roundToInt
 
 // 颜色常量 - 完全匹配HTML原型
 private data class PendingMessage(val conversationId: String, val message: Message)
+
+// Keep streaming alive even if ChatScreen leaves composition (e.g. app switch/navigation).
+private val chatStreamingExecutionScope by lazy {
+    CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+}
 private data class PendingImageAttachment(val uri: Uri? = null, val bitmap: Bitmap? = null)
 private enum class ToolMenuPage { Tools, McpServers }
 
@@ -866,7 +873,7 @@ fun ChatScreen(navController: NavController) {
                 shouldEnableAppBuilderForPrompt(trimmed)
 
         stopRequestedByUser = false
-        streamingJob = scope.launch {
+        streamingJob = chatStreamingExecutionScope.launch {
             val nowMs = System.currentTimeMillis()
             val provisionalTitle = trimmed.lineSequence().firstOrNull().orEmpty().trim().take(24)
             val initialConversations = repository.conversationsFlow.first()
@@ -1827,7 +1834,7 @@ fun ChatScreen(navController: NavController) {
                                     }
                                 }
                                 fun updateAppDevProgress(progressValue: Int) {
-                                    val normalized = progressValue.coerceIn(8, 95)
+                                    val normalized = progressValue.coerceIn(6, 98)
                                     val now = System.currentTimeMillis()
                                     if (normalized <= streamedProgress) return
                                     if (now - lastProgressUpdateAtMs < 90L) return
@@ -6361,7 +6368,7 @@ private suspend fun generateHtmlAppFromSpec(
             rawToolArgsJson = rawToolArgsJson
         )
 
-    var emittedProgress = 10
+    var emittedProgress = 8
     var chunkCount = 0
     var charCount = 0
     val startedAtMs = System.currentTimeMillis()
@@ -6383,10 +6390,18 @@ private suspend fun generateHtmlAppFromSpec(
                 draftBuilder.append(chunk)
                 chunkCount += 1
                 charCount += chunk.length
-                val elapsedBoost = ((System.currentTimeMillis() - startedAtMs) / 550L).toInt().coerceAtMost(18)
-                val chunkBoost = (chunkCount * 3).coerceAtMost(48)
-                val sizeBoost = (charCount / 140).coerceAtMost(18)
-                val nextProgress = (10 + elapsedBoost + chunkBoost + sizeBoost).coerceAtMost(94)
+                val elapsedBoost = ((System.currentTimeMillis() - startedAtMs) / 900L).toInt().coerceAtMost(42)
+                val chunkBoost = (chunkCount / 2).coerceAtMost(22)
+                val sizeBoost = (charCount / 320).coerceAtMost(24)
+                val structureBoost =
+                    when {
+                        draftBuilder.contains("</html>", ignoreCase = true) -> 24
+                        draftBuilder.contains("<body", ignoreCase = true) -> 18
+                        draftBuilder.contains("<head", ignoreCase = true) -> 12
+                        draftBuilder.contains("<html", ignoreCase = true) -> 8
+                        else -> 0
+                    }
+                val nextProgress = (8 + elapsedBoost + chunkBoost + sizeBoost + structureBoost).coerceAtMost(98)
                 if (nextProgress > emittedProgress) {
                     emittedProgress = nextProgress
                     onProgress?.invoke(nextProgress)
@@ -6397,10 +6412,10 @@ private suspend fun generateHtmlAppFromSpec(
                     lastDraftUpdateAtMs = now
                 }
             }
-        )
+    )
     onDraftHtml?.invoke(draftBuilder.toString())
-    if (emittedProgress < 94) {
-        onProgress?.invoke(94)
+    if (emittedProgress < 98) {
+        onProgress?.invoke(98)
     }
     return normalizeGeneratedHtml(raw)
 }
@@ -6444,7 +6459,7 @@ private suspend fun reviseHtmlAppFromPrompt(
             rawToolArgsJson = rawToolArgsJson
         )
 
-    var emittedProgress = 12
+    var emittedProgress = 10
     var chunkCount = 0
     var charCount = 0
     val startedAtMs = System.currentTimeMillis()
@@ -6466,10 +6481,18 @@ private suspend fun reviseHtmlAppFromPrompt(
                 draftBuilder.append(chunk)
                 chunkCount += 1
                 charCount += chunk.length
-                val elapsedBoost = ((System.currentTimeMillis() - startedAtMs) / 520L).toInt().coerceAtMost(16)
-                val chunkBoost = (chunkCount * 3).coerceAtMost(50)
-                val sizeBoost = (charCount / 150).coerceAtMost(16)
-                val nextProgress = (12 + elapsedBoost + chunkBoost + sizeBoost).coerceAtMost(94)
+                val elapsedBoost = ((System.currentTimeMillis() - startedAtMs) / 820L).toInt().coerceAtMost(38)
+                val chunkBoost = (chunkCount / 2).coerceAtMost(24)
+                val sizeBoost = (charCount / 300).coerceAtMost(24)
+                val structureBoost =
+                    when {
+                        draftBuilder.contains("</html>", ignoreCase = true) -> 22
+                        draftBuilder.contains("<body", ignoreCase = true) -> 16
+                        draftBuilder.contains("<head", ignoreCase = true) -> 11
+                        draftBuilder.contains("<html", ignoreCase = true) -> 7
+                        else -> 0
+                    }
+                val nextProgress = (10 + elapsedBoost + chunkBoost + sizeBoost + structureBoost).coerceAtMost(98)
                 if (nextProgress > emittedProgress) {
                     emittedProgress = nextProgress
                     onProgress?.invoke(nextProgress)
@@ -6480,10 +6503,10 @@ private suspend fun reviseHtmlAppFromPrompt(
                     lastDraftUpdateAtMs = now
                 }
             }
-        )
+    )
     onDraftHtml?.invoke(draftBuilder.toString())
-    if (emittedProgress < 94) {
-        onProgress?.invoke(94)
+    if (emittedProgress < 98) {
+        onProgress?.invoke(98)
     }
     return normalizeGeneratedHtml(raw)
 }

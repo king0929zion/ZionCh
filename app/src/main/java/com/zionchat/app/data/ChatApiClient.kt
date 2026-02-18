@@ -1353,11 +1353,14 @@ class ChatApiClient {
     private fun normalizeProviderApiUrl(provider: ProviderConfig): String {
         var base = provider.apiUrl.trim().trimEnd('/')
         if (isGrok2Api(provider)) {
-            if (base.contains("api.x.ai", ignoreCase = true)) {
-                base = "http://localhost:8000/v1"
-            }
-            if (base.contains("127.0.0.1", ignoreCase = true)) {
-                base = base.replace("127.0.0.1", "localhost", ignoreCase = true)
+            val gatewayBaseUrl = "http://10.0.2.2:8000/v1"
+            val shouldUseGateway =
+                base.isBlank() ||
+                    base.contains("api.x.ai", ignoreCase = true) ||
+                    base.contains("localhost", ignoreCase = true) ||
+                    base.contains("127.0.0.1", ignoreCase = true)
+            if (shouldUseGateway) {
+                base = gatewayBaseUrl
             }
         }
         return base

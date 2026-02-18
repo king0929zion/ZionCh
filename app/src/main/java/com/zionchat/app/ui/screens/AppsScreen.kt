@@ -1153,8 +1153,8 @@ private fun PreviewSafetyCapsule(
 ) {
     Surface(
         modifier = Modifier
-            .width(148.dp)
-            .height(46.dp),
+            .width(124.dp)
+            .height(38.dp),
         shape = RoundedCornerShape(99.dp),
         color = Color(0xB21A1A1A),
         border = BorderStroke(width = 1.dp, color = Color(0x24FFFFFF)),
@@ -1177,19 +1177,19 @@ private fun PreviewSafetyCapsule(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
+                            .size(5.dp)
                             .clip(CircleShape)
                             .background(Color.White)
                     )
                     Box(
                         modifier = Modifier
-                            .size(10.dp)
+                            .size(8.dp)
                             .clip(CircleShape)
                             .background(Color.White)
                     )
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
+                            .size(5.dp)
                             .clip(CircleShape)
                             .background(Color.White)
                     )
@@ -1199,7 +1199,7 @@ private fun PreviewSafetyCapsule(
             Box(
                 modifier = Modifier
                     .width(1.dp)
-                    .height(24.dp)
+                    .height(20.dp)
                     .background(Color(0x29FFFFFF))
             )
 
@@ -1212,13 +1212,13 @@ private fun PreviewSafetyCapsule(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(26.dp)
-                        .border(width = 3.dp, color = Color.White, shape = CircleShape),
+                        .size(20.dp)
+                        .border(width = 2.5.dp, color = Color.White, shape = CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
+                            .size(6.dp)
                             .clip(CircleShape)
                             .background(Color.White)
                     )
