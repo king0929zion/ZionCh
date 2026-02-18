@@ -4489,7 +4489,7 @@ fun ActionButton(
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun ToolMenuPanel(
+private fun ToolMenuPanel(
     visible: Boolean,
     page: ToolMenuPage,
     webSearchEngine: String,
@@ -4734,7 +4734,6 @@ fun ToolMenuPanel(
                 }
             }
         }
-    }
 }
 
 @Composable
