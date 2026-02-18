@@ -11,7 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -346,23 +345,22 @@ private fun MarkdownCodeBlock(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .border(width = 1.dp, color = Color(0xFFD7D7DD), shape = shape)
-            .background(Color(0xFFEFEFF2), shape)
+            .border(width = 1.dp, color = Color(0xFFD1D1D1), shape = shape)
+            .background(Color(0xFFEDEDED), shape)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFE6E6EA))
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = languageLabel,
                 style = textStyle.copy(
-                    fontSize = 15.sp,
+                    fontSize = 13.sp,
                     color = Color(0xFF121212),
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.Medium
                 )
             )
 
@@ -374,52 +372,43 @@ private fun MarkdownCodeBlock(
                             clipboardManager?.setPrimaryClip(ClipData.newPlainText("code", normalizedCode))
                         }
                     }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = AppIcons.Copy,
                     contentDescription = "Copy code",
                     tint = Color(0xFF121212),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(16.dp)
                 )
                 Text(
                     text = "Copy code",
                     style = textStyle.copy(
-                        fontSize = 15.sp,
+                        fontSize = 13.sp,
                         color = Color(0xFF121212),
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Medium
                     )
                 )
             }
         }
-
-        Divider(color = Color(0xFFDADAE1), thickness = 1.dp)
-
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFEAEAF0))
+                .heightIn(min = 68.dp, max = 360.dp)
+                .verticalScroll(rememberScrollState())
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 68.dp, max = 360.dp)
-                    .verticalScroll(rememberScrollState())
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
-            ) {
-                Text(
-                    text = normalizedCode,
-                    style = textStyle.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 15.sp,
-                        lineHeight = 23.sp,
-                        color = Color(0xFF2B2B31)
-                    )
+            Text(
+                text = normalizedCode,
+                style = textStyle.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp,
+                    color = Color(0xFF2E2E2E)
                 )
-            }
+            )
         }
     }
 }
