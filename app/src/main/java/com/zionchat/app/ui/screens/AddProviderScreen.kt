@@ -27,6 +27,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.DEFAULT_PROVIDER_PRESETS
+import com.zionchat.app.data.HttpHeader
 import com.zionchat.app.data.findProviderPreset
 import com.zionchat.app.data.resolveProviderIconAsset
 import com.zionchat.app.ui.components.AssetIcon
@@ -41,6 +42,35 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+private val GROK_APP_KEY_HEADER_NAMES =
+    setOf(
+        "x-grok-app-key",
+        "x-app-key",
+        "x-admin-key",
+        "x-grok2api-app-key"
+    )
+
+private fun extractGrokGatewayAppKey(headers: List<HttpHeader>): String {
+    return headers
+        .firstOrNull { it.key.trim().lowercase() in GROK_APP_KEY_HEADER_NAMES }
+        ?.value
+        ?.trim()
+        .orEmpty()
+}
+
+private fun mergeGrokGatewayHeaders(
+    existingHeaders: List<HttpHeader>,
+    isGrokProvider: Boolean,
+    grokGatewayAppKey: String
+): List<HttpHeader> {
+    if (!isGrokProvider) return existingHeaders
+    val retained =
+        existingHeaders.filterNot { it.key.trim().lowercase() in GROK_APP_KEY_HEADER_NAMES }
+    val appKey = grokGatewayAppKey.trim()
+    if (appKey.isBlank()) return retained
+    return retained + HttpHeader(key = "X-Grok-App-Key", value = appKey)
+}
+
 @Composable
 fun AddProviderScreen(
     navController: NavController,
@@ -53,6 +83,7 @@ fun AddProviderScreen(
     var providerName by remember { mutableStateOf("") }
     var apiKey by remember { mutableStateOf("") }
     var apiUrl by remember { mutableStateOf("") }
+    var grokGatewayAppKey by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf("openai") }
     var showAvatarModal by remember { mutableStateOf(false) }
     var selectedIconAsset by remember { mutableStateOf("") }
@@ -118,6 +149,7 @@ fun AddProviderScreen(
                 }
             selectedType = it.type
             selectedIconAsset = resolveProviderIconAsset(it).orEmpty()
+            grokGatewayAppKey = extractGrokGatewayAppKey(it.headers)
         }
     }
 
@@ -160,6 +192,7 @@ fun AddProviderScreen(
                 providerName,
                 apiKey,
                 apiUrl,
+                grokGatewayAppKey,
                 selectedType,
                 selectedIconAsset
             )
@@ -178,7 +211,13 @@ fun AddProviderScreen(
                         name = providerName,
                         type = selectedType,
                         apiUrl = apiUrl,
-                        apiKey = apiKey
+                        apiKey = apiKey,
+                        headers =
+                            mergeGrokGatewayHeaders(
+                                existingHeaders = editingProvider.headers,
+                                isGrokProvider = isGrok2ApiProvider,
+                                grokGatewayAppKey = grokGatewayAppKey
+                            )
                     )
                 )
             }
@@ -210,7 +249,12 @@ fun AddProviderScreen(
                                             apiUrl = apiUrl.trim(),
                                             apiKey = apiKey.trim(),
                                             iconAsset = normalizedIconAsset ?: existing.iconAsset,
-                                            headers = emptyList()
+                                            headers =
+                                                mergeGrokGatewayHeaders(
+                                                    existingHeaders = existing.headers,
+                                                    isGrokProvider = isGrok2ApiProvider,
+                                                    grokGatewayAppKey = grokGatewayAppKey
+                                                )
                                         )
                                     } ?: ProviderConfig(
                                         id = editingProviderId,
@@ -219,7 +263,13 @@ fun AddProviderScreen(
                                         name = providerName.trim(),
                                         type = selectedType.trim(),
                                         apiUrl = apiUrl.trim(),
-                                        apiKey = apiKey.trim()
+                                        apiKey = apiKey.trim(),
+                                        headers =
+                                            mergeGrokGatewayHeaders(
+                                                existingHeaders = emptyList(),
+                                                isGrokProvider = isGrok2ApiProvider,
+                                                grokGatewayAppKey = grokGatewayAppKey
+                                            )
                                     )
                                 )
                                 navController.navigateUp()
@@ -372,6 +422,19 @@ fun AddProviderScreen(
                 )
 
                 AnimatedVisibility(
+                    visible = isGrok2ApiProvider,
+                    enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 3 }),
+                    exit = fadeOut(tween(140)) + slideOutVertically(targetOffsetY = { it / 3 })
+                ) {
+                    FormField(
+                        label = "Gateway App Key (Optional)",
+                        value = grokGatewayAppKey,
+                        onValueChange = { grokGatewayAppKey = it },
+                        placeholder = "Default is grok2api"
+                    )
+                }
+
+                AnimatedVisibility(
                     visible = !isGrok2ApiProvider,
                     enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 3 }),
                     exit = fadeOut(tween(140)) + slideOutVertically(targetOffsetY = { it / 3 })
@@ -400,7 +463,13 @@ fun AddProviderScreen(
                                         name = providerName,
                                         type = selectedType,
                                         apiUrl = apiUrl,
-                                        apiKey = apiKey
+                                        apiKey = apiKey,
+                                        headers =
+                                            mergeGrokGatewayHeaders(
+                                                existingHeaders = editingProvider?.headers.orEmpty(),
+                                                isGrokProvider = isGrok2ApiProvider,
+                                                grokGatewayAppKey = grokGatewayAppKey
+                                            )
                                     )
                                 )
                                 navController.navigate("models?providerId=$editingProviderId")

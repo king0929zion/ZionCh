@@ -178,6 +178,17 @@ class ChatApiClient {
         grokTokenSyncCache[cacheKey] = System.currentTimeMillis()
     }
 
+    private data class GrokTokenSyncAttemptResult(
+        val success: Boolean,
+        val summary: String
+    )
+
+    private data class GrokTokenSyncOutcome(
+        val attempted: Boolean,
+        val success: Boolean,
+        val summary: String
+    )
+
     private fun postGrokAdminJson(url: String, appKey: String, payload: Any): Pair<Int, String> {
         val body = gson.toJson(payload)
         val request =
@@ -196,8 +207,13 @@ class ChatApiClient {
         baseUrl: String,
         token: String,
         appKeyCandidates: List<String>
-    ): Boolean {
-        if (appKeyCandidates.isEmpty()) return false
+    ): GrokTokenSyncAttemptResult {
+        if (appKeyCandidates.isEmpty()) {
+            return GrokTokenSyncAttemptResult(
+                success = false,
+                summary = "$baseUrl token sync skipped: no app key candidates"
+            )
+        }
         val upsertUrl = toGrokAdminEndpoint(baseUrl, "tokens")
         val refreshUrl = toGrokAdminEndpoint(baseUrl, "tokens/refresh")
         val upsertPayload =
@@ -206,30 +222,61 @@ class ChatApiClient {
                 "ssoSuper" to listOf(mapOf("token" to token))
             )
         val refreshPayload = mapOf("token" to token)
+        val errorMessages = mutableListOf<String>()
 
         appKeyCandidates.forEach { appKey ->
-            runCatching {
+            val result = runCatching {
                 val (statusCode, _) = postGrokAdminJson(upsertUrl, appKey, upsertPayload)
                 if (statusCode in 200..299) {
                     runCatching { postGrokAdminJson(refreshUrl, appKey, refreshPayload) }
-                    return true
+                    return GrokTokenSyncAttemptResult(
+                        success = true,
+                        summary = "$baseUrl token synced"
+                    )
                 }
+                if (statusCode == 401 || statusCode == 403) {
+                    errorMessages += "auth rejected"
+                } else {
+                    errorMessages += "upsert HTTP $statusCode"
+                }
+            }.exceptionOrNull()
+
+            if (result != null) {
+                val reason = result.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
+                errorMessages += if (reason.isNotBlank()) reason else result::class.java.simpleName
             }
         }
-        return false
+
+        val summaryTail = errorMessages.distinct().joinToString(", ").ifBlank { "unknown reason" }
+        return GrokTokenSyncAttemptResult(
+            success = false,
+            summary = "$baseUrl token sync failed: $summaryTail"
+        )
     }
 
     private fun ensureGrokGatewayTokenSynced(
         provider: ProviderConfig,
         effectiveHeaders: List<HttpHeader>,
         baseCandidates: List<String>
-    ) {
-        if (!isGrok2Api(provider)) return
-        val rawToken = providerBearerToken(provider) ?: return
-        if (rawToken.equals(GROK2API_DEFAULT_APP_KEY, ignoreCase = true)) return
-        val normalizedToken = rawToken.removePrefix("sso=").trim().takeIf { it.isNotBlank() } ?: return
+    ): GrokTokenSyncOutcome {
+        if (!isGrok2Api(provider)) {
+            return GrokTokenSyncOutcome(attempted = false, success = true, summary = "")
+        }
+        val rawToken = providerBearerToken(provider)
+            ?: return GrokTokenSyncOutcome(attempted = false, success = true, summary = "")
+        if (rawToken.equals(GROK2API_DEFAULT_APP_KEY, ignoreCase = true)) {
+            return GrokTokenSyncOutcome(attempted = false, success = true, summary = "")
+        }
+        val normalizedToken =
+            rawToken
+                .removePrefix("sso=")
+                .trim()
+                .takeIf { it.isNotBlank() }
+                ?: return GrokTokenSyncOutcome(attempted = false, success = true, summary = "")
         val localBases = baseCandidates.filter { isLocalGrokGatewayBase(it) }.distinct()
-        if (localBases.isEmpty()) return
+        if (localBases.isEmpty()) {
+            return GrokTokenSyncOutcome(attempted = false, success = true, summary = "")
+        }
 
         val cacheKey =
             buildString {
@@ -239,16 +286,26 @@ class ChatApiClient {
                 append('|')
                 append(localBases.joinToString(","))
             }
-        if (shouldSkipGrokTokenSync(cacheKey)) return
+        if (shouldSkipGrokTokenSync(cacheKey)) {
+            return GrokTokenSyncOutcome(attempted = true, success = true, summary = "token sync cached")
+        }
 
         val appKeyCandidates = buildGrokAdminAppKeyCandidates(provider, effectiveHeaders)
+        val failures = mutableListOf<String>()
         localBases.forEach { base ->
-            if (trySyncGrokTokenOnGateway(base, normalizedToken, appKeyCandidates)) {
+            val result = trySyncGrokTokenOnGateway(base, normalizedToken, appKeyCandidates)
+            if (result.success) {
                 markGrokTokenSync(cacheKey)
-                return
+                return GrokTokenSyncOutcome(attempted = true, success = true, summary = result.summary)
             }
+            failures += result.summary
         }
-        markGrokTokenSync(cacheKey)
+
+        return GrokTokenSyncOutcome(
+            attempted = true,
+            success = false,
+            summary = failures.distinct().joinToString(" | ")
+        )
     }
 
     suspend fun webSearch(query: String): Result<String> {
@@ -791,8 +848,11 @@ class ChatApiClient {
                 }
                 val body = gson.toJson(payload)
                 val baseCandidates = providerApiBaseCandidates(provider)
-                ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
+                val grokTokenSync = ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
                 val attemptErrors = mutableListOf<String>()
+                if (grokTokenSync.attempted && !grokTokenSync.success && grokTokenSync.summary.isNotBlank()) {
+                    attemptErrors += "token sync: ${grokTokenSync.summary}"
+                }
                 var lastError: Throwable? = null
                 for ((index, baseUrl) in baseCandidates.withIndex()) {
                     try {
@@ -888,8 +948,11 @@ class ChatApiClient {
         }
         val body = gson.toJson(payload)
         val baseCandidates = providerApiBaseCandidates(provider)
-        ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
+        val grokTokenSync = ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
         val attemptErrors = mutableListOf<String>()
+        if (grokTokenSync.attempted && !grokTokenSync.success && grokTokenSync.summary.isNotBlank()) {
+            attemptErrors += "token sync: ${grokTokenSync.summary}"
+        }
         var lastError: Throwable? = null
 
         for ((index, baseUrl) in baseCandidates.withIndex()) {
