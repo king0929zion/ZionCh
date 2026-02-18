@@ -74,6 +74,29 @@ class ChatApiClient {
         }
     }
 
+    private fun normalizeBearerToken(rawValue: String): String {
+        val trimmed = rawValue.trim()
+        if (trimmed.startsWith("bearer ", ignoreCase = true)) {
+            return trimmed.substringAfter(' ', "").trim()
+        }
+        return trimmed
+    }
+
+    private fun providerBearerToken(provider: ProviderConfig): String? {
+        val normalized = normalizeBearerToken(provider.apiKey)
+        return normalized.takeIf { it.isNotBlank() }
+    }
+
+    private fun applyProviderAuthorizationIfNeeded(
+        requestBuilder: Request.Builder,
+        provider: ProviderConfig,
+        effectiveHeaders: List<HttpHeader>
+    ) {
+        if (hasHeader(effectiveHeaders, "authorization")) return
+        val token = providerBearerToken(provider) ?: return
+        requestBuilder.header("Authorization", "Bearer $token")
+    }
+
     suspend fun webSearch(query: String): Result<String> {
         return webSearch(query, WebSearchConfig())
     }
@@ -614,6 +637,7 @@ class ChatApiClient {
                 }
                 val body = gson.toJson(payload)
                 val baseCandidates = providerApiBaseCandidates(provider)
+                val attemptErrors = mutableListOf<String>()
                 var lastError: Throwable? = null
                 for ((index, baseUrl) in baseCandidates.withIndex()) {
                     try {
@@ -621,10 +645,7 @@ class ChatApiClient {
                         val requestBuilder = Request.Builder().url(url)
 
                         applyHeaders(requestBuilder, effectiveHeaders)
-
-                        if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
-                            requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
-                        }
+                        applyProviderAuthorizationIfNeeded(requestBuilder, provider, effectiveHeaders)
                         if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
                             requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
                         }
@@ -640,7 +661,7 @@ class ChatApiClient {
                         client.newCall(request).execute().use { response ->
                             val raw = response.body?.string().orEmpty()
                             if (!response.isSuccessful) {
-                                error("HTTP ${response.code}: $raw")
+                                error("HTTP ${response.code} @ $url: $raw")
                             }
 
                             val parsed = gson.fromJson(raw, OpenAIChatCompletionsResponse::class.java)
@@ -650,9 +671,17 @@ class ChatApiClient {
                         }
                     } catch (t: Throwable) {
                         lastError = t
-                        val shouldRetry = isGrok2Api(provider) && shouldRetryGrokRequest(t) && index < baseCandidates.lastIndex
-                        if (!shouldRetry) throw t
+                        if (!isGrok2Api(provider)) throw t
+                        attemptErrors += formatGrokAttemptError(baseUrl, t)
+                        val shouldRetry = shouldContinueGrokFallback(t, index < baseCandidates.lastIndex)
+                        if (!shouldRetry) break
                     }
+                }
+                if (isGrok2Api(provider) && attemptErrors.isNotEmpty()) {
+                    throw IllegalStateException(
+                        "Grok 网关请求失败（${attemptErrors.size} 次尝试）：${attemptErrors.joinToString(" | ")}",
+                        lastError
+                    )
                 }
                 throw (lastError ?: IllegalStateException("chat_completions request failed"))
             }
@@ -704,6 +733,7 @@ class ChatApiClient {
         }
         val body = gson.toJson(payload)
         val baseCandidates = providerApiBaseCandidates(provider)
+        val attemptErrors = mutableListOf<String>()
         var lastError: Throwable? = null
 
         for ((index, baseUrl) in baseCandidates.withIndex()) {
@@ -712,10 +742,7 @@ class ChatApiClient {
                 val requestBuilder = Request.Builder().url(url)
 
                 applyHeaders(requestBuilder, effectiveHeaders)
-
-                if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
-                    requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
-                }
+                applyProviderAuthorizationIfNeeded(requestBuilder, provider, effectiveHeaders)
                 if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
                     requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
                 }
@@ -733,7 +760,7 @@ class ChatApiClient {
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         val errorBody = response.body?.string().orEmpty()
-                        throw IllegalStateException("HTTP ${response.code}: $errorBody")
+                        throw IllegalStateException("HTTP ${response.code} @ $url: $errorBody")
                     }
 
                     val contentType = response.header("Content-Type").orEmpty()
@@ -791,7 +818,10 @@ class ChatApiClient {
                 return@flow
             } catch (t: Throwable) {
                 lastError = t
-                val shouldRetry = isGrok2Api(provider) && shouldRetryGrokRequest(t) && index < baseCandidates.lastIndex
+                if (isGrok2Api(provider)) {
+                    attemptErrors += formatGrokAttemptError(baseUrl, t)
+                }
+                val shouldRetry = isGrok2Api(provider) && shouldContinueGrokFallback(t, index < baseCandidates.lastIndex)
                 if (!shouldRetry) break
             }
         }
@@ -804,6 +834,12 @@ class ChatApiClient {
                     messages = messages,
                     extraHeaders = extraHeaders
                 ).getOrElse { fallbackError ->
+                    if (attemptErrors.isNotEmpty()) {
+                        throw IllegalStateException(
+                            "Grok 网关流式失败并回退普通请求仍失败：${attemptErrors.joinToString(" | ")}",
+                            fallbackError
+                        )
+                    }
                     throw (lastError ?: fallbackError)
                 }
             if (fallbackText.isNotBlank()) {
@@ -812,6 +848,12 @@ class ChatApiClient {
             }
         }
 
+        if (isGrok2Api(provider) && attemptErrors.isNotEmpty()) {
+            throw IllegalStateException(
+                "Grok 网关流式请求失败（${attemptErrors.size} 次尝试）：${attemptErrors.joinToString(" | ")}",
+                lastError
+            )
+        }
         throw (lastError ?: IllegalStateException("chat_completions_stream request failed"))
     }.flowOn(Dispatchers.IO)
 
@@ -1790,7 +1832,12 @@ class ChatApiClient {
     }
 
     private fun addGrokBaseCandidate(target: LinkedHashSet<String>, rawValue: String) {
-        val value = rawValue.trim().trimEnd('/')
+        val value =
+            rawValue
+                .trim()
+                .trimEnd('/')
+                .replace(Regex("(?i)/(chat/completions|images/generations|images/edits|models)$"), "")
+                .trimEnd('/')
         if (value.isBlank()) return
         target += value
 
@@ -1798,21 +1845,24 @@ class ChatApiClient {
         val hasVersionSegment = Regex("/v\\d+(?:/|$)").containsMatchIn(lower)
         if (!hasVersionSegment) {
             target += "$value/v1"
-        } else if (lower.endsWith("/v1")) {
-            target += value.dropLast(3)
         }
+    }
+
+    private fun parseHttpStatusCode(error: Throwable): Int? {
+        val msg = error.message?.lowercase().orEmpty()
+        if (msg.isBlank()) return null
+        return Regex("http\\s*(\\d{3})")
+            .find(msg)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
     }
 
     private fun shouldRetryGrokRequest(error: Throwable): Boolean {
         if (error is IOException) return true
         val msg = error.message?.lowercase().orEmpty()
         if (msg.isBlank()) return false
-        val statusCode =
-            Regex("http\\s*(\\d{3})")
-                .find(msg)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.toIntOrNull()
+        val statusCode = parseHttpStatusCode(error)
         if (statusCode != null && statusCode in 500..599) return true
         return msg.contains("connection reset") ||
             msg.contains("failed to connect") ||
@@ -1823,6 +1873,24 @@ class ChatApiClient {
             msg.contains("service unavailable") ||
             msg.contains("gateway timeout") ||
             msg.contains("upstream")
+    }
+
+    private fun shouldContinueGrokFallback(error: Throwable, hasMoreCandidates: Boolean): Boolean {
+        if (!hasMoreCandidates) return false
+        if (error is IOException) return true
+        val statusCode = parseHttpStatusCode(error)
+        if (statusCode == 401 || statusCode == 403) return false
+        if (statusCode != null) return true
+        return shouldRetryGrokRequest(error)
+    }
+
+    private fun formatGrokAttemptError(baseUrl: String, error: Throwable): String {
+        val message = error.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
+        return if (message.isBlank()) {
+            "$baseUrl => ${error::class.java.simpleName}"
+        } else {
+            "$baseUrl => $message"
+        }
     }
 
     private fun normalizeReasoningEffort(value: String?): String? {
