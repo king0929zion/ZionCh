@@ -1834,10 +1834,17 @@ fun ChatScreen(navController: NavController) {
                                     }
                                 }
                                 fun updateAppDevProgress(progressValue: Int) {
-                                    val normalized = progressValue.coerceIn(6, 98)
+                                    val incoming = progressValue.coerceIn(6, 98)
+                                    if (incoming <= streamedProgress) return
+                                    val stepCap =
+                                        when {
+                                            streamedProgress < 28 -> 4
+                                            streamedProgress < 62 -> 3
+                                            else -> 2
+                                        }
+                                    val normalized = minOf(incoming, streamedProgress + stepCap)
                                     val now = System.currentTimeMillis()
-                                    if (normalized <= streamedProgress) return
-                                    if (now - lastProgressUpdateAtMs < 90L) return
+                                    if (now - lastProgressUpdateAtMs < 120L) return
                                     streamedProgress = normalized
                                     lastProgressUpdateAtMs = now
                                     updateAssistantTag(pendingTag.id) { current ->
@@ -3239,9 +3246,10 @@ private fun AppDevToolTagCard(
             0f
         } else {
             val normalized =
-                kotlin.math.sqrt(htmlLength.toFloat().coerceAtMost(120_000f)) /
-                    kotlin.math.sqrt(120_000f)
-            (10f + normalized * 78f).coerceAtMost(92f)
+                (kotlin.math.ln(htmlLength.toFloat().coerceAtMost(120_000f) + 1f) /
+                    kotlin.math.ln(120_000f + 1f))
+                    .coerceIn(0f, 1f)
+            (8f + normalized * 54f).coerceAtMost(62f)
         }
     val targetProgress =
         when {
@@ -3249,11 +3257,11 @@ private fun AppDevToolTagCard(
             statusLower == "error" -> reportedProgress
             isRunning ->
                 maxOf(
-                    reportedProgress,
+                    reportedProgress.coerceAtMost(92f),
                     htmlSignalProgress,
                     8f,
                     if (runtimeBusy) 96f else 0f
-                ).coerceAtMost(if (runtimeBusy) 99f else 96f)
+                ).coerceAtMost(if (runtimeBusy) 98f else 92f)
             else -> reportedProgress.coerceAtMost(99f)
         }
     val initialProgress = if (isRunning) maxOf(8f, targetProgress) else targetProgress
@@ -6275,6 +6283,8 @@ private fun buildAppGenerationUserPrompt(
         appendLine("- Keep copy short and practical.")
         appendLine("- Do not use placeholder/mock content unless explicitly requested.")
         appendLine("- Use Lucide icon(s) and keep one explicit app icon in the primary header/home area.")
+        appendLine("- Include explicit icon metadata: `app_icon: <lucide-icon-name>` in the specification/comments.")
+        appendLine("- Ensure the chosen app icon is rendered by Lucide (for example with `data-lucide=\"...\"`).")
         appendLine("- Reserve top-right safe-area host overlay zone and avoid fixed controls in that collision region.")
         if (useIos18Skill) {
             appendLine("- Follow iOS 18 visual and component constraints from the active skill package.")
@@ -6334,6 +6344,7 @@ private fun buildAppRevisionUserPrompt(
         appendLine("- If replacing a component, maintain equivalent UX behavior.")
         appendLine("- Keep interactions complete (no TODO/placeholder handlers).")
         appendLine("- Keep one explicit Lucide app icon in the primary header/home area.")
+        appendLine("- Keep explicit icon metadata `app_icon: <lucide-icon-name>` and render that icon with Lucide.")
         appendLine("- Reserve top-right safe-area host overlay zone and avoid fixed controls in that collision region.")
         appendLine("- Return a full HTML file, not a patch.")
         appendLine()

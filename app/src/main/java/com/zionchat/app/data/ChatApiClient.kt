@@ -13,6 +13,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.jsoup.Jsoup
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.util.UUID
@@ -571,7 +572,6 @@ class ChatApiClient {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             runCatching {
-                val url = normalizeProviderApiUrl(provider) + "/chat/completions"
                 val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
                 val body = gson.toJson(
                     mapOf(
@@ -579,32 +579,43 @@ class ChatApiClient {
                         "messages" to toOpenAIChatMessages(messages)
                     )
                 )
-                val requestBuilder = Request.Builder()
-                    .url(url)
+                val baseCandidates = providerApiBaseCandidates(provider)
+                var lastError: Throwable? = null
+                for ((index, baseUrl) in baseCandidates.withIndex()) {
+                    try {
+                        val url = baseUrl + "/chat/completions"
+                        val requestBuilder = Request.Builder().url(url)
 
-                applyHeaders(requestBuilder, effectiveHeaders)
+                        applyHeaders(requestBuilder, effectiveHeaders)
 
-                if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
-                    requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
-                }
-                if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
-                    requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
-                }
+                        if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
+                            requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
+                        }
+                        if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
+                            requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
+                        }
 
-                requestBuilder.header("Content-Type", "application/json")
-                val request = requestBuilder
-                    .post(body.toRequestBody(jsonMediaType))
-                    .build()
+                        requestBuilder.header("Content-Type", "application/json")
+                        val request = requestBuilder
+                            .post(body.toRequestBody(jsonMediaType))
+                            .build()
 
-                client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        error("HTTP ${response.code}: $raw")
+                        client.newCall(request).execute().use { response ->
+                            val raw = response.body?.string().orEmpty()
+                            if (!response.isSuccessful) {
+                                error("HTTP ${response.code}: $raw")
+                            }
+
+                            val parsed = gson.fromJson(raw, OpenAIChatCompletionsResponse::class.java)
+                            return@runCatching parsed.choices?.firstOrNull()?.message?.content?.trim().orEmpty()
+                        }
+                    } catch (t: Throwable) {
+                        lastError = t
+                        val shouldRetry = isGrok2Api(provider) && shouldRetryGrokRequest(t) && index < baseCandidates.lastIndex
+                        if (!shouldRetry) throw t
                     }
-
-                    val parsed = gson.fromJson(raw, OpenAIChatCompletionsResponse::class.java)
-                    parsed.choices?.firstOrNull()?.message?.content?.trim().orEmpty()
                 }
+                throw (lastError ?: IllegalStateException("chat_completions request failed"))
             }
         }
     }
@@ -636,7 +647,6 @@ class ChatApiClient {
         extraHeaders: List<HttpHeader>,
         reasoningEffort: String? = null
     ): Flow<ChatStreamDelta> = flow {
-        val url = normalizeProviderApiUrl(provider) + "/chat/completions"
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
         val payload =
             linkedMapOf<String, Any>(
@@ -648,64 +658,96 @@ class ChatApiClient {
             normalizeReasoningEffort(reasoningEffort)?.let { payload["reasoning_effort"] = it }
         }
         val body = gson.toJson(payload)
-        val requestBuilder = Request.Builder().url(url)
+        val baseCandidates = providerApiBaseCandidates(provider)
+        var lastError: Throwable? = null
 
-        applyHeaders(requestBuilder, effectiveHeaders)
+        for ((index, baseUrl) in baseCandidates.withIndex()) {
+            try {
+                val url = baseUrl + "/chat/completions"
+                val requestBuilder = Request.Builder().url(url)
 
-        if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
-            requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
-        }
-        if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
-            requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
-        }
+                applyHeaders(requestBuilder, effectiveHeaders)
 
-        requestBuilder
-            .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream")
-        val request = requestBuilder
-            .post(body.toRequestBody(jsonMediaType))
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                val errorBody = response.body?.string().orEmpty()
-                throw IllegalStateException("HTTP ${response.code}: $errorBody")
-            }
-
-            val contentType = response.header("Content-Type").orEmpty()
-            if (!contentType.contains("text/event-stream", ignoreCase = true)) {
-                val raw = response.body?.string().orEmpty()
-                val parsed = runCatching { gson.fromJson(raw, OpenAIChatCompletionsResponse::class.java) }.getOrNull()
-                val text = parsed?.choices?.firstOrNull()?.message?.content?.trim().orEmpty()
-                if (text.isNotEmpty()) {
-                    emit(ChatStreamDelta(content = text))
+                if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
+                    requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
                 }
-                return@use
-            }
+                if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
+                    requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
+                }
 
-            val source = response.body?.source()
-                ?: throw IllegalStateException("Response body is null")
+                requestBuilder
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "text/event-stream")
+                val request = requestBuilder
+                    .post(body.toRequestBody(jsonMediaType))
+                    .build()
 
-            while (!source.exhausted()) {
-                val line = source.readUtf8Line() ?: continue
-                if (line.startsWith("data:")) {
-                    val data = line.removePrefix("data:").trimStart()
-                    if (data == "[DONE]") break
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        val errorBody = response.body?.string().orEmpty()
+                        throw IllegalStateException("HTTP ${response.code}: $errorBody")
+                    }
 
-                    try {
-                        val chunk = gson.fromJson(data, OpenAIStreamChunk::class.java)
-                        val delta = chunk.choices?.firstOrNull()?.delta
-                        val content = delta?.content
-                        val reasoning = delta?.reasoning_content ?: delta?.reasoning ?: delta?.thinking
-                        if (!content.isNullOrEmpty() || !reasoning.isNullOrEmpty()) {
-                            emit(ChatStreamDelta(content = content, reasoning = reasoning))
+                    val contentType = response.header("Content-Type").orEmpty()
+                    if (!contentType.contains("text/event-stream", ignoreCase = true)) {
+                        val raw = response.body?.string().orEmpty()
+                        val parsed = runCatching { gson.fromJson(raw, OpenAIChatCompletionsResponse::class.java) }.getOrNull()
+                        val text = parsed?.choices?.firstOrNull()?.message?.content?.trim().orEmpty()
+                        if (text.isNotEmpty()) {
+                            emit(ChatStreamDelta(content = text))
                         }
-                    } catch (_: Exception) {
-                        parseOpenAIStreamDeltaLenient(data)?.let { emit(it) }
+                        return@flow
+                    }
+
+                    val source = response.body?.source()
+                        ?: throw IllegalStateException("Response body is null")
+
+                    while (!source.exhausted()) {
+                        val line = source.readUtf8Line() ?: continue
+                        if (line.startsWith("data:")) {
+                            val data = line.removePrefix("data:").trimStart()
+                            if (data == "[DONE]") break
+
+                            try {
+                                val chunk = gson.fromJson(data, OpenAIStreamChunk::class.java)
+                                val delta = chunk.choices?.firstOrNull()?.delta
+                                val content = delta?.content
+                                val reasoning = delta?.reasoning_content ?: delta?.reasoning ?: delta?.thinking
+                                if (!content.isNullOrEmpty() || !reasoning.isNullOrEmpty()) {
+                                    emit(ChatStreamDelta(content = content, reasoning = reasoning))
+                                }
+                            } catch (_: Exception) {
+                                parseOpenAIStreamDeltaLenient(data)?.let { emit(it) }
+                            }
+                        }
                     }
                 }
+
+                return@flow
+            } catch (t: Throwable) {
+                lastError = t
+                val shouldRetry = isGrok2Api(provider) && shouldRetryGrokRequest(t) && index < baseCandidates.lastIndex
+                if (!shouldRetry) break
             }
         }
+
+        if (isGrok2Api(provider)) {
+            val fallbackText =
+                chatCompletions(
+                    provider = provider,
+                    modelId = modelId,
+                    messages = messages,
+                    extraHeaders = extraHeaders
+                ).getOrElse { fallbackError ->
+                    throw (lastError ?: fallbackError)
+                }
+            if (fallbackText.isNotBlank()) {
+                emit(ChatStreamDelta(content = fallbackText))
+                return@flow
+            }
+        }
+
+        throw (lastError ?: IllegalStateException("chat_completions_stream request failed"))
     }.flowOn(Dispatchers.IO)
 
     private fun parseOpenAIStreamDeltaLenient(data: String): ChatStreamDelta? {
@@ -1190,27 +1232,37 @@ class ChatApiClient {
     }
 
     private fun listGrok2ApiModels(provider: ProviderConfig, extraHeaders: List<HttpHeader>): List<String> {
-        val url = normalizeProviderApiUrl(provider) + "/models"
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
-        val requestBuilder =
-            Request.Builder()
-                .url(url)
-                .get()
+        val baseCandidates = providerApiBaseCandidates(provider)
+        var remoteModels: List<String> = emptyList()
 
-        applyHeaders(requestBuilder, effectiveHeaders)
-        if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
-            requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
-        }
-        requestBuilder.header("Accept", "application/json")
+        for ((index, baseUrl) in baseCandidates.withIndex()) {
+            try {
+                val requestBuilder =
+                    Request.Builder()
+                        .url(baseUrl + "/models")
+                        .get()
 
-        val remoteModels =
-            runCatching {
-                client.newCall(requestBuilder.build()).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) return@use emptyList<String>()
-                    parseModelIdsFromJson(raw)
+                applyHeaders(requestBuilder, effectiveHeaders)
+                if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
+                    requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
                 }
-            }.getOrElse { emptyList() }
+                requestBuilder.header("Accept", "application/json")
+
+                remoteModels =
+                    client.newCall(requestBuilder.build()).execute().use { response ->
+                        val raw = response.body?.string().orEmpty()
+                        if (!response.isSuccessful) {
+                            error("HTTP ${response.code}: $raw")
+                        }
+                        parseModelIdsFromJson(raw)
+                    }
+                break
+            } catch (t: Throwable) {
+                val shouldRetry = shouldRetryGrokRequest(t) && index < baseCandidates.lastIndex
+                if (!shouldRetry) break
+            }
+        }
 
         return (remoteModels + GROK2API_DEFAULT_MODELS)
             .map { it.trim() }
@@ -1232,7 +1284,6 @@ class ChatApiClient {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             runCatching {
-                val url = normalizeProviderApiUrl(provider) + "/images/generations"
                 val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
                 val body = gson.toJson(
                     mapOf(
@@ -1244,34 +1295,47 @@ class ChatApiClient {
                         "response_format" to "url"
                     )
                 )
-                val requestBuilder = Request.Builder().url(url)
+                val baseCandidates = providerApiBaseCandidates(provider)
+                var lastError: Throwable? = null
 
-                applyHeaders(requestBuilder, effectiveHeaders)
+                for ((index, baseUrl) in baseCandidates.withIndex()) {
+                    try {
+                        val requestBuilder = Request.Builder().url(baseUrl + "/images/generations")
 
-                if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
-                    requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
-                }
+                        applyHeaders(requestBuilder, effectiveHeaders)
 
-                requestBuilder.header("Content-Type", "application/json")
-                val request = requestBuilder
-                    .post(body.toRequestBody(jsonMediaType))
-                    .build()
+                        if (provider.apiKey.isNotBlank() && !hasHeader(effectiveHeaders, "authorization")) {
+                            requestBuilder.header("Authorization", "Bearer ${provider.apiKey}")
+                        }
 
-                client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        error("HTTP ${response.code}: $raw")
+                        requestBuilder.header("Content-Type", "application/json")
+                        val request = requestBuilder
+                            .post(body.toRequestBody(jsonMediaType))
+                            .build()
+
+                        return@runCatching client.newCall(request).execute().use { response ->
+                            val raw = response.body?.string().orEmpty()
+                            if (!response.isSuccessful) {
+                                error("HTTP ${response.code}: $raw")
+                            }
+
+                            val parsed = gson.fromJson(raw, ImageGenerationResponse::class.java)
+                            val url = parsed.data?.firstOrNull()?.url
+                            if (!url.isNullOrBlank()) return@use url
+
+                            val b64 = parsed.data?.firstOrNull()?.b64_json
+                            if (!b64.isNullOrBlank()) return@use "data:image/png;base64,$b64"
+
+                            error("No image URL in response")
+                        }
+                    } catch (t: Throwable) {
+                        lastError = t
+                        val shouldRetry = isGrok2Api(provider) && shouldRetryGrokRequest(t) && index < baseCandidates.lastIndex
+                        if (!shouldRetry) throw t
                     }
-
-                    val parsed = gson.fromJson(raw, ImageGenerationResponse::class.java)
-                    val url = parsed.data?.firstOrNull()?.url
-                    if (!url.isNullOrBlank()) return@use url
-
-                    val b64 = parsed.data?.firstOrNull()?.b64_json
-                    if (!b64.isNullOrBlank()) return@use "data:image/png;base64,$b64"
-
-                    error("No image URL in response")
                 }
+
+                throw (lastError ?: IllegalStateException("image generation request failed"))
             }
         }
     }
@@ -1351,19 +1415,56 @@ class ChatApiClient {
     }
 
     private fun normalizeProviderApiUrl(provider: ProviderConfig): String {
-        var base = provider.apiUrl.trim().trimEnd('/')
-        if (isGrok2Api(provider)) {
-            val gatewayBaseUrl = "http://10.0.2.2:8000/v1"
-            val shouldUseGateway =
-                base.isBlank() ||
-                    base.contains("api.x.ai", ignoreCase = true) ||
-                    base.contains("localhost", ignoreCase = true) ||
-                    base.contains("127.0.0.1", ignoreCase = true)
-            if (shouldUseGateway) {
-                base = gatewayBaseUrl
+        return providerApiBaseCandidates(provider).first()
+    }
+
+    private fun providerApiBaseCandidates(provider: ProviderConfig): List<String> {
+        val raw = provider.apiUrl.trim().trimEnd('/')
+        if (!isGrok2Api(provider)) {
+            return listOf(raw)
+        }
+
+        val fallbackGateways =
+            listOf(
+                "http://10.0.2.2:8000/v1",
+                "http://127.0.0.1:8000/v1",
+                "http://localhost:8000/v1",
+                "http://host.docker.internal:8000/v1"
+            )
+
+        val candidates = LinkedHashSet<String>()
+        if (raw.isNotBlank()) {
+            candidates += raw
+            if (
+                raw.contains("api.x.ai", ignoreCase = true) ||
+                    raw.contains("localhost", ignoreCase = true) ||
+                    raw.contains("127.0.0.1", ignoreCase = true) ||
+                    raw.contains("10.0.2.2", ignoreCase = true)
+            ) {
+                candidates += raw.replace("://localhost", "://10.0.2.2", ignoreCase = true)
+                candidates += raw.replace("://127.0.0.1", "://10.0.2.2", ignoreCase = true)
+                candidates += raw.replace("://10.0.2.2", "://127.0.0.1", ignoreCase = true)
+                candidates += raw.replace("://localhost", "://127.0.0.1", ignoreCase = true)
+                candidates += raw.replace("://127.0.0.1", "://localhost", ignoreCase = true)
+                candidates += raw.replace("://10.0.2.2", "://localhost", ignoreCase = true)
             }
         }
-        return base
+        fallbackGateways.forEach { candidates += it }
+
+        return candidates
+            .map { it.trim().trimEnd('/') }
+            .filter { it.isNotBlank() }
+    }
+
+    private fun shouldRetryGrokRequest(error: Throwable): Boolean {
+        if (error is IOException) return true
+        val msg = error.message?.lowercase().orEmpty()
+        if (msg.isBlank()) return false
+        return msg.contains("connection reset") ||
+            msg.contains("failed to connect") ||
+            msg.contains("connection refused") ||
+            msg.contains("timeout") ||
+            msg.contains("broken pipe")
     }
 
     private fun normalizeReasoningEffort(value: String?): String? {

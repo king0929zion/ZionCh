@@ -22,6 +22,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -63,6 +65,10 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.FractionalThreshold
+import androidx.compose.material.rememberSwipeableState
+import androidx.compose.material.swipeable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -92,9 +98,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -131,6 +139,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private const val APP_CHROME_COLOR_JS =
     "(function(){try{var meta=document.querySelector('meta[name=\\\"theme-color\\\"]');if(meta&&meta.content){return meta.content;}var body=document.body?window.getComputedStyle(document.body):null;if(body){var bodyBg=body.backgroundColor||'';if(bodyBg&&bodyBg!=='transparent'&&bodyBg!=='rgba(0, 0, 0, 0)'){return bodyBg;}}var root=document.documentElement?window.getComputedStyle(document.documentElement):null;if(root){var rootBg=root.backgroundColor||'';if(rootBg&&rootBg!=='transparent'&&rootBg!=='rgba(0, 0, 0, 0)'){return rootBg;}}return '';}catch(e){return '';}})();"
@@ -165,6 +174,7 @@ fun AppsScreen(navController: NavController) {
     var selectedSavedApp by remember { mutableStateOf<SavedApp?>(null) }
     var pendingDeleteApp by remember { mutableStateOf<SavedApp?>(null) }
     var openingAppId by remember { mutableStateOf<String?>(null) }
+    var openedSwipeAppId by remember { mutableStateOf<String?>(null) }
     var autoFixStateByAppId by remember { mutableStateOf<Map<String, AppAutoFixUiState>>(emptyMap()) }
 
     fun notifyRuntimeShellRequired() {
@@ -459,6 +469,15 @@ fun AppsScreen(navController: NavController) {
                         SavedAppListRow(
                             app = app,
                             isLaunching = openingAppId == app.id,
+                            isOpened = openedSwipeAppId == app.id,
+                            onOpenChanged = { opened ->
+                                openedSwipeAppId =
+                                    when {
+                                        opened -> app.id
+                                        openedSwipeAppId == app.id -> null
+                                        else -> openedSwipeAppId
+                                    }
+                            },
                             onClick = {
                                 if (openingAppId != null) return@SavedAppListRow
                                 openingAppId = app.id
@@ -468,7 +487,10 @@ fun AppsScreen(navController: NavController) {
                                     openingAppId = null
                                 }
                             },
-                            onLongClick = { pendingDeleteApp = app }
+                            onDelete = {
+                                openedSwipeAppId = null
+                                pendingDeleteApp = app
+                            }
                         )
                     }
                 }
@@ -478,7 +500,10 @@ fun AppsScreen(navController: NavController) {
 
     pendingDeleteApp?.let { targetApp ->
         AlertDialog(
-            onDismissRequest = { pendingDeleteApp = null },
+            onDismissRequest = {
+                pendingDeleteApp = null
+                openedSwipeAppId = null
+            },
             title = { Text(text = "删除应用") },
             text = {
                 Text(
@@ -491,6 +516,7 @@ fun AppsScreen(navController: NavController) {
                 TextButton(
                     onClick = {
                         pendingDeleteApp = null
+                        openedSwipeAppId = null
                         autoFixStateByAppId = autoFixStateByAppId - targetApp.id
                         if (selectedSavedApp?.id == targetApp.id) {
                             selectedSavedApp = null
@@ -511,7 +537,10 @@ fun AppsScreen(navController: NavController) {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeleteApp = null }) {
+                TextButton(onClick = {
+                    pendingDeleteApp = null
+                    openedSwipeAppId = null
+                }) {
                     Text("取消")
                 }
             }
@@ -802,13 +831,34 @@ private fun AppsListEmptyState(
 }
 
 @Composable
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterialApi::class)
 private fun SavedAppListRow(
     app: SavedApp,
     isLaunching: Boolean = false,
+    isOpened: Boolean,
+    onOpenChanged: (Boolean) -> Unit,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onDelete: () -> Unit
 ) {
+    val itemScope = rememberCoroutineScope()
+    val actionWidth = 72.dp
+    val actionWidthPx = with(LocalDensity.current) { actionWidth.toPx() }
+    val swipeableState = rememberSwipeableState(
+        initialValue = if (isOpened) 1 else 0,
+        confirmStateChange = { targetValue ->
+            onOpenChanged(targetValue != 0)
+            true
+        }
+    )
+    val anchors = remember(actionWidthPx) { mapOf(0f to 0, -actionWidthPx to 1) }
+
+    LaunchedEffect(isOpened) {
+        val target = if (isOpened) 1 else 0
+        if (swipeableState.currentValue != target) {
+            swipeableState.animateTo(target)
+        }
+    }
+
     val baseColor = remember(app.id, app.html) {
         inferAppChromeColorFromHtml(app.html) ?: Color(0xFF1F2024)
     }
@@ -850,6 +900,7 @@ private fun SavedAppListRow(
         animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
         label = "app_list_row_bg"
     )
+    val appIcon = remember(app.id, app.description, app.html) { resolveSavedAppIcon(app) }
     val subtitle =
         when {
             isBuilding -> "Runtime packaging in progress"
@@ -857,86 +908,135 @@ private fun SavedAppListRow(
             else -> "Open app preview"
         }
 
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer {
-                alpha = entryAlpha
-                translationY = entryTranslateY
-                scaleX = pressedScale
-                scaleY = pressedScale
-            }
+            .height(68.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(rowBg, RoundedCornerShape(12.dp))
-            .combinedClickable(
-                interactionSource = interactionSource,
-                indication = LocalIndication.current,
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
-            .padding(horizontal = 2.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(Brush.linearGradient(listOf(iconStart, iconEnd)), CircleShape),
+                .fillMaxHeight()
+                .width(actionWidth)
+                .align(Alignment.CenterEnd),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = appMonogram(app.name),
-                color = glyphTint,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            if (isBuilding) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black, CircleShape)
-                        .border(width = 2.dp, color = Color.White, shape = CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "•",
-                        color = Color.White,
-                        fontSize = 9.sp,
-                        lineHeight = 9.sp
-                    )
-                }
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF3B30))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        onOpenChanged(false)
+                        onDelete()
+                        itemScope.launch { swipeableState.animateTo(0) }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Trash,
+                    contentDescription = "Delete",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
 
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset(swipeableState.offset.value.roundToInt(), 0) }
+                .graphicsLayer {
+                    alpha = entryAlpha
+                    translationY = entryTranslateY
+                    scaleX = pressedScale
+                    scaleY = pressedScale
+                }
+                .clip(RoundedCornerShape(12.dp))
+                .background(rowBg, RoundedCornerShape(12.dp))
+                .swipeable(
+                    state = swipeableState,
+                    anchors = anchors,
+                    thresholds = { _, _ -> FractionalThreshold(0.3f) },
+                    orientation = Orientation.Horizontal
+                )
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current
+                ) {
+                    if (swipeableState.currentValue != 0) {
+                        itemScope.launch { swipeableState.animateTo(0) }
+                    } else {
+                        onClick()
+                    }
+                }
+                .padding(horizontal = 2.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = app.name,
-                color = Color(0xFF1C1C1E),
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = subtitle,
-                color = Color(0xFF8E8E93),
-                fontSize = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(iconStart, iconEnd)), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = appIcon,
+                    contentDescription = null,
+                    tint = glyphTint,
+                    modifier = Modifier.size(22.dp)
+                )
+                if (isBuilding) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black, CircleShape)
+                            .border(width = 2.dp, color = Color.White, shape = CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "•",
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            lineHeight = 9.sp
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = app.name,
+                    color = Color(0xFF1C1C1E),
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    color = Color(0xFF8E8E93),
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Icon(
+                imageVector = AppIcons.ChevronRight,
+                contentDescription = null,
+                tint = Color(0xFFC7C7CC),
+                modifier = Modifier.size(20.dp)
             )
         }
-
-        Icon(
-            imageVector = AppIcons.ChevronRight,
-            contentDescription = null,
-            tint = Color(0xFFC7C7CC),
-            modifier = Modifier.size(20.dp)
-        )
     }
 }
 
@@ -1046,6 +1146,7 @@ private fun SavedAppDesktopTile(
         blendColor(baseColor, Color.Black, if (baseColor.luminance() > 0.58f) 0.24f else 0.18f)
     }
     val glyphTint = if (baseColor.luminance() > 0.58f) Color.Black else Color.White
+    val appIcon = remember(app.id, app.description, app.html) { resolveSavedAppIcon(app) }
 
     val runtimeStatus = app.runtimeBuildStatus.trim().lowercase()
     val isBuilding = runtimeStatus == "queued" || runtimeStatus == "in_progress"
@@ -1085,9 +1186,11 @@ private fun SavedAppDesktopTile(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            AppDevRingGlyph(
-                modifier = Modifier.size(32.dp),
-                tint = glyphTint
+            Icon(
+                imageVector = appIcon,
+                contentDescription = null,
+                tint = glyphTint,
+                modifier = Modifier.size(30.dp)
             )
             if (isBuilding) {
                 Box(
@@ -1153,12 +1256,12 @@ private fun PreviewSafetyCapsule(
 ) {
     Surface(
         modifier = Modifier
-            .width(124.dp)
-            .height(38.dp),
+            .width(96.dp)
+            .height(30.dp),
         shape = RoundedCornerShape(99.dp),
         color = Color(0xB21A1A1A),
         border = BorderStroke(width = 1.dp, color = Color(0x24FFFFFF)),
-        shadowElevation = 8.dp
+        shadowElevation = 6.dp
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),
@@ -1172,24 +1275,24 @@ private fun PreviewSafetyCapsule(
                 contentAlignment = Alignment.Center
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(5.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
+                            .size(3.dp)
                             .clip(CircleShape)
                             .background(Color.White)
                     )
                     Box(
                         modifier = Modifier
                             .size(5.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(3.dp)
                             .clip(CircleShape)
                             .background(Color.White)
                     )
@@ -1199,7 +1302,7 @@ private fun PreviewSafetyCapsule(
             Box(
                 modifier = Modifier
                     .width(1.dp)
-                    .height(20.dp)
+                    .height(16.dp)
                     .background(Color(0x29FFFFFF))
             )
 
@@ -1212,13 +1315,13 @@ private fun PreviewSafetyCapsule(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(20.dp)
-                        .border(width = 2.5.dp, color = Color.White, shape = CircleShape),
+                        .size(16.dp)
+                        .border(width = 2.dp, color = Color.White, shape = CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
+                            .size(4.dp)
                             .clip(CircleShape)
                             .background(Color.White)
                     )
@@ -1731,11 +1834,72 @@ private fun inferAppsCategory(app: SavedApp): AppsCategory {
     }
 }
 
-private fun appMonogram(name: String): String {
-    val trimmed = name.trim()
-    if (trimmed.isBlank()) return "A"
-    val first = trimmed.firstOrNull { it.isLetterOrDigit() } ?: trimmed.first()
-    return first.toString().uppercase()
+private fun resolveSavedAppIcon(app: SavedApp): ImageVector {
+    val explicitIcon = mapLucideNameToAppIcon(extractSavedAppIconName(app))
+    if (explicitIcon != null) return explicitIcon
+
+    val signal = "${app.name} ${app.description}".lowercase()
+    return when {
+        signal.contains("camera") || signal.contains("拍照") || signal.contains("扫码") -> AppIcons.Camera
+        signal.contains("search") || signal.contains("检索") || signal.contains("搜索") -> AppIcons.Search
+        signal.contains("image") || signal.contains("photo") || signal.contains("图片") || signal.contains("生图") -> AppIcons.CreateImage
+        signal.contains("file") || signal.contains("doc") || signal.contains("文件") || signal.contains("文档") -> AppIcons.Files
+        signal.contains("web") || signal.contains("browser") || signal.contains("globe") || signal.contains("网页") -> AppIcons.Globe
+        signal.contains("task") || signal.contains("todo") || signal.contains("计划") || signal.contains("任务") -> AppIcons.Model
+        signal.contains("memory") || signal.contains("journal") || signal.contains("日记") || signal.contains("记录") -> AppIcons.Memory
+        signal.contains("dashboard") || signal.contains("desktop") || signal.contains("monitor") -> AppIcons.Monitor
+        signal.contains("tool") || signal.contains("dev") || signal.contains("code") || signal.contains("开发") -> AppIcons.Tool
+        else -> AppIcons.AppDeveloper
+    }
+}
+
+private fun extractSavedAppIconName(app: SavedApp): String? {
+    val sources = listOf(app.description, app.html.take(16_000))
+    val patterns =
+        listOf(
+            Regex("(?i)app[_\\- ]?icon\\s*[:：]\\s*([a-z0-9\\-]{2,48})"),
+            Regex("(?i)data-lucide\\s*=\\s*[\"']([a-z0-9\\-]{2,48})[\"']"),
+            Regex("(?i)class\\s*=\\s*[\"'][^\"']*lucide-([a-z0-9\\-]{2,48})[^\"']*[\"']"),
+            Regex("(?i)lucide-([a-z0-9\\-]{2,48})")
+        )
+
+    for (source in sources) {
+        if (source.isBlank()) continue
+        for (pattern in patterns) {
+            val matched = pattern.find(source)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+            if (matched.isNotBlank()) {
+                val normalized = normalizeLucideIconName(matched)
+                if (!normalized.isNullOrBlank()) return normalized
+            }
+        }
+    }
+    return null
+}
+
+private fun normalizeLucideIconName(raw: String?): String? {
+    val normalized =
+        raw?.trim()
+            ?.lowercase()
+            ?.removePrefix("lucide-")
+            ?.replace(Regex("[^a-z0-9\\-]"), "")
+            .orEmpty()
+    return normalized.takeIf { it.isNotBlank() }
+}
+
+private fun mapLucideNameToAppIcon(name: String?): ImageVector? {
+    return when (normalizeLucideIconName(name)) {
+        "camera", "camera-off", "scan", "scan-line", "scan-face" -> AppIcons.Camera
+        "search", "search-check", "search-code", "scan-search" -> AppIcons.Search
+        "globe", "earth", "compass", "map", "map-pinned", "navigation" -> AppIcons.Globe
+        "image", "images", "picture-in-picture", "wand-sparkles", "sparkles", "palette" -> AppIcons.CreateImage
+        "file", "files", "folder", "folder-open", "file-text", "notebook", "book-open" -> AppIcons.Files
+        "brain", "heart", "smile", "bookmark", "notepad-text", "book-heart" -> AppIcons.Memory
+        "layout-dashboard", "monitor", "laptop", "panel-top", "panel-left" -> AppIcons.Monitor
+        "list-todo", "calendar", "check-square", "clipboard-list", "target" -> AppIcons.Model
+        "wrench", "hammer", "tool", "settings", "code", "terminal", "bot" -> AppIcons.Tool
+        "app-window", "square-terminal", "component", "blocks", "rocket" -> AppIcons.AppDeveloper
+        else -> null
+    }
 }
 
 private fun blendColor(start: Color, end: Color, ratio: Float): Color {

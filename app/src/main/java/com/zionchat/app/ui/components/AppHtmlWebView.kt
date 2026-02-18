@@ -33,6 +33,19 @@ private const val APP_RUNTIME_ERROR_MARKER = "ZION_APP_RUNTIME_ERROR:"
 private const val APP_RUNTIME_DEBUG_HOOK_JS =
     "(function(){try{if(window.__zionDebugHookInstalled){return 'ok';}window.__zionDebugHookInstalled=true;window.addEventListener('error',function(e){try{var msg=(e&&e.message)?String(e.message):'Unknown runtime error';var src=(e&&e.filename)?String(e.filename):'';var ln=(e&&e.lineno)?String(e.lineno):'0';console.error('ZION_APP_RUNTIME_ERROR:'+msg+' @'+src+':'+ln);}catch(_){}});window.addEventListener('unhandledrejection',function(e){try{var reason='';try{reason=String(e.reason);}catch(_){reason='[unknown]';}console.error('ZION_APP_RUNTIME_ERROR:UnhandledPromiseRejection '+reason);}catch(_){}});return 'ok';}catch(err){return 'err';}})();"
 
+private fun shouldIgnoreConsoleRuntimeError(message: String): Boolean {
+    val normalized = message.trim().lowercase()
+    if (normalized.isBlank()) return true
+    val isTouchCancelNoise =
+        normalized.contains("attempt to cancel a touchend event") &&
+            (
+                normalized.contains("cancelable false") ||
+                    normalized.contains("cancelable=false")
+            )
+    if (!isTouchCancelNoise) return false
+    return normalized.contains("scrolling is in progress") || normalized.contains("cannot be interrupted")
+}
+
 @Stable
 class AppHtmlWebViewState {
     var isLoading: Boolean by mutableStateOf(false)
@@ -112,7 +125,9 @@ fun AppHtmlWebView(
                                 runtimeIssueCallback?.invoke(detail)
                             }
                             consoleMessage.messageLevel() == ConsoleMessage.MessageLevel.ERROR -> {
-                                runtimeIssueCallback?.invoke("Console error: $message")
+                                if (!shouldIgnoreConsoleRuntimeError(message)) {
+                                    runtimeIssueCallback?.invoke("Console error: $message")
+                                }
                             }
                         }
                     }

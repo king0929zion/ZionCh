@@ -3,6 +3,7 @@ package com.zionchat.app.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -304,22 +306,18 @@ fun AddProviderScreen(
 
                 if (!isGrok2ApiProvider) {
                     // Provider Type
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Column {
                         Text(
                             text = "Provider Type",
                             fontSize = 13.sp,
                             fontFamily = SourceSans3,
                             color = TextSecondary,
-                            modifier = Modifier.width(92.dp)
+                            modifier = Modifier.padding(bottom = 8.dp)
                         )
                         val typeBackdrop = rememberLayerBackdrop()
                         Box(
                             modifier = Modifier
-                                .weight(1f)
+                                .fillMaxWidth()
                                 .heightIn(min = 48.dp)
                         ) {
                             Box(
@@ -327,7 +325,8 @@ fun AddProviderScreen(
                                     .fillMaxSize()
                                     .clip(RoundedCornerShape(20.dp))
                                     .layerBackdrop(typeBackdrop)
-                                    .background(GrayLighter, RoundedCornerShape(20.dp))
+                                    .background(Color.White, RoundedCornerShape(20.dp))
+                                    .border(width = 1.dp, color = Color(0xFFE8E8ED), shape = RoundedCornerShape(20.dp))
                             )
 
                             Column(
@@ -344,22 +343,19 @@ fun AddProviderScreen(
                                         text = "OpenAI",
                                         selected = selectedType == "openai",
                                         onClick = { selectedType = "openai" },
-                                        modifier = Modifier.weight(1f),
-                                        backdrop = typeBackdrop
+                                        modifier = Modifier.weight(1f)
                                     )
                                     TypeOption(
                                         text = "Anthropic",
                                         selected = selectedType == "anthropic",
                                         onClick = { selectedType = "anthropic" },
-                                        modifier = Modifier.weight(1f),
-                                        backdrop = typeBackdrop
+                                        modifier = Modifier.weight(1f)
                                     )
                                     TypeOption(
                                         text = "Google",
                                         selected = selectedType == "google",
                                         onClick = { selectedType = "google" },
-                                        modifier = Modifier.weight(1f),
-                                        backdrop = typeBackdrop
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
                             }
@@ -663,13 +659,32 @@ fun TypeOption(
     backdrop: Backdrop? = null
 ) {
     val shape = RoundedCornerShape(16.dp)
+    val bgColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (selected) TextPrimary else Color(0xFFF5F5F7),
+        animationSpec = tween(durationMillis = 180),
+        label = "type_option_bg"
+    )
+    val textColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (selected) Surface else TextPrimary,
+        animationSpec = tween(durationMillis = 180),
+        label = "type_option_text"
+    )
+    val pressedScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (selected) 1f else 0.998f,
+        animationSpec = tween(durationMillis = 160),
+        label = "type_option_scale"
+    )
     Box(
         modifier = modifier
             .height(36.dp)
+            .graphicsLayer {
+                scaleX = pressedScale
+                scaleY = pressedScale
+            }
             .clip(shape)
             .then(
                 when {
-                    !selected -> Modifier.background(Color.Transparent, shape)
+                    !selected -> Modifier.background(bgColor, shape)
                     backdrop != null -> Modifier.liquidGlass(
                         backdrop = backdrop,
                         shape = shape,
@@ -681,7 +696,7 @@ fun TypeOption(
                         highlightAlpha = 0.18f,
                         shadowAlpha = 0.06f
                     )
-                    else -> Modifier.background(TextPrimary, shape)
+                    else -> Modifier.background(bgColor, shape)
                 }
             )
             .pressableScale(pressedScale = 0.95f, onClick = onClick),
@@ -692,7 +707,7 @@ fun TypeOption(
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             fontFamily = SourceSans3,
-            color = if (selected) Surface else TextPrimary
+            color = textColor
         )
     }
 }
