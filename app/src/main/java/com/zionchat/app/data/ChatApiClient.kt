@@ -301,6 +301,7 @@ class ChatApiClient {
             failures += result.summary
         }
 
+        markGrokTokenSync(cacheKey)
         return GrokTokenSyncOutcome(
             attempted = true,
             success = false,
@@ -848,11 +849,8 @@ class ChatApiClient {
                 }
                 val body = gson.toJson(payload)
                 val baseCandidates = providerApiBaseCandidates(provider)
-                val grokTokenSync = ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
+                ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
                 val attemptErrors = mutableListOf<String>()
-                if (grokTokenSync.attempted && !grokTokenSync.success && grokTokenSync.summary.isNotBlank()) {
-                    attemptErrors += "token sync: ${grokTokenSync.summary}"
-                }
                 var lastError: Throwable? = null
                 for ((index, baseUrl) in baseCandidates.withIndex()) {
                     try {
@@ -948,11 +946,8 @@ class ChatApiClient {
         }
         val body = gson.toJson(payload)
         val baseCandidates = providerApiBaseCandidates(provider)
-        val grokTokenSync = ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
+        ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
         val attemptErrors = mutableListOf<String>()
-        if (grokTokenSync.attempted && !grokTokenSync.success && grokTokenSync.summary.isNotBlank()) {
-            attemptErrors += "token sync: ${grokTokenSync.summary}"
-        }
         var lastError: Throwable? = null
 
         for ((index, baseUrl) in baseCandidates.withIndex()) {
@@ -2021,15 +2016,10 @@ class ChatApiClient {
             )
 
         val candidates = LinkedHashSet<String>()
+        val isXaiSource = raw.contains("api.x.ai", ignoreCase = true)
         if (raw.isNotBlank()) {
             addGrokBaseCandidate(candidates, raw)
-            if (
-                raw.contains("api.x.ai", ignoreCase = true) ||
-                    raw.contains("localhost", ignoreCase = true) ||
-                    raw.contains("127.0.0.1", ignoreCase = true) ||
-                    raw.contains("10.0.2.2", ignoreCase = true) ||
-                    raw.contains("host.docker.internal", ignoreCase = true)
-            ) {
+            if (isXaiSource) {
                 addGrokBaseCandidate(candidates, raw.replace("://localhost", "://10.0.2.2", ignoreCase = true))
                 addGrokBaseCandidate(candidates, raw.replace("://127.0.0.1", "://10.0.2.2", ignoreCase = true))
                 addGrokBaseCandidate(candidates, raw.replace("://10.0.2.2", "://127.0.0.1", ignoreCase = true))
@@ -2044,7 +2034,9 @@ class ChatApiClient {
                 addGrokBaseCandidate(candidates, raw.replace("://localhost", "://host.docker.internal", ignoreCase = true))
             }
         }
-        fallbackGateways.forEach { addGrokBaseCandidate(candidates, it) }
+        if (raw.isBlank() || isXaiSource) {
+            fallbackGateways.forEach { addGrokBaseCandidate(candidates, it) }
+        }
 
         val normalizedCandidates =
             candidates
