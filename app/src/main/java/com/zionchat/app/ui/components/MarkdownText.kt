@@ -8,7 +8,6 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -55,7 +54,6 @@ import androidx.compose.ui.unit.sp
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.AccentBlue
 import com.zionchat.app.ui.theme.GrayLight
-import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
 import coil3.compose.AsyncImage
@@ -125,16 +123,13 @@ private fun MarkdownTableBlock(
     val horizontalState = rememberScrollState()
     val columnCount = maxOf(table.headers.size, table.rows.maxOfOrNull { it.size } ?: 0).coerceAtLeast(1)
     val minCellWidth = 120.dp
-    val shape = RoundedCornerShape(12.dp)
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .border(width = 1.dp, color = GrayLight, shape = shape)
             .horizontalScroll(horizontalState)
     ) {
-        Row(modifier = Modifier.background(GrayLighter)) {
+        Row {
             repeat(columnCount) { index ->
                 MarkdownTableCell(
                     text = table.headers.getOrNull(index).orEmpty(),
@@ -144,16 +139,12 @@ private fun MarkdownTableBlock(
                 )
             }
         }
+        if (table.rows.isNotEmpty()) {
+            Divider(color = GrayLight, thickness = 0.75.dp)
+        }
 
         table.rows.forEachIndexed { rowIndex, row ->
-            Row(
-                modifier =
-                    if (rowIndex % 2 == 0) {
-                        Modifier.background(Color.White)
-                    } else {
-                        Modifier.background(Color(0xFFF9F9FB))
-                    }
-            ) {
+            Row {
                 repeat(columnCount) { index ->
                     MarkdownTableCell(
                         text = row.getOrNull(index).orEmpty(),
@@ -162,6 +153,9 @@ private fun MarkdownTableBlock(
                         minWidth = minCellWidth
                     )
                 }
+            }
+            if (rowIndex < table.rows.lastIndex) {
+                Divider(color = GrayLight, thickness = 0.75.dp)
             }
         }
     }
@@ -179,7 +173,6 @@ private fun MarkdownTableCell(
         style = textStyle.copy(textAlign = textAlign, lineHeight = 21.sp),
         modifier = Modifier
             .width(minWidth)
-            .border(width = 0.5.dp, color = GrayLight)
             .padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }
