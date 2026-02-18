@@ -483,11 +483,8 @@ fun AppsScreen(navController: NavController) {
                             onClick = {
                                 if (openingAppId != null) return@SavedAppListRow
                                 openingAppId = app.id
-                                scope.launch {
-                                    delay(120)
-                                    selectedSavedApp = app
-                                    openingAppId = null
-                                }
+                                selectedSavedApp = app
+                                openingAppId = null
                             },
                             onDelete = {
                                 openedSwipeAppId = null
@@ -1370,8 +1367,13 @@ private fun SavedAppPreviewPage(
     var issueFingerprints by remember(app.id) { mutableStateOf(setOf<String>()) }
     val baseUrl = remember(app.id) { "https://saved-app.zionchat.local/app/${app.id}/" }
     val deployUrl = remember(app.deployUrl) { app.deployUrl?.trim()?.takeIf { it.isNotBlank() } }
-    val contentSignature = remember(app.id, app.html, deployUrl, previewReloadNonce) {
-        "${app.id}:${app.html.hashCode()}:${deployUrl.orEmpty()}:$previewReloadNonce"
+    var useDeployUrl by remember(app.id, deployUrl, previewReloadNonce) {
+        mutableStateOf(!deployUrl.isNullOrBlank())
+    }
+    val activePreviewUrl = if (useDeployUrl) deployUrl else null
+    val activePreviewHtml = if (activePreviewUrl.isNullOrBlank()) app.html else null
+    val contentSignature = remember(app.id, app.html, activePreviewUrl, useDeployUrl, previewReloadNonce) {
+        "${app.id}:${app.html.hashCode()}:${activePreviewUrl.orEmpty()}:${if (useDeployUrl) "deploy" else "local"}:$previewReloadNonce"
     }
     var previewContentVisible by remember(contentSignature) { mutableStateOf(false) }
     val reportIssue = rememberUpdatedState<(String) -> Unit> { raw ->
@@ -1383,6 +1385,16 @@ private fun SavedAppPreviewPage(
         issueFingerprints = issueFingerprints + key
         if (debugIssue.isNullOrBlank()) {
             debugIssue = normalized
+        }
+    }
+    LaunchedEffect(contentSignature, useDeployUrl, app.html) {
+        val fallbackDelay = if (useDeployUrl) 2600L else 900L
+        delay(fallbackDelay)
+        if (previewContentVisible) return@LaunchedEffect
+        if (useDeployUrl && app.html.isNotBlank()) {
+            useDeployUrl = false
+        } else {
+            previewContentVisible = true
         }
     }
 
@@ -1407,15 +1419,22 @@ private fun SavedAppPreviewPage(
                     .fillMaxSize()
                     .graphicsLayer { alpha = if (previewContentVisible) 1f else 0f },
             contentSignature = contentSignature,
-            html = if (deployUrl.isNullOrBlank()) app.html else null,
+            html = activePreviewHtml,
             baseUrl = baseUrl,
-            url = deployUrl,
+            url = activePreviewUrl,
             enableCookies = true,
             enableThirdPartyCookies = true,
             transparentBackground = false,
             backgroundColor = chromeColor,
             preRenderEnabled = true,
-            onRuntimeIssue = { raw -> reportIssue.value(raw) },
+            onRuntimeIssue = { raw ->
+                val normalized = raw.trim()
+                if (useDeployUrl && normalized.startsWith("Load error", ignoreCase = true) && app.html.isNotBlank()) {
+                    useDeployUrl = false
+                    return@AppHtmlWebView
+                }
+                reportIssue.value(raw)
+            },
             onPageCommitVisible = { previewContentVisible = true },
             onPageFinished = { webView ->
                 previewContentVisible = true

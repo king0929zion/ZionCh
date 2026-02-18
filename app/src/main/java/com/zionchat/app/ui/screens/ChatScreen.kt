@@ -418,7 +418,9 @@ fun ChatScreen(navController: NavController) {
         showToolMenu = true
         toolMenuPage = ToolMenuPage.McpServers
         mcpToolPickerError = null
-        selectedTool = "mcp"
+        if (selectedTool == "mcp") {
+            selectedTool = null
+        }
         hideKeyboardIfNeeded(force = true)
         scope.launch {
             mcpToolPickerLoading = true
@@ -1120,8 +1122,8 @@ fun ChatScreen(navController: NavController) {
                     )
                 } else {
                     // 普通聊天流程
-                    val explicitMcp = selectedTool == "mcp"
                     val selectedMcpServerIdsSnapshot = selectedMcpServerIds
+                    val mcpAutoEnabled = selectedMcpServerIdsSnapshot.isNotEmpty()
                     val explicitAppBuilder = selectedTool == "app_builder"
                     val useWebSearch = explicitWebSearchRequest || weakAutoWebSearchIntent
                     val canUseAppBuilder = explicitAppBuilder
@@ -1194,7 +1196,7 @@ fun ChatScreen(navController: NavController) {
                             repository.mcpListFlow.first().filter { it.enabled }
                         }
 
-                    if (explicitMcp && enabledServers.isEmpty()) {
+                    if (mcpAutoEnabled && enabledServers.isEmpty()) {
                         val msg = "No MCP servers enabled. Configure one in Settings → MCP Tools."
                         updateAssistantContent(msg, null)
                         repository.appendMessage(
@@ -1214,18 +1216,18 @@ fun ChatScreen(navController: NavController) {
                             server.copy(tools = fetched)
                         }
                     val scopedMcpServers =
-                        if (explicitMcp && selectedMcpServerIdsSnapshot.isNotEmpty()) {
+                        if (mcpAutoEnabled) {
                             serversWithTools.filter { server ->
                                 selectedMcpServerIdsSnapshot.contains(server.id)
                             }
                         } else {
-                            serversWithTools
+                            emptyList()
                         }
                     val availableMcpServers = scopedMcpServers.filter { it.tools.isNotEmpty() }
-                    val canUseMcp = availableMcpServers.isNotEmpty()
+                    val canUseMcp = mcpAutoEnabled && availableMcpServers.isNotEmpty()
                     val canUseAnyTool = canUseMcp || canUseAppBuilder
 
-                    if (explicitMcp && !canUseMcp) {
+                    if (mcpAutoEnabled && !canUseMcp) {
                         val msg =
                             if (selectedMcpServerIdsSnapshot.isNotEmpty()) {
                                 "No selected MCP servers available. Re-select MCP providers."
@@ -1245,13 +1247,13 @@ fun ChatScreen(navController: NavController) {
                     val maxRounds =
                         when {
                             !canUseAnyTool -> 1
-                            explicitMcp -> 6
+                            canUseMcp -> 6
                             explicitAppBuilder -> 4
                             else -> 4
                         }
                     val maxCallsPerRound =
                         when {
-                            explicitMcp -> 4
+                            canUseMcp -> 4
                             explicitAppBuilder -> 2
                             else -> 3
                         }
@@ -2629,7 +2631,6 @@ fun ChatScreen(navController: NavController) {
                             selectedMcpServerIds - serverId
                         }
                     selectedMcpServerIds = updated
-                    selectedTool = if (updated.isNotEmpty()) "mcp" else null
                 },
                 onMcpPageChange = { page ->
                     toolMenuPage = page
@@ -2662,7 +2663,7 @@ fun ChatScreen(navController: NavController) {
                             photoPickerLauncher.launch("image/*")
                         }
                         "mcp" -> {
-                            selectedTool = "mcp"
+                            openMcpToolPicker()
                         }
                         else -> {
                             selectedTool = tool
@@ -4752,7 +4753,6 @@ private fun ToolMenuPanel(
                                         title = stringResource(R.string.settings_item_mcp_tools),
                                         subtitle = stringResource(R.string.chat_tool_mcp_choose_providers),
                                         onClick = {
-                                            onToolSelect("mcp")
                                             onMcpPageChange(ToolMenuPage.McpServers)
                                         }
                                     )
