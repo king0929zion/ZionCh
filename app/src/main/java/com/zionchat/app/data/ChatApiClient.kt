@@ -3,13 +3,19 @@ package com.zionchat.app.data
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.jsoup.Jsoup
@@ -19,6 +25,9 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
 import kotlin.random.Random
 
@@ -763,6 +772,397 @@ class ChatApiClient {
             ?: throw IllegalStateException(
                 "No image URL found in Grok reverse response. samples=${samples.joinToString(" || ")}"
             )
+    }
+
+    private data class GrokReverseWsImage(
+        val imageId: String,
+        val url: String,
+        val blob: String,
+        val blobSize: Int,
+        val ext: String?,
+        val isFinal: Boolean
+    )
+
+    private fun normalizeGrokWsBlob(rawBlob: String): String {
+        val candidate = rawBlob.trim()
+        if (candidate.isBlank()) return ""
+        if (candidate.startsWith("data:image/", ignoreCase = true) && candidate.contains(",")) {
+            return candidate.substringAfter(",", "")
+        }
+        return candidate
+    }
+
+    private fun normalizeImageSizeToAspectRatio(size: String): String {
+        val normalized = size.trim().lowercase()
+        return when (normalized) {
+            "1280x720" -> "16:9"
+            "720x1280" -> "9:16"
+            "1792x1024" -> "3:2"
+            "1024x1792" -> "2:3"
+            "1024x1024" -> "1:1"
+            else -> {
+                val match = Regex("^(\\d{2,5})x(\\d{2,5})$").find(normalized)
+                if (match != null) {
+                    val w = match.groupValues.getOrNull(1)?.toIntOrNull()
+                    val h = match.groupValues.getOrNull(2)?.toIntOrNull()
+                    if (w != null && h != null && w > 0 && h > 0) {
+                        val divisor = gcd(w, h).coerceAtLeast(1)
+                        "${w / divisor}:${h / divisor}"
+                    } else {
+                        "1:1"
+                    }
+                } else {
+                    "1:1"
+                }
+            }
+        }
+    }
+
+    private fun gcd(a: Int, b: Int): Int {
+        var x = kotlin.math.abs(a)
+        var y = kotlin.math.abs(b)
+        while (y != 0) {
+            val t = x % y
+            x = y
+            y = t
+        }
+        return if (x == 0) 1 else x
+    }
+
+    private fun resolveImageMimeByExt(ext: String?): String {
+        return when (ext?.lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            else -> "image/png"
+        }
+    }
+
+    private fun detectImageExt(url: String, blob: String): String {
+        val fromUrl =
+            Regex("/images/[a-f0-9-]+\\.(png|jpg|jpeg|webp|gif)", RegexOption.IGNORE_CASE)
+                .find(url)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.lowercase()
+        if (!fromUrl.isNullOrBlank()) return fromUrl
+        return when {
+            blob.startsWith("/9j/") -> "jpg"
+            blob.startsWith("R0lGOD") -> "gif"
+            blob.startsWith("UklGR") -> "webp"
+            else -> "png"
+        }
+    }
+
+    private fun isGrokWsFinalImage(url: String, blobSize: Int): Boolean {
+        val lowerUrl = url.trim().lowercase()
+        if (lowerUrl.endsWith(".jpg") || lowerUrl.endsWith(".jpeg")) return true
+        return blobSize >= GROK_REVERSE_IMAGINE_FINAL_MIN_BLOB_BYTES
+    }
+
+    private fun parseGrokReverseWsImageFrame(root: com.google.gson.JsonObject): GrokReverseWsImage? {
+        val type = root.getStringValue("type")?.lowercase()
+        if (type != "image") return null
+        val urlRaw = root.getStringValue("url").orEmpty()
+        val blobRaw = root.getStringValue("blob").orEmpty()
+        val normalizedBlob = normalizeGrokWsBlob(blobRaw)
+        if (urlRaw.isBlank() && normalizedBlob.isBlank()) return null
+        val ext = detectImageExt(urlRaw, normalizedBlob)
+        val imageIdFromUrl =
+            Regex("/images/([a-f0-9-]+)\\.(?:png|jpg|jpeg|webp|gif)", RegexOption.IGNORE_CASE)
+                .find(urlRaw)
+                ?.groupValues
+                ?.getOrNull(1)
+        val imageId =
+            imageIdFromUrl
+                ?: root.getStringValue("imageId")
+                ?: root.getStringValue("id")
+                ?: UUID.randomUUID().toString()
+        val final = isGrokWsFinalImage(urlRaw, normalizedBlob.length)
+        return GrokReverseWsImage(
+            imageId = imageId,
+            url = urlRaw,
+            blob = normalizedBlob,
+            blobSize = normalizedBlob.length,
+            ext = ext,
+            isFinal = final
+        )
+    }
+
+    private fun toImageOutputUrl(item: GrokReverseWsImage): String? {
+        normalizeCandidateImageUrl(item.url)?.let { return it }
+        if (item.blob.isBlank()) return null
+        val mime = resolveImageMimeByExt(item.ext)
+        return "data:$mime;base64,${item.blob}"
+    }
+
+    private fun buildGrokImagineWsPayload(
+        prompt: String,
+        size: String,
+        n: Int
+    ): Map<String, Any> {
+        val aspectRatio = normalizeImageSizeToAspectRatio(size)
+        val requestId = UUID.randomUUID().toString()
+        val contentItemProperties =
+            linkedMapOf<String, Any>(
+                "section_count" to 0,
+                "is_kids_mode" to false,
+                "enable_nsfw" to true,
+                "skip_upsampler" to false,
+                "is_initial" to false,
+                "aspect_ratio" to aspectRatio
+            )
+        if (n > 1) {
+            contentItemProperties["batch_size"] = n.coerceIn(1, 6)
+        }
+        return linkedMapOf(
+            "type" to "conversation.item.create",
+            "timestamp" to System.currentTimeMillis(),
+            "item" to mapOf(
+                "type" to "message",
+                "content" to listOf(
+                    mapOf(
+                        "requestId" to requestId,
+                        "text" to prompt.trim(),
+                        "type" to "input_text",
+                        "properties" to contentItemProperties
+                    )
+                )
+            )
+        )
+    }
+
+    private fun buildGrokImagineWsRequest(
+        provider: ProviderConfig,
+        effectiveHeaders: List<HttpHeader>
+    ): Request {
+        val token = providerBearerToken(provider)?.let(::normalizeGrokSsoToken).orEmpty()
+        if (token.isBlank()) {
+            throw IllegalStateException("Grok token is required.")
+        }
+        val requestBuilder = Request.Builder().url(GROK_REVERSE_IMAGINE_WS_API)
+        applyHeaders(requestBuilder, effectiveHeaders)
+        if (!hasHeader(effectiveHeaders, "origin")) {
+            requestBuilder.header("Origin", "https://grok.com")
+        }
+        if (!hasHeader(effectiveHeaders, "user-agent")) {
+            requestBuilder.header("User-Agent", GROK_REVERSE_USER_AGENT)
+        }
+        if (!hasHeader(effectiveHeaders, "accept-language")) {
+            requestBuilder.header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        }
+        if (!hasHeader(effectiveHeaders, "cache-control")) {
+            requestBuilder.header("Cache-Control", "no-cache")
+        }
+        if (!hasHeader(effectiveHeaders, "pragma")) {
+            requestBuilder.header("Pragma", "no-cache")
+        }
+        if (!hasHeader(effectiveHeaders, "cookie")) {
+            requestBuilder.header("Cookie", "sso=$token; sso-rw=$token")
+        }
+        return requestBuilder.build()
+    }
+
+    private fun chooseBetterGrokWsImage(
+        current: GrokReverseWsImage?,
+        incoming: GrokReverseWsImage
+    ): GrokReverseWsImage {
+        if (current == null) return incoming
+        if (incoming.isFinal && !current.isFinal) return incoming
+        if (!incoming.isFinal && current.isFinal) return current
+        return if (incoming.blobSize > current.blobSize) incoming else current
+    }
+
+    private suspend fun grokReverseGenerateImageViaWs(
+        provider: ProviderConfig,
+        prompt: String,
+        extraHeaders: List<HttpHeader>,
+        size: String,
+        quality: String,
+        n: Int
+    ): String {
+        val finalPrompt =
+            buildString {
+                append(prompt.trim())
+                if (size.isNotBlank()) {
+                    append("\n[image_size] ")
+                    append(size.trim())
+                }
+                if (quality.isNotBlank()) {
+                    append("\n[image_quality] ")
+                    append(quality.trim())
+                }
+            }.trim()
+        if (finalPrompt.isBlank()) {
+            throw IllegalStateException("Prompt is required.")
+        }
+
+        val request = buildGrokImagineWsRequest(provider, extraHeaders)
+        val payload = gson.toJson(buildGrokImagineWsPayload(finalPrompt, size, n))
+        val seenImages = linkedMapOf<String, GrokReverseWsImage>()
+        val lock = Any()
+
+        val output =
+            try {
+                withTimeout(GROK_REVERSE_IMAGINE_TIMEOUT_MS) {
+                    suspendCancellableCoroutine<String> { continuation ->
+                        val finished = AtomicBoolean(false)
+                        fun resolveSuccess(value: String) {
+                            if (!finished.compareAndSet(false, true)) return
+                            continuation.resume(value)
+                        }
+                        fun resolveFailure(message: String) {
+                            if (!finished.compareAndSet(false, true)) return
+                            continuation.resumeWithException(IllegalStateException(message))
+                        }
+                        fun bestOutputFromSeen(): String? {
+                            val best =
+                                synchronized(lock) {
+                                    seenImages.values.maxWithOrNull(
+                                        compareBy<GrokReverseWsImage> { it.isFinal }
+                                            .thenBy { it.blobSize }
+                                    )
+                                } ?: return null
+                            return toImageOutputUrl(best)
+                        }
+
+                        val listener =
+                            object : WebSocketListener() {
+                                override fun onOpen(webSocket: WebSocket, response: Response) {
+                                    val sent = webSocket.send(payload)
+                                    if (!sent) {
+                                        resolveFailure("Grok imagine websocket send failed.")
+                                    }
+                                }
+
+                                override fun onMessage(webSocket: WebSocket, text: String) {
+                                    val root = runCatching { JsonParser.parseString(text).asJsonObject }.getOrNull() ?: return
+                                    val msgType = root.getStringValue("type")?.lowercase().orEmpty()
+                                    if (msgType == "error") {
+                                        val code =
+                                            root.getStringValue("err_code")
+                                                ?: root.getStringValue("error_code")
+                                                ?: "ws_error"
+                                        val msg =
+                                            root.getStringValue("err_msg")
+                                                ?: root.getStringValue("error")
+                                                ?: "upstream websocket error"
+                                        resolveFailure("Grok imagine websocket error($code): $msg")
+                                        webSocket.cancel()
+                                        return
+                                    }
+                                    if (msgType != "image") return
+                                    val parsed = parseGrokReverseWsImageFrame(root) ?: return
+                                    val bestCandidate =
+                                        synchronized(lock) {
+                                            val existing = seenImages[parsed.imageId]
+                                            val merged = chooseBetterGrokWsImage(existing, parsed)
+                                            seenImages[parsed.imageId] = merged
+                                            merged
+                                        }
+                                    if (bestCandidate.isFinal) {
+                                        val out = toImageOutputUrl(bestCandidate)
+                                        if (!out.isNullOrBlank()) {
+                                            resolveSuccess(out)
+                                            webSocket.close(1000, "done")
+                                        }
+                                    }
+                                }
+
+                                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                                    val fallback = bestOutputFromSeen()
+                                    if (!fallback.isNullOrBlank()) {
+                                        resolveSuccess(fallback)
+                                    } else {
+                                        resolveFailure("Grok imagine websocket closed: $code $reason")
+                                    }
+                                }
+
+                                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                                    val fallback = bestOutputFromSeen()
+                                    if (!fallback.isNullOrBlank()) {
+                                        resolveSuccess(fallback)
+                                    } else {
+                                        val msg = t.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
+                                        val status = response?.code?.toString()?.takeIf { it.isNotBlank() }
+                                        val detail =
+                                            listOfNotNull(
+                                                msg.takeIf { it.isNotBlank() },
+                                                status?.let { "HTTP $it" }
+                                            ).joinToString(", ")
+                                        resolveFailure("Grok imagine websocket failed${if (detail.isNotBlank()) ": $detail" else "."}")
+                                    }
+                                }
+                            }
+
+                        val webSocket = client.newWebSocket(request, listener)
+                        continuation.invokeOnCancellation { webSocket.cancel() }
+                    }
+                }
+            } catch (timeout: TimeoutCancellationException) {
+                val fallback =
+                    synchronized(lock) {
+                        seenImages.values.maxWithOrNull(
+                            compareBy<GrokReverseWsImage> { it.isFinal }
+                                .thenBy { it.blobSize }
+                        )
+                    }?.let(::toImageOutputUrl)
+                if (!fallback.isNullOrBlank()) {
+                    fallback
+                } else {
+                    throw IllegalStateException(
+                        "Grok imagine websocket timeout after ${GROK_REVERSE_IMAGINE_TIMEOUT_MS / 1000}s."
+                    )
+                }
+            }
+
+        return output.trim().ifBlank { throw IllegalStateException("Grok imagine returned empty image output.") }
+    }
+
+    private suspend fun grokReverseGenerateImageDirect(
+        provider: ProviderConfig,
+        modelId: String,
+        prompt: String,
+        extraHeaders: List<HttpHeader>,
+        size: String,
+        quality: String,
+        n: Int
+    ): String {
+        val attempts = mutableListOf<String>()
+        runCatching {
+            grokReverseGenerateImageViaWs(
+                provider = provider,
+                prompt = prompt,
+                extraHeaders = extraHeaders,
+                size = size,
+                quality = quality,
+                n = n
+            )
+        }.onSuccess { return it }
+            .onFailure { error ->
+                val msg = error.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
+                attempts += if (msg.isBlank()) "ws imagine failed" else "ws imagine failed: $msg"
+            }
+
+        runCatching {
+            grokReverseGenerateImage(
+                provider = provider,
+                modelId = modelId,
+                prompt = prompt,
+                extraHeaders = extraHeaders,
+                size = size,
+                quality = quality,
+                n = n
+            )
+        }.onSuccess { return it }
+            .onFailure { error ->
+                val msg = error.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
+                attempts += if (msg.isBlank()) "app-chat fallback failed" else "app-chat fallback failed: $msg"
+            }
+
+        throw IllegalStateException(
+            "Grok reverse image generation failed. ${attempts.joinToString(" | ")}"
+        )
     }
 
     private fun grokReverseChatCompletionsStream(
@@ -2367,7 +2767,7 @@ class ChatApiClient {
             runCatching {
                 val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
                 if (isGrokReverseDirect(provider)) {
-                    return@runCatching grokReverseGenerateImage(
+                    return@runCatching grokReverseGenerateImageDirect(
                         provider = provider,
                         modelId = modelId,
                         prompt = prompt,
@@ -2436,6 +2836,9 @@ class ChatApiClient {
         private const val GROK2API_DEFAULT_APP_KEY = "grok2api"
         private const val GROK_TOKEN_SYNC_INTERVAL_MS = 2 * 60 * 1000L
         private const val GROK_REVERSE_CHAT_API = "https://grok.com/rest/app-chat/conversations/new"
+        private const val GROK_REVERSE_IMAGINE_WS_API = "wss://grok.com/ws/imagine/listen"
+        private const val GROK_REVERSE_IMAGINE_TIMEOUT_MS = 70_000L
+        private const val GROK_REVERSE_IMAGINE_FINAL_MIN_BLOB_BYTES = 280_000
         private const val GROK_REVERSE_USER_AGENT =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
         private const val GROK_REVERSE_BAGGAGE =
