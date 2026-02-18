@@ -1540,11 +1540,22 @@ class ChatApiClient {
         if (error is IOException) return true
         val msg = error.message?.lowercase().orEmpty()
         if (msg.isBlank()) return false
+        val statusCode =
+            Regex("http\\s*(\\d{3})")
+                .find(msg)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
+        if (statusCode != null && statusCode in 500..599) return true
         return msg.contains("connection reset") ||
             msg.contains("failed to connect") ||
             msg.contains("connection refused") ||
             msg.contains("timeout") ||
-            msg.contains("broken pipe")
+            msg.contains("broken pipe") ||
+            msg.contains("bad gateway") ||
+            msg.contains("service unavailable") ||
+            msg.contains("gateway timeout") ||
+            msg.contains("upstream")
     }
 
     private fun normalizeReasoningEffort(value: String?): String? {
