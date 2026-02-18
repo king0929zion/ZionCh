@@ -2382,6 +2382,15 @@ fun ChatScreen(navController: NavController) {
                     EmptyChatState()
                 }
             } else {
+                val latestAssistantToolbarIds = remember(localMessages) {
+                    localMessages
+                        .asReversed()
+                        .asSequence()
+                        .filter { it.role == "assistant" }
+                        .take(3)
+                        .map { it.id }
+                        .toSet()
+                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -2394,8 +2403,8 @@ fun ChatScreen(navController: NavController) {
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     itemsIndexed(localMessages, key = { _, item -> item.id }) { index, message ->
-                        val showToolbar = !isStreaming || (streamingMessageId == null) ||
-                            (index >= localMessages.size - 3)
+                        val showToolbar =
+                            message.role == "assistant" && latestAssistantToolbarIds.contains(message.id)
                         MessageItem(
                             message = message,
                             conversationId = effectiveConversationId,
@@ -3121,7 +3130,7 @@ fun MessageItem(
                 exit = fadeOut(animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing))
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(1.dp),
                     modifier = Modifier.padding(top = 8.dp)
                 ) {
                     ActionButton(
@@ -3132,7 +3141,6 @@ fun MessageItem(
                     )
                     ActionButton(icon = AppIcons.Edit, onClick = onEdit)
                     ActionButton(icon = AppIcons.Volume, onClick = { })
-                    ActionButton(icon = AppIcons.Share, onClick = { })
                     ActionButton(
                         icon = AppIcons.Refresh,
                         onClick = { /* Regenerate */ }
