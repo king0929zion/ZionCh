@@ -605,7 +605,7 @@ class ChatApiClient {
                 val body = gson.toJson(
                     mapOf(
                         "model" to modelId,
-                        "messages" to toOpenAIChatMessages(messages)
+                        "messages" to toOpenAIChatMessages(provider, messages)
                     )
                 )
                 val baseCandidates = providerApiBaseCandidates(provider)
@@ -683,9 +683,16 @@ class ChatApiClient {
         val payload =
             linkedMapOf<String, Any>(
                 "model" to modelId,
-                "messages" to toOpenAIChatMessages(messages),
+                "messages" to toOpenAIChatMessages(provider, messages),
                 "stream" to true
             )
+        if (isQwenCode(provider)) {
+            val tools = payload["tools"] as? List<*>
+            if (tools.isNullOrEmpty()) {
+                payload["tools"] = listOf(buildQwenSafetyNoopTool())
+            }
+            payload["stream_options"] = mapOf("include_usage" to true)
+        }
         if (isGrok2Api(provider)) {
             normalizeReasoningEffort(reasoningEffort)?.let { payload["reasoning_effort"] = it }
         }
@@ -1485,26 +1492,48 @@ class ChatApiClient {
 
         val candidates = LinkedHashSet<String>()
         if (raw.isNotBlank()) {
-            candidates += raw
+            addGrokBaseCandidate(candidates, raw)
             if (
                 raw.contains("api.x.ai", ignoreCase = true) ||
                     raw.contains("localhost", ignoreCase = true) ||
                     raw.contains("127.0.0.1", ignoreCase = true) ||
-                    raw.contains("10.0.2.2", ignoreCase = true)
+                    raw.contains("10.0.2.2", ignoreCase = true) ||
+                    raw.contains("host.docker.internal", ignoreCase = true)
             ) {
-                candidates += raw.replace("://localhost", "://10.0.2.2", ignoreCase = true)
-                candidates += raw.replace("://127.0.0.1", "://10.0.2.2", ignoreCase = true)
-                candidates += raw.replace("://10.0.2.2", "://127.0.0.1", ignoreCase = true)
-                candidates += raw.replace("://localhost", "://127.0.0.1", ignoreCase = true)
-                candidates += raw.replace("://127.0.0.1", "://localhost", ignoreCase = true)
-                candidates += raw.replace("://10.0.2.2", "://localhost", ignoreCase = true)
+                addGrokBaseCandidate(candidates, raw.replace("://localhost", "://10.0.2.2", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://127.0.0.1", "://10.0.2.2", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://10.0.2.2", "://127.0.0.1", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://localhost", "://127.0.0.1", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://127.0.0.1", "://localhost", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://10.0.2.2", "://localhost", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://host.docker.internal", "://10.0.2.2", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://host.docker.internal", "://127.0.0.1", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://host.docker.internal", "://localhost", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://10.0.2.2", "://host.docker.internal", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://127.0.0.1", "://host.docker.internal", ignoreCase = true))
+                addGrokBaseCandidate(candidates, raw.replace("://localhost", "://host.docker.internal", ignoreCase = true))
             }
         }
-        fallbackGateways.forEach { candidates += it }
+        fallbackGateways.forEach { addGrokBaseCandidate(candidates, it) }
 
         return candidates
             .map { it.trim().trimEnd('/') }
             .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    private fun addGrokBaseCandidate(target: LinkedHashSet<String>, rawValue: String) {
+        val value = rawValue.trim().trimEnd('/')
+        if (value.isBlank()) return
+        target += value
+
+        val lower = value.lowercase()
+        val hasVersionSegment = Regex("/v\\d+(?:/|$)").containsMatchIn(lower)
+        if (!hasVersionSegment) {
+            target += "$value/v1"
+        } else if (lower.endsWith("/v1")) {
+            target += value.dropLast(3)
+        }
     }
 
     private fun shouldRetryGrokRequest(error: Throwable): Boolean {
@@ -1582,6 +1611,26 @@ class ChatApiClient {
         }
     }
 
+    private fun buildQwenSafetyNoopTool(): Map<String, Any> {
+        return mapOf(
+            "type" to "function",
+            "function" to mapOf(
+                "name" to "do_not_call_me",
+                "description" to "Do not call this tool.",
+                "parameters" to mapOf(
+                    "type" to "object",
+                    "properties" to mapOf(
+                        "operation" to mapOf(
+                            "type" to "string",
+                            "description" to "Never call this tool."
+                        )
+                    ),
+                    "required" to listOf("operation")
+                )
+            )
+        )
+    }
+
     private fun generateAntigravityProjectId(): String {
         val adjectives = listOf("useful", "bright", "swift", "calm", "bold")
         val nouns = listOf("fuze", "wave", "spark", "flow", "core")
@@ -1623,7 +1672,7 @@ class ChatApiClient {
             .distinct()
     }
 
-    private fun toOpenAIChatMessages(messages: List<Message>): List<Map<String, Any>> {
+    private fun toOpenAIChatMessages(provider: ProviderConfig, messages: List<Message>): List<Map<String, Any>> {
         return messages.map { message ->
             val role = message.role
             if (role != "user") {
@@ -1642,6 +1691,13 @@ class ChatApiClient {
                     val parts = mutableListOf<Map<String, Any>>()
                     if (text.isNotBlank()) {
                         parts.add(mapOf("type" to "text", "text" to text))
+                    } else if (isQwenCode(provider)) {
+                        parts.add(
+                            mapOf(
+                                "type" to "text",
+                                "text" to "请识别并描述图片中的关键信息。"
+                            )
+                        )
                     }
                     allImages.forEach { url ->
                         parts.add(mapOf("type" to "image_url", "image_url" to mapOf("url" to url)))

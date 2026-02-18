@@ -979,7 +979,8 @@ fun ChatScreen(navController: NavController) {
                 }
 
             val allModels = repository.modelsFlow.first()
-            val selectedModel =
+            val providerList = repository.providersFlow.first()
+            var selectedModel =
                 allModels.firstOrNull { it.id == effectiveModelId }
                     ?: allModels.firstOrNull { extractRemoteModelId(it.id) == effectiveModelId }
             if (selectedModel == null) {
@@ -993,8 +994,19 @@ fun ChatScreen(navController: NavController) {
                 return@launch
             }
 
-            val providerList = repository.providersFlow.first()
-            val provider = selectedModel.providerId?.let { pid -> providerList.firstOrNull { it.id == pid } } ?: providerList.firstOrNull()
+            var provider = selectedModel.providerId?.let { pid -> providerList.firstOrNull { it.id == pid } } ?: providerList.firstOrNull()
+            if (hasVisionInput && provider != null && provider.isQwenCodeProvider()) {
+                val qwenVisionModel =
+                    allModels.firstOrNull { model ->
+                        model.enabled &&
+                            model.providerId == provider.id &&
+                            isLikelyVisionModel(model)
+                    }
+                if (qwenVisionModel != null && qwenVisionModel.id != selectedModel.id) {
+                    selectedModel = qwenVisionModel
+                    provider = selectedModel.providerId?.let { pid -> providerList.firstOrNull { it.id == pid } } ?: provider
+                }
+            }
             if (provider == null || provider.apiUrl.isBlank() || provider.apiKey.isBlank()) {
                 repository.appendMessage(
                     safeConversationId,
@@ -1681,6 +1693,7 @@ fun ChatScreen(navController: NavController) {
                                         subtitle = if (mode == "edit") "Updating app" else "Developing app",
                                         description = parsedSpec?.description?.takeIf { it.isNotBlank() }
                                             ?: targetSavedApp?.description.orEmpty(),
+                                        appIcon = parsedSpec?.appIcon ?: inferLucideIconFromSignal(rawName, parsedSpec?.description.orEmpty()),
                                         style = parsedSpec?.style.orEmpty(),
                                         features = parsedSpec?.features.orEmpty(),
                                         progress = 8,
@@ -1719,7 +1732,7 @@ fun ChatScreen(navController: NavController) {
                                             progress = 0,
                                             status = "error",
                                             error =
-                                                "Invalid arguments. app_developer now accepts only: name + description."
+                                                "Invalid arguments. app_developer requires: name + description + app_icon."
                                         )
                                     updateAssistantTag(pendingTag.id) {
                                         it.copy(content = encodeAppDevTagPayload(payload), status = "error")
@@ -1836,15 +1849,9 @@ fun ChatScreen(navController: NavController) {
                                 fun updateAppDevProgress(progressValue: Int) {
                                     val incoming = progressValue.coerceIn(6, 98)
                                     if (incoming <= streamedProgress) return
-                                    val stepCap =
-                                        when {
-                                            streamedProgress < 28 -> 4
-                                            streamedProgress < 62 -> 3
-                                            else -> 2
-                                        }
-                                    val normalized = minOf(incoming, streamedProgress + stepCap)
+                                    val normalized = incoming
                                     val now = System.currentTimeMillis()
-                                    if (now - lastProgressUpdateAtMs < 120L) return
+                                    if (now - lastProgressUpdateAtMs < 90L && normalized < 97) return
                                     streamedProgress = normalized
                                     lastProgressUpdateAtMs = now
                                     updateAssistantTag(pendingTag.id) { current ->
@@ -1924,6 +1931,11 @@ fun ChatScreen(navController: NavController) {
                                         } else {
                                             compactAppDescription(parsedSpec.description, "HTML app")
                                         }
+                                    val finalIcon =
+                                        extractLucideIconName(parsedSpec.appIcon)
+                                            ?: extractSavedAppIconNameFromRaw(parsedSpec.description, html)
+                                            ?: inferLucideIconFromSignal(finalName, finalDescription)
+                                    val finalHtml = ensureAppIconMetadataInHtml(html, finalIcon)
                                     val savedAppId = targetSavedApp?.id ?: java.util.UUID.randomUUID().toString()
                                     val baseSavedApp =
                                         SavedApp(
@@ -1931,7 +1943,7 @@ fun ChatScreen(navController: NavController) {
                                             sourceTagId = pendingTag.id,
                                             name = finalName,
                                             description = finalDescription,
-                                            html = html,
+                                            html = finalHtml,
                                             versionCode = targetSavedApp?.versionCode ?: 1,
                                             versionName = targetSavedApp?.versionName ?: "v1",
                                             createdAt = targetSavedApp?.createdAt ?: System.currentTimeMillis(),
@@ -1947,11 +1959,12 @@ fun ChatScreen(navController: NavController) {
                                             name = finalName,
                                             subtitle = finalSubtitle,
                                             description = finalDescription,
+                                            appIcon = finalIcon,
                                             style = parsedSpec.style.ifBlank { pendingPayload.style },
                                             features = if (parsedSpec.features.isNotEmpty()) parsedSpec.features else pendingPayload.features,
                                             progress = 100,
                                             status = "success",
-                                            html = html,
+                                            html = finalHtml,
                                             error = null,
                                             sourceAppId = persistedApp.id,
                                             mode = parsedSpec.mode,
@@ -2313,6 +2326,12 @@ fun ChatScreen(navController: NavController) {
             drawerState.close()
         }
     }
+    LaunchedEffect(imeVisible) {
+        if (imeVisible && showToolMenu) {
+            showToolMenu = false
+            toolMenuPage = ToolMenuPage.Tools
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -2572,7 +2591,13 @@ fun ChatScreen(navController: NavController) {
                         sendAllowed = !defaultChatModelId.isNullOrBlank(),
                         isStreaming = isStreaming,
                         imeVisible = imeVisible,
-                        onInputFocusChanged = { focused -> inputFieldFocused = focused },
+                        onInputFocusChanged = { focused ->
+                            inputFieldFocused = focused
+                            if (focused && showToolMenu) {
+                                showToolMenu = false
+                                toolMenuPage = ToolMenuPage.Tools
+                            }
+                        },
                         actionActiveColor = accentPalette.actionColor
                     )
                 }
@@ -2655,11 +2680,6 @@ fun ChatScreen(navController: NavController) {
                                 repository.setDefaultChatModelId(model.id)
                             }
                             showChatModelPicker = false
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.chat_model_switched_toast, model.displayName),
-                                Toast.LENGTH_SHORT
-                            ).show()
                         }
                     )
                 }
@@ -3240,28 +3260,11 @@ private fun AppDevToolTagCard(
     val showSkeleton = !isCompleted && statusLower != "error"
     val runtimeBusy = payload.runtimeStatus == "queued" || payload.runtimeStatus == "in_progress"
     val reportedProgress = payload.progress.coerceIn(0, 100).toFloat()
-    val htmlLength = payload.html.trim().length
-    val htmlSignalProgress =
-        if (htmlLength <= 0) {
-            0f
-        } else {
-            val normalized =
-                (kotlin.math.ln(htmlLength.toFloat().coerceAtMost(120_000f) + 1f) /
-                    kotlin.math.ln(120_000f + 1f))
-                    .coerceIn(0f, 1f)
-            (8f + normalized * 54f).coerceAtMost(62f)
-        }
     val targetProgress =
         when {
             isCompleted -> 100f
             statusLower == "error" -> reportedProgress
-            isRunning ->
-                maxOf(
-                    reportedProgress.coerceAtMost(92f),
-                    htmlSignalProgress,
-                    8f,
-                    if (runtimeBusy) 96f else 0f
-                ).coerceAtMost(if (runtimeBusy) 98f else 92f)
+            isRunning -> maxOf(reportedProgress.coerceAtMost(98f), 8f)
             else -> reportedProgress.coerceAtMost(99f)
         }
     val initialProgress = if (isRunning) maxOf(8f, targetProgress) else targetProgress
@@ -3304,6 +3307,9 @@ private fun AppDevToolTagCard(
         }
 
     val titleText = payload.name.ifBlank { "CodeMaster" }
+    val appIcon = remember(payload.appIcon, payload.name, payload.description) {
+        mapLucideNameToAppIconForTag(payload.appIcon) ?: mapLucideNameToAppIconForTag(inferLucideIconFromSignal(payload.name, payload.description)) ?: AppIcons.AppDeveloper
+    }
     val subtitleText =
         when {
             statusLower == "error" ->
@@ -3359,7 +3365,7 @@ private fun AppDevToolTagCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = AppIcons.GitHub,
+                        imageVector = appIcon,
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(28.dp)
@@ -3625,6 +3631,22 @@ private fun githubContributionColor(level: Int): Color {
         3 -> Color(0xFF30A14E)
         4 -> Color(0xFF216E39)
         else -> Color(0xFFEBEDF0)
+    }
+}
+
+private fun mapLucideNameToAppIconForTag(name: String?): androidx.compose.ui.graphics.vector.ImageVector? {
+    return when (normalizeLucideIconName(name)) {
+        "camera", "camera-off", "scan", "scan-line", "scan-face" -> AppIcons.Camera
+        "search", "search-check", "search-code", "scan-search" -> AppIcons.Search
+        "globe", "earth", "compass", "map", "map-pinned", "navigation" -> AppIcons.Globe
+        "image", "images", "picture-in-picture", "wand-sparkles", "sparkles", "palette" -> AppIcons.CreateImage
+        "file", "files", "folder", "folder-open", "file-text", "notebook", "notebook-pen", "book-open" -> AppIcons.Files
+        "brain", "heart", "smile", "bookmark", "notepad-text", "book-heart" -> AppIcons.Memory
+        "layout-dashboard", "monitor", "laptop", "panel-top", "panel-left" -> AppIcons.Monitor
+        "list-todo", "calendar", "check-square", "clipboard-list", "target" -> AppIcons.Model
+        "wrench", "hammer", "tool", "settings", "code", "code-xml", "terminal", "bot" -> AppIcons.Tool
+        "app-window", "square-terminal", "component", "blocks", "rocket" -> AppIcons.AppDeveloper
+        else -> null
     }
 }
 
@@ -5635,6 +5657,7 @@ private data class AppDevToolSpec(
     val mode: String,
     val name: String,
     val description: String,
+    val appIcon: String,
     val style: String,
     val features: List<String>,
     val targetAppId: String? = null,
@@ -5646,6 +5669,7 @@ private data class AppDevTagPayload(
     val name: String,
     val subtitle: String,
     val description: String,
+    val appIcon: String = "app-window",
     val style: String,
     val features: List<String>,
     val progress: Int,
@@ -5696,6 +5720,26 @@ private fun isSameStoredOrRemoteModelId(lhs: String?, rhs: String?): Boolean {
     if (left.isBlank() || right.isBlank()) return false
     if (left == right) return true
     return extractRemoteModelId(left) == extractRemoteModelId(right)
+}
+
+private fun ProviderConfig.isQwenCodeProvider(): Boolean {
+    val oauth = oauthProvider?.trim().orEmpty()
+    val preset = presetId?.trim().orEmpty()
+    val typeValue = type.trim()
+    return oauth.equals("qwen", ignoreCase = true) ||
+        preset.equals("qwen_code", ignoreCase = true) ||
+        typeValue.equals("qwen", ignoreCase = true) ||
+        apiUrl.contains("portal.qwen.ai", ignoreCase = true) ||
+        apiUrl.contains("chat.qwen.ai", ignoreCase = true)
+}
+
+private fun isLikelyVisionModel(model: ModelConfig): Boolean {
+    val signal = "${model.id} ${model.displayName} ${extractRemoteModelId(model.id)}".lowercase()
+    return signal.contains("vision") ||
+        signal.contains("vl") ||
+        signal.contains("image") ||
+        signal.contains("multimodal") ||
+        signal.contains("omni")
 }
 
 private data class PlannedMcpToolCall(
@@ -5866,6 +5910,50 @@ private fun normalizeAppDisplayName(raw: String): String {
     return filtered.ifBlank { trimmed }.take(80)
 }
 
+private fun normalizeLucideIconName(raw: String?): String? {
+    val normalized =
+        raw
+            ?.trim()
+            ?.lowercase()
+            ?.removePrefix("lucide-")
+            ?.replace(Regex("[^a-z0-9\\-]"), "")
+            .orEmpty()
+            .take(48)
+    return normalized.takeIf { it.isNotBlank() }
+}
+
+private fun extractLucideIconName(raw: String?): String? {
+    val normalized = normalizeLucideIconName(raw)
+    if (!normalized.isNullOrBlank()) return normalized
+    val source = raw?.trim().orEmpty()
+    if (source.isBlank()) return null
+    val matched =
+        Regex("([a-zA-Z0-9\\-]{2,48})")
+            .find(source)
+            ?.groupValues
+            ?.getOrNull(1)
+    return normalizeLucideIconName(matched)
+}
+
+private fun inferLucideIconFromSignal(name: String, description: String): String {
+    val signal = "$name $description".lowercase()
+    return when {
+        signal.contains("note") || signal.contains("记事") || signal.contains("笔记") -> "notebook-pen"
+        signal.contains("task") || signal.contains("todo") || signal.contains("任务") || signal.contains("计划") -> "list-todo"
+        signal.contains("calendar") || signal.contains("日程") -> "calendar"
+        signal.contains("finance") || signal.contains("账单") || signal.contains("预算") -> "wallet"
+        signal.contains("camera") || signal.contains("拍照") || signal.contains("扫码") -> "camera"
+        signal.contains("image") || signal.contains("图片") || signal.contains("photo") -> "image"
+        signal.contains("search") || signal.contains("检索") || signal.contains("搜索") -> "search"
+        signal.contains("travel") || signal.contains("地图") || signal.contains("导航") -> "map-pinned"
+        signal.contains("chat") || signal.contains("对话") || signal.contains("客服") -> "messages-square"
+        signal.contains("music") || signal.contains("音频") || signal.contains("音乐") -> "music"
+        signal.contains("health") || signal.contains("健身") || signal.contains("健康") -> "heart-pulse"
+        signal.contains("code") || signal.contains("开发") || signal.contains("程序") -> "code-xml"
+        else -> "app-window"
+    }
+}
+
 private fun parseAppDevToolSpec(arguments: Map<String, Any?>): AppDevToolSpec? {
     fun anyString(vararg keys: String): String {
         return keys.asSequence()
@@ -5926,6 +6014,7 @@ private fun parseAppDevToolSpec(arguments: Map<String, Any?>): AppDevToolSpec? {
     }
 
     val nameRaw = anyString("name")
+    var appIconRaw = anyString("app_icon", "appIcon", "icon", "icon_name", "lucide_icon", "lucideIcon")
     val rawDescription = anyString("description")
     val name = normalizeAppDisplayName(nameRaw)
     if (name.isBlank() || rawDescription.isBlank()) return null
@@ -5968,6 +6057,7 @@ private fun parseAppDevToolSpec(arguments: Map<String, Any?>): AppDevToolSpec? {
                 "targetappname", "existingappname", "apptoedit", "editappname", "目标应用名", "应用名" -> targetAppName = value
                 "editrequest", "request", "updaterequest", "changerequest", "instruction", "prompt", "修改需求", "编辑需求", "修复需求", "更新需求", "请求" ->
                     editRequest = value
+                "appicon", "icon", "iconname", "lucideicon", "应用图标", "图标" -> appIconRaw = value
                 "style", "theme", "visualstyle", "design", "风格", "样式", "主题", "设计" -> style = value
                 "features", "requirements", "specs", "functionalities", "功能", "特性", "需求", "细节" ->
                     parsedFeatures += splitFeatureCandidates(value)
@@ -6003,6 +6093,7 @@ private fun parseAppDevToolSpec(arguments: Map<String, Any?>): AppDevToolSpec? {
             .filter { it.isNotBlank() }
             .distinct()
             .take(12)
+    val appIcon = extractLucideIconName(appIconRaw) ?: inferLucideIconFromSignal(name, cleanedDescription)
 
     if (mode == "edit") {
         val effectiveEditRequest = editRequest.trim().ifBlank { cleanedDescription }
@@ -6011,6 +6102,7 @@ private fun parseAppDevToolSpec(arguments: Map<String, Any?>): AppDevToolSpec? {
             mode = "edit",
             name = normalizeAppDisplayName(name).take(80),
             description = cleanedDescription.take(1200),
+            appIcon = appIcon,
             style = style.take(180),
             features = features.ifEmpty { splitFeatureCandidates(effectiveEditRequest) }.take(12),
             targetAppId = targetAppId.takeIf { it.isNotBlank() }?.take(160),
@@ -6024,6 +6116,7 @@ private fun parseAppDevToolSpec(arguments: Map<String, Any?>): AppDevToolSpec? {
         mode = "create",
         name = normalizeAppDisplayName(name).take(80),
         description = cleanedDescription.take(1800),
+        appIcon = appIcon,
         style = style.take(180),
         features = createFeatures.take(12),
         targetAppId = targetAppId.takeIf { it.isNotBlank() }?.take(160),
@@ -6051,6 +6144,12 @@ private fun parseAppDevTagPayload(
             ?.takeIf { it.isNotBlank() }
             ?: "Developing app"
     val descriptionRaw = json?.get("description")?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
+    val appIcon =
+        extractLucideIconName(
+            json?.get("appIcon")?.takeIf { it.isJsonPrimitive }?.asString
+                ?: json?.get("app_icon")?.takeIf { it.isJsonPrimitive }?.asString
+                ?: extractSavedAppIconNameFromRaw(descriptionRaw, json?.get("html")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty())
+        ) ?: inferLucideIconFromSignal(name, descriptionRaw)
     val style = json?.get("style")?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
     val features =
         json?.getAsJsonArray("features")
@@ -6111,6 +6210,7 @@ private fun parseAppDevTagPayload(
         name = normalizeAppDisplayName(name),
         subtitle = compactSubtitle,
         description = compactDescription,
+        appIcon = appIcon,
         style = style,
         features = features,
         progress = progress.coerceIn(0, 100),
@@ -6140,6 +6240,51 @@ private fun compactAppDescription(primary: String, fallback: String = "Developin
         return fallback.trim().ifBlank { "Developing app" }.take(56)
     }
     return simplified.take(56)
+}
+
+private fun extractSavedAppIconNameFromRaw(description: String, html: String): String? {
+    val sources = listOf(description, html.take(20_000))
+    val patterns =
+        listOf(
+            Regex("(?i)app[_\\- ]?icon\\s*[:：]\\s*([a-z0-9\\-]{2,48})"),
+            Regex("(?i)data-lucide\\s*=\\s*[\"']([a-z0-9\\-]{2,48})[\"']"),
+            Regex("(?i)class\\s*=\\s*[\"'][^\"']*lucide-([a-z0-9\\-]{2,48})[^\"']*[\"']"),
+            Regex("(?i)lucide-([a-z0-9\\-]{2,48})")
+        )
+    for (source in sources) {
+        if (source.isBlank()) continue
+        for (pattern in patterns) {
+            val matched = pattern.find(source)?.groupValues?.getOrNull(1).orEmpty()
+            val normalized = extractLucideIconName(matched)
+            if (!normalized.isNullOrBlank()) return normalized
+        }
+    }
+    return null
+}
+
+private fun ensureAppIconMetadataInHtml(html: String, iconName: String): String {
+    val normalizedHtml = html.trim()
+    if (normalizedHtml.isBlank()) return normalizedHtml
+    val icon = extractLucideIconName(iconName) ?: return normalizedHtml
+    val hasMetadata =
+        Regex("(?i)app[_\\- ]?icon\\s*[:：]\\s*[a-z0-9\\-]{2,48}")
+            .containsMatchIn(normalizedHtml)
+    if (hasMetadata) return normalizedHtml
+
+    val marker = "<!-- app_icon: $icon -->"
+    val headRegex = Regex("(?i)<head\\b[^>]*>")
+    val headMatch = headRegex.find(normalizedHtml)
+    if (headMatch != null) {
+        val insertPos = headMatch.range.last + 1
+        return buildString(normalizedHtml.length + marker.length + 2) {
+            append(normalizedHtml.substring(0, insertPos))
+            append('\n')
+            append(marker)
+            append('\n')
+            append(normalizedHtml.substring(insertPos))
+        }
+    }
+    return "$marker\n$normalizedHtml"
 }
 
 private fun resolveExistingSavedApp(
@@ -6260,6 +6405,8 @@ private fun buildAppGenerationUserPrompt(
         appendLine("Build one HTML app with these specs:")
         append("Name: ")
         appendLine(spec.name)
+        append("App icon (Lucide): ")
+        appendLine(spec.appIcon)
         appendLine("Detailed description:")
         appendLine(spec.description)
         if (spec.style.isNotBlank()) {
@@ -6326,6 +6473,10 @@ private fun buildAppRevisionUserPrompt(
                 append("Target app name: ")
                 appendLine(spec.name)
             }
+            if (spec.appIcon.isNotBlank()) {
+                append("Target app icon (Lucide): ")
+                appendLine(spec.appIcon)
+            }
             if (spec.style.isNotBlank()) {
                 append("Target style: ")
                 appendLine(spec.style)
@@ -6355,6 +6506,35 @@ private fun buildAppRevisionUserPrompt(
     }.trim()
 }
 
+private const val APP_DEV_PROGRESS_TARGET_LINES = 1500
+
+private fun estimateDraftLineCount(rawDraft: String): Int {
+    val normalized = rawDraft.replace("\r\n", "\n").replace('\r', '\n')
+    if (normalized.isBlank()) return 0
+    val actualLineCount = normalized.count { it == '\n' } + 1
+    val virtualLineCount = kotlin.math.ceil(normalized.length / 88.0).toInt().coerceAtLeast(1)
+    return maxOf(actualLineCount, virtualLineCount)
+}
+
+private fun computeAppDevProgressFromDraft(
+    draftHtml: String,
+    baseProgress: Int,
+    maxProgress: Int = 98
+): Int {
+    val safeBase = baseProgress.coerceIn(0, maxProgress)
+    val lines = estimateDraftLineCount(draftHtml).coerceAtLeast(0)
+    val ratio = (lines / APP_DEV_PROGRESS_TARGET_LINES.toFloat()).coerceIn(0f, 1f)
+    var progress = safeBase + ((maxProgress - safeBase) * ratio).roundToInt()
+    val normalizedDraft = draftHtml.trim()
+    if (normalizedDraft.contains("<body", ignoreCase = true)) {
+        progress = maxOf(progress, safeBase + 12)
+    }
+    if (normalizedDraft.contains("</html>", ignoreCase = true)) {
+        progress = maxOf(progress, maxProgress - 1)
+    }
+    return progress.coerceIn(safeBase, maxProgress)
+}
+
 private suspend fun generateHtmlAppFromSpec(
     chatApiClient: ChatApiClient,
     provider: ProviderConfig,
@@ -6382,9 +6562,6 @@ private suspend fun generateHtmlAppFromSpec(
         )
 
     var emittedProgress = 8
-    var chunkCount = 0
-    var charCount = 0
-    val startedAtMs = System.currentTimeMillis()
     var lastDraftUpdateAtMs = 0L
     val draftBuilder = StringBuilder()
     onProgress?.invoke(emittedProgress)
@@ -6401,20 +6578,7 @@ private suspend fun generateHtmlAppFromSpec(
             extraHeaders = extraHeaders,
             onChunk = { chunk ->
                 draftBuilder.append(chunk)
-                chunkCount += 1
-                charCount += chunk.length
-                val elapsedBoost = ((System.currentTimeMillis() - startedAtMs) / 900L).toInt().coerceAtMost(42)
-                val chunkBoost = (chunkCount / 2).coerceAtMost(22)
-                val sizeBoost = (charCount / 320).coerceAtMost(24)
-                val structureBoost =
-                    when {
-                        draftBuilder.contains("</html>", ignoreCase = true) -> 24
-                        draftBuilder.contains("<body", ignoreCase = true) -> 18
-                        draftBuilder.contains("<head", ignoreCase = true) -> 12
-                        draftBuilder.contains("<html", ignoreCase = true) -> 8
-                        else -> 0
-                    }
-                val nextProgress = (8 + elapsedBoost + chunkBoost + sizeBoost + structureBoost).coerceAtMost(98)
+                val nextProgress = computeAppDevProgressFromDraft(draftBuilder.toString(), baseProgress = 8, maxProgress = 98)
                 if (nextProgress > emittedProgress) {
                     emittedProgress = nextProgress
                     onProgress?.invoke(nextProgress)
@@ -6473,9 +6637,6 @@ private suspend fun reviseHtmlAppFromPrompt(
         )
 
     var emittedProgress = 10
-    var chunkCount = 0
-    var charCount = 0
-    val startedAtMs = System.currentTimeMillis()
     var lastDraftUpdateAtMs = 0L
     val draftBuilder = StringBuilder()
     onProgress?.invoke(emittedProgress)
@@ -6492,20 +6653,7 @@ private suspend fun reviseHtmlAppFromPrompt(
             extraHeaders = extraHeaders,
             onChunk = { chunk ->
                 draftBuilder.append(chunk)
-                chunkCount += 1
-                charCount += chunk.length
-                val elapsedBoost = ((System.currentTimeMillis() - startedAtMs) / 820L).toInt().coerceAtMost(38)
-                val chunkBoost = (chunkCount / 2).coerceAtMost(24)
-                val sizeBoost = (charCount / 300).coerceAtMost(24)
-                val structureBoost =
-                    when {
-                        draftBuilder.contains("</html>", ignoreCase = true) -> 22
-                        draftBuilder.contains("<body", ignoreCase = true) -> 16
-                        draftBuilder.contains("<head", ignoreCase = true) -> 11
-                        draftBuilder.contains("<html", ignoreCase = true) -> 7
-                        else -> 0
-                    }
-                val nextProgress = (10 + elapsedBoost + chunkBoost + sizeBoost + structureBoost).coerceAtMost(98)
+                val nextProgress = computeAppDevProgressFromDraft(draftBuilder.toString(), baseProgress = 10, maxProgress = 98)
                 if (nextProgress > emittedProgress) {
                     emittedProgress = nextProgress
                     onProgress?.invoke(nextProgress)
@@ -7014,13 +7162,14 @@ private fun buildAppDeveloperToolInstruction(
         appendLine("<tool_call>{\"serverId\":\"builtin_app_developer\",\"toolName\":\"app_developer\",\"arguments\":{...}}</tool_call>")
         appendLine()
         appendLine("Arguments policy (STRICT):")
-        appendLine("- ONLY 2 arguments are allowed:")
+        appendLine("- ONLY 3 arguments are allowed:")
         appendLine("  1) name: app name in ONE language only (Chinese OR English), never bilingual")
         appendLine("  2) description: detailed product spec. Include style, layout, interactions, states, and edge cases.")
+        appendLine("  3) app_icon: one Lucide icon name (e.g. `notebook-pen`, `list-todo`, `camera`, `wallet`).")
         appendLine("     description must include a Lucide app icon choice and placement.")
         appendLine("     description must reserve top-right host overlay safe-area (avoid fixed controls in that corner).")
-        appendLine("- Do NOT emit style/features/mode as top-level arguments.")
-        appendLine("- If editing an existing app, still only use name + description.")
+        appendLine("- Do NOT emit style/features/mode as extra top-level arguments.")
+        appendLine("- If editing an existing app, still only use name + description + app_icon.")
         appendLine("- For edit intent, write metadata lines INSIDE description:")
         appendLine("  operation: edit")
         appendLine("  target_app_id: <id from saved apps context> (or target_app_name)")
@@ -7046,10 +7195,11 @@ private fun buildPendingAppAutomationPrompt(task: AppAutomationTask): String {
             appendLine("Please edit an existing saved HTML app.")
         }
         appendLine("Do NOT create a new app. Update the target app in-place.")
-        appendLine("Use app_developer tool with ONLY two arguments: name + description.")
+        appendLine("Use app_developer tool with ONLY three arguments: name + description + app_icon.")
         appendLine()
         appendLine("Required tool arguments:")
         appendLine("- name: one-language app name only (Chinese OR English)")
+        appendLine("- app_icon: one Lucide icon name that best represents the app")
         appendLine("- description: detailed spec and include metadata lines:")
         appendLine("  app_icon: <lucide icon name and placement>")
         appendLine("  safe_zone: reserve top-right host overlay region")

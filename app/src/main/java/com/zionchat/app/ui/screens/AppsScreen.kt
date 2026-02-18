@@ -1913,8 +1913,8 @@ private fun mapLucideNameToAppIcon(name: String?): ImageVector? {
         "search", "search-check", "search-code", "scan-search" -> AppIcons.Search
         "globe", "earth", "compass", "map", "map-pinned", "navigation" -> AppIcons.Globe
         "image", "images", "picture-in-picture", "wand-sparkles", "sparkles", "palette" -> AppIcons.CreateImage
-        "file", "files", "folder", "folder-open", "file-text", "notebook", "book-open" -> AppIcons.Files
-        "brain", "heart", "smile", "bookmark", "notepad-text", "book-heart" -> AppIcons.Memory
+        "file", "files", "folder", "folder-open", "file-text", "notebook", "notebook-pen", "book-open" -> AppIcons.Files
+        "brain", "heart", "smile", "bookmark", "notepad-text", "book-heart", "notebook-tabs" -> AppIcons.Memory
         "layout-dashboard", "monitor", "laptop", "panel-top", "panel-left" -> AppIcons.Monitor
         "list-todo", "calendar", "check-square", "clipboard-list", "target" -> AppIcons.Model
         "wrench", "hammer", "tool", "settings", "code", "terminal", "bot" -> AppIcons.Tool

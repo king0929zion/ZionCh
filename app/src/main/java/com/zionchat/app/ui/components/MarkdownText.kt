@@ -339,7 +339,7 @@ private fun MarkdownCodeBlock(
         }
     val normalizedCode = remember(code) { code.trimEnd().ifBlank { " " } }
     val languageLabel = remember(language) { formatCodeBlockLanguage(language) }
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(12.dp)
 
     Column(
         modifier = Modifier
@@ -365,7 +365,7 @@ private fun MarkdownCodeBlock(
 
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .clickable {
                         runCatching {
                             clipboardManager?.setPrimaryClip(ClipData.newPlainText("code", normalizedCode))
