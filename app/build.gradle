@@ -30,7 +30,7 @@ def iflowClientId =
 def iflowClientSecret =
     (project.findProperty("IFLOW_CLIENT_SECRET")
         ?: System.getenv("IFLOW_CLIENT_SECRET")
-        ?: "").toString()
+        ?: "4Z3YjXycVsQvyGF1etiNlIBB4RsqSDtW").toString()
 
 android {
     namespace 'com.zionchat.app'
@@ -40,8 +40,8 @@ android {
         applicationId "com.zionchat.app"
         minSdk 24
         targetSdk 36
-        versionCode 236
-        versionName "0.18.203"
+        versionCode 237
+        versionName "0.18.204"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
