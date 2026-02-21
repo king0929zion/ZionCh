@@ -5,6 +5,7 @@ import android.util.Base64
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.zionchat.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -59,13 +60,14 @@ class OAuthClient {
     fun startIFlowOAuth(): OAuthStartResult {
         val state = generateRandomState()
         val redirectUri = "http://localhost:$IFLOW_CALLBACK_PORT/oauth2callback"
+        val clientId = resolveIFlowClientId()
         val authUrl =
             Uri.parse(IFLOW_AUTHORIZE_URL).buildUpon()
                 .appendQueryParameter("loginMethod", "phone")
                 .appendQueryParameter("type", "phone")
                 .appendQueryParameter("redirect", redirectUri)
                 .appendQueryParameter("state", state)
-                .appendQueryParameter("client_id", IFLOW_CLIENT_ID)
+                .appendQueryParameter("client_id", clientId)
                 .build()
                 .toString()
 
@@ -200,18 +202,20 @@ class OAuthClient {
     suspend fun exchangeIFlow(code: String, redirectUri: String): Result<IFlowOAuthResult> {
         return withContext(Dispatchers.IO) {
             runCatching {
+                val clientId = resolveIFlowClientId()
+                val clientSecret = requireIFlowClientSecret()
                 val form =
                     FormBody.Builder()
                         .add("grant_type", "authorization_code")
                         .add("code", code)
                         .add("redirect_uri", redirectUri)
-                        .add("client_id", IFLOW_CLIENT_ID)
-                        .add("client_secret", IFLOW_CLIENT_SECRET)
+                        .add("client_id", clientId)
+                        .add("client_secret", clientSecret)
                         .build()
 
                 val basic =
                     Base64.encodeToString(
-                        "${IFLOW_CLIENT_ID}:${IFLOW_CLIENT_SECRET}".toByteArray(),
+                        "${clientId}:${clientSecret}".toByteArray(),
                         Base64.NO_WRAP
                     )
 
@@ -311,18 +315,20 @@ class OAuthClient {
             runCatching {
                 val token = refreshToken.trim()
                 if (token.isBlank()) error("Missing refresh token")
+                val clientId = resolveIFlowClientId()
+                val clientSecret = requireIFlowClientSecret()
 
                 val form =
                     FormBody.Builder()
                         .add("grant_type", "refresh_token")
                         .add("refresh_token", token)
-                        .add("client_id", IFLOW_CLIENT_ID)
-                        .add("client_secret", IFLOW_CLIENT_SECRET)
+                        .add("client_id", clientId)
+                        .add("client_secret", clientSecret)
                         .build()
 
                 val basic =
                     Base64.encodeToString(
-                        "${IFLOW_CLIENT_ID}:${IFLOW_CLIENT_SECRET}".toByteArray(),
+                        "${clientId}:${clientSecret}".toByteArray(),
                         Base64.NO_WRAP
                     )
 
@@ -682,6 +688,18 @@ class OAuthClient {
         return if (withScheme.endsWith("/v1", ignoreCase = true)) withScheme else "$withScheme/v1"
     }
 
+    private fun resolveIFlowClientId(): String {
+        return BuildConfig.IFLOW_CLIENT_ID.trim().ifBlank { DEFAULT_IFLOW_CLIENT_ID }
+    }
+
+    private fun requireIFlowClientSecret(): String {
+        val secret = BuildConfig.IFLOW_CLIENT_SECRET.trim()
+        if (secret.isBlank()) {
+            error("Missing IFLOW_CLIENT_SECRET. Please configure it in build environment.")
+        }
+        return secret
+    }
+
     companion object {
         private const val CODEX_AUTH_URL = "https://auth.openai.com/oauth/authorize"
         private const val CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token"
@@ -692,8 +710,7 @@ class OAuthClient {
         private const val IFLOW_AUTHORIZE_URL = "https://iflow.cn/oauth"
         private const val IFLOW_TOKEN_URL = "https://iflow.cn/oauth/token"
         private const val IFLOW_USERINFO_URL = "https://iflow.cn/api/oauth/getUserInfo"
-        private const val IFLOW_CLIENT_ID = "10009311001"
-        private const val IFLOW_CLIENT_SECRET = "4Z3YjXycVsQvyGF1etiNlIBB4RsqSDtW"
+        private const val DEFAULT_IFLOW_CLIENT_ID = "10009311001"
         private const val IFLOW_CALLBACK_PORT = 11451
 
         private const val QWEN_DEVICE_CODE_URL = "https://chat.qwen.ai/api/v1/oauth2/device/code"

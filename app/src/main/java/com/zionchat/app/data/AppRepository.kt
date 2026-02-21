@@ -1,6 +1,8 @@
 package com.zionchat.app.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.edit
@@ -9,6 +11,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.zionchat.app.data.extractRemoteModelId
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,12 +21,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 class AppRepository(context: Context) {
     private val appContext = context.applicationContext
     private val dataStore = appContext.zionDataStore
     private val gson = Gson()
+    private val secureValueCipher = SecureValueCipher()
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val prefsFlow = dataStore.data.catch { emit(emptyPreferences()) }
 
     private val providersKey = stringPreferencesKey("providers_json")
@@ -59,6 +67,7 @@ class AppRepository(context: Context) {
     private val webSearchAutoEnabledKey = booleanPreferencesKey("web_search_auto_enabled")
     private val webSearchMaxResultsKey = intPreferencesKey("web_search_max_results")
     private val appModuleVersionModelKey = intPreferencesKey("app_module_version_model")
+    private val mcpListKey = stringPreferencesKey("mcp_list_json")
     private val supportedAccentKeys = setOf("default", "blue", "pink", "orange", "black")
     private val supportedSearchEngines = setOf("bing", "exa", "tavily", "linkup")
     private val supportedTavilyDepth = setOf("basic", "advanced")
@@ -72,8 +81,61 @@ class AppRepository(context: Context) {
     private val memoryListType = object : TypeToken<List<MemoryItem>>() {}.type
     private val savedAppListType = object : TypeToken<List<SavedApp>>() {}.type
     private val savedAppVersionListType = object : TypeToken<List<SavedAppVersion>>() {}.type
+    private val mcpListType = object : TypeToken<List<McpConfig>>() {}.type
     private val pendingAppAutomationTaskMutable = MutableStateFlow<AppAutomationTask?>(null)
+    private val sensitiveEncryptedKeys: List<Preferences.Key<String>> =
+        listOf(
+            providersKey,
+            mcpListKey,
+            vercelTokenKey,
+            webSearchExaApiKey,
+            webSearchTavilyApiKey,
+            webSearchLinkupApiKey
+        )
     val pendingAppAutomationTaskFlow: StateFlow<AppAutomationTask?> = pendingAppAutomationTaskMutable.asStateFlow()
+
+    init {
+        repositoryScope.launch { migrateSensitiveStorageIfNeeded() }
+    }
+
+    private fun readSensitiveString(
+        prefs: Preferences,
+        key: Preferences.Key<String>,
+        defaultValue: String = ""
+    ): String {
+        val raw = prefs[key].orEmpty()
+        if (raw.isBlank()) return defaultValue
+        return secureValueCipher.decryptOrNull(raw)?.takeIf { it.isNotEmpty() } ?: defaultValue
+    }
+
+    private fun encryptSensitiveString(raw: String): String {
+        val value = raw.trim()
+        if (value.isBlank()) return ""
+        return secureValueCipher.encrypt(value)
+    }
+
+    private fun encryptSensitiveJson(raw: String): String {
+        return secureValueCipher.encrypt(raw.ifBlank { "[]" })
+    }
+
+    private fun migrateSensitiveKeyIfNeeded(
+        prefs: MutablePreferences,
+        key: Preferences.Key<String>
+    ) {
+        val raw = prefs[key].orEmpty()
+        if (raw.isBlank() || secureValueCipher.isEncrypted(raw)) return
+        prefs[key] = secureValueCipher.encrypt(raw)
+    }
+
+    private suspend fun migrateSensitiveStorageIfNeeded() {
+        runCatching {
+            dataStore.edit { prefs ->
+                sensitiveEncryptedKeys.forEach { key ->
+                    migrateSensitiveKeyIfNeeded(prefs, key)
+                }
+            }
+        }
+    }
 
     private fun safeTrim(value: String?): String = value?.trim().orEmpty()
 
@@ -328,7 +390,7 @@ class AppRepository(context: Context) {
     }
 
     val providersFlow: Flow<List<ProviderConfig>> = prefsFlow.map { prefs ->
-        val json = prefs[providersKey] ?: "[]"
+        val json = readSensitiveString(prefs, providersKey, defaultValue = "[]")
         runCatching { gson.fromJson<List<ProviderConfig>>(json, providerListType) }
             .getOrNull()
             .orEmpty()
@@ -382,7 +444,7 @@ class AppRepository(context: Context) {
     val webHostingConfigFlow: Flow<WebHostingConfig> = prefsFlow.map { prefs ->
         WebHostingConfig(
             provider = prefs[webHostingProviderKey]?.trim()?.takeIf { it.isNotBlank() } ?: "vercel",
-            token = prefs[vercelTokenKey].orEmpty().trim(),
+            token = readSensitiveString(prefs, vercelTokenKey).trim(),
             projectId = prefs[vercelProjectIdKey].orEmpty().trim(),
             teamId = prefs[vercelTeamIdKey].orEmpty().trim(),
             customDomain = prefs[vercelCustomDomainKey].orEmpty().trim(),
@@ -396,10 +458,10 @@ class AppRepository(context: Context) {
         val linkupDepthRaw = prefs[webSearchLinkupDepthKey]?.trim()?.lowercase().orEmpty()
         WebSearchConfig(
             engine = if (supportedSearchEngines.contains(engineRaw)) engineRaw else "bing",
-            exaApiKey = prefs[webSearchExaApiKey].orEmpty().trim(),
-            tavilyApiKey = prefs[webSearchTavilyApiKey].orEmpty().trim(),
+            exaApiKey = readSensitiveString(prefs, webSearchExaApiKey).trim(),
+            tavilyApiKey = readSensitiveString(prefs, webSearchTavilyApiKey).trim(),
             tavilyDepth = if (supportedTavilyDepth.contains(tavilyDepthRaw)) tavilyDepthRaw else "advanced",
-            linkupApiKey = prefs[webSearchLinkupApiKey].orEmpty().trim(),
+            linkupApiKey = readSensitiveString(prefs, webSearchLinkupApiKey).trim(),
             linkupDepth = if (supportedLinkupDepth.contains(linkupDepthRaw)) linkupDepthRaw else "standard",
             autoSearchEnabled = prefs[webSearchAutoEnabledKey] ?: true,
             maxResults = (prefs[webSearchMaxResultsKey] ?: 6).coerceIn(1, 10)
@@ -576,7 +638,7 @@ class AppRepository(context: Context) {
             prefs[webHostingProviderKey] = provider
 
             val token = config.token.trim()
-            if (token.isBlank()) prefs.remove(vercelTokenKey) else prefs[vercelTokenKey] = token
+            if (token.isBlank()) prefs.remove(vercelTokenKey) else prefs[vercelTokenKey] = encryptSensitiveString(token)
 
             val projectId = config.projectId.trim()
             if (projectId.isBlank()) prefs.remove(vercelProjectIdKey) else prefs[vercelProjectIdKey] = projectId
@@ -599,17 +661,20 @@ class AppRepository(context: Context) {
             prefs[webSearchEngineKey] = engine
 
             val exaApiKey = config.exaApiKey.trim()
-            if (exaApiKey.isBlank()) prefs.remove(webSearchExaApiKey) else prefs[webSearchExaApiKey] = exaApiKey
+            if (exaApiKey.isBlank()) prefs.remove(webSearchExaApiKey)
+            else prefs[webSearchExaApiKey] = encryptSensitiveString(exaApiKey)
 
             val tavilyApiKey = config.tavilyApiKey.trim()
-            if (tavilyApiKey.isBlank()) prefs.remove(webSearchTavilyApiKey) else prefs[webSearchTavilyApiKey] = tavilyApiKey
+            if (tavilyApiKey.isBlank()) prefs.remove(webSearchTavilyApiKey)
+            else prefs[webSearchTavilyApiKey] = encryptSensitiveString(tavilyApiKey)
 
             val tavilyDepth =
                 config.tavilyDepth.trim().lowercase().takeIf { supportedTavilyDepth.contains(it) } ?: "advanced"
             prefs[webSearchTavilyDepthKey] = tavilyDepth
 
             val linkupApiKey = config.linkupApiKey.trim()
-            if (linkupApiKey.isBlank()) prefs.remove(webSearchLinkupApiKey) else prefs[webSearchLinkupApiKey] = linkupApiKey
+            if (linkupApiKey.isBlank()) prefs.remove(webSearchLinkupApiKey)
+            else prefs[webSearchLinkupApiKey] = encryptSensitiveString(linkupApiKey)
 
             val linkupDepth =
                 config.linkupDepth.trim().lowercase().takeIf { supportedLinkupDepth.contains(it) } ?: "standard"
@@ -655,14 +720,14 @@ class AppRepository(context: Context) {
             providers.add(0, provider)
         }
         dataStore.edit { prefs ->
-            prefs[providersKey] = gson.toJson(providers)
+            prefs[providersKey] = encryptSensitiveJson(gson.toJson(providers))
         }
     }
 
     suspend fun deleteProvider(providerId: String) {
         val providers = providersFlow.first().filterNot { it.id == providerId }
         dataStore.edit { prefs ->
-            prefs[providersKey] = gson.toJson(providers)
+            prefs[providersKey] = encryptSensitiveJson(gson.toJson(providers))
         }
     }
 
@@ -679,7 +744,7 @@ class AppRepository(context: Context) {
         val remainingRemoteIds = remainingModels.map { extractRemoteModelId(it.id) }.toSet()
 
         dataStore.edit { prefs ->
-            prefs[providersKey] = gson.toJson(providers)
+            prefs[providersKey] = encryptSensitiveJson(gson.toJson(providers))
             prefs[modelsKey] = gson.toJson(remainingModels)
 
             fun maybeClearDefaultModel(key: androidx.datastore.preferences.core.Preferences.Key<String>) {
@@ -1194,11 +1259,8 @@ class AppRepository(context: Context) {
     }
 
     // MCP (Model Context Protocol) Storage
-    private val mcpListKey = stringPreferencesKey("mcp_list_json")
-    private val mcpListType = object : TypeToken<List<McpConfig>>() {}.type
-
     val mcpListFlow: Flow<List<McpConfig>> = prefsFlow.map { prefs ->
-        val json = prefs[mcpListKey] ?: "[]"
+        val json = readSensitiveString(prefs, mcpListKey, defaultValue = "[]")
         runCatching { gson.fromJson<List<McpConfig>>(json, mcpListType) }
             .getOrNull()
             .orEmpty()
@@ -1214,14 +1276,14 @@ class AppRepository(context: Context) {
             mcpList.add(0, mcp)
         }
         dataStore.edit { prefs ->
-            prefs[mcpListKey] = gson.toJson(mcpList)
+            prefs[mcpListKey] = encryptSensitiveJson(gson.toJson(mcpList))
         }
     }
 
     suspend fun deleteMcp(mcpId: String) {
         val mcpList = mcpListFlow.first().filterNot { it.id == mcpId }
         dataStore.edit { prefs ->
-            prefs[mcpListKey] = gson.toJson(mcpList)
+            prefs[mcpListKey] = encryptSensitiveJson(gson.toJson(mcpList))
         }
     }
 
@@ -1234,7 +1296,7 @@ class AppRepository(context: Context) {
                 lastSyncAt = System.currentTimeMillis()
             )
             dataStore.edit { prefs ->
-                prefs[mcpListKey] = gson.toJson(mcpList)
+                prefs[mcpListKey] = encryptSensitiveJson(gson.toJson(mcpList))
             }
         }
     }
@@ -1245,7 +1307,7 @@ class AppRepository(context: Context) {
         if (index >= 0) {
             mcpList[index] = mcpList[index].copy(enabled = !mcpList[index].enabled)
             dataStore.edit { prefs ->
-                prefs[mcpListKey] = gson.toJson(mcpList)
+                prefs[mcpListKey] = encryptSensitiveJson(gson.toJson(mcpList))
             }
         }
     }

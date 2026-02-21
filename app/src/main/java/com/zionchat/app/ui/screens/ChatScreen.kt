@@ -344,6 +344,7 @@ fun ChatScreen(navController: NavController) {
     val latestLocalMessagesSize by rememberUpdatedState(localMessages.size)
     val latestShouldAutoScroll by rememberUpdatedState(shouldAutoScroll)
     val latestEffectiveConversationId by rememberUpdatedState(effectiveConversationId)
+    val latestStreamingConversationId by rememberUpdatedState(streamingConversationId)
 
     var lastAutoScrolledConversationId by remember { mutableStateOf<String?>(null) }
     var scrollToBottomToken by remember { mutableIntStateOf(0) }
@@ -373,13 +374,26 @@ fun ChatScreen(navController: NavController) {
         if (!isStreaming) return@LaunchedEffect
         while (isStreaming) {
             val convoId = latestEffectiveConversationId?.trim().orEmpty()
-            if (convoId.isNotBlank() && convoId == streamingConversationId && latestShouldAutoScroll) {
+            val targetConversationId = latestStreamingConversationId?.trim().orEmpty()
+            if (convoId.isNotBlank() && convoId == targetConversationId && latestShouldAutoScroll) {
                 val lastIndex = latestLocalMessagesSize - 1
                 if (lastIndex >= 0) {
-                    listState.scrollToItem(lastIndex, scrollOffset = 0)
+                    val layoutInfo = listState.layoutInfo
+                    val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
+                    val viewportBottom = layoutInfo.viewportEndOffset
+                    val needsScroll =
+                        when {
+                            lastVisible == null -> true
+                            lastVisible.index < lastIndex -> true
+                            lastVisible.index > lastIndex -> false
+                            else -> (lastVisible.offset + lastVisible.size) > (viewportBottom + 4)
+                        }
+                    if (needsScroll) {
+                        listState.scrollToItem(lastIndex, scrollOffset = 0)
+                    }
                 }
             }
-            delay(150)
+            delay(220)
         }
     }
 
@@ -3292,20 +3306,25 @@ private fun AppDevToolTagCard(
     )
     val progressValue = animatedProgress.roundToInt().coerceIn(0, 100)
 
-    val shimmerTransition = rememberInfiniteTransition(label = "app_dev_skeleton_shimmer")
-    val skeletonShift by shimmerTransition.animateFloat(
-        initialValue = 220f,
-        targetValue = -220f,
-        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 2000, easing = LinearEasing)),
-        label = "app_dev_skeleton_shift"
-    )
-    val skeletonBrush = remember(skeletonShift) {
-        Brush.linearGradient(
-            colors = listOf(Color(0xFFE5E7EB), Color(0xFFF3F4F6), Color(0xFFE5E7EB)),
-            start = Offset(skeletonShift, 0f),
-            end = Offset(skeletonShift + 220f, 0f)
-        )
-    }
+    val skeletonBrush =
+        if (showSkeleton) {
+            val shimmerTransition = rememberInfiniteTransition(label = "app_dev_skeleton_shimmer")
+            val skeletonShift by shimmerTransition.animateFloat(
+                initialValue = 220f,
+                targetValue = -220f,
+                animationSpec = infiniteRepeatable(animation = tween(durationMillis = 2000, easing = LinearEasing)),
+                label = "app_dev_skeleton_shift"
+            )
+            remember(skeletonShift) {
+                Brush.linearGradient(
+                    colors = listOf(Color(0xFFE5E7EB), Color(0xFFF3F4F6), Color(0xFFE5E7EB)),
+                    start = Offset(skeletonShift, 0f),
+                    end = Offset(skeletonShift + 220f, 0f)
+                )
+            }
+        } else {
+            SolidColor(Color(0xFFE5E7EB))
+        }
 
     val contributionLevels =
         remember(tag.id, payload.name, payload.subtitle, payload.description) {

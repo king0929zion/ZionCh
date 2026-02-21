@@ -23,6 +23,14 @@ def runtimeShellPluginDownloadUrl =
     (project.findProperty("RUNTIME_SHELL_PLUGIN_DOWNLOAD_URL")
         ?: System.getenv("RUNTIME_SHELL_PLUGIN_DOWNLOAD_URL")
         ?: "https://github.com/king0929zion/core/releases/latest/download/runtime-release-unsigned.apk").toString()
+def iflowClientId =
+    (project.findProperty("IFLOW_CLIENT_ID")
+        ?: System.getenv("IFLOW_CLIENT_ID")
+        ?: "10009311001").toString()
+def iflowClientSecret =
+    (project.findProperty("IFLOW_CLIENT_SECRET")
+        ?: System.getenv("IFLOW_CLIENT_SECRET")
+        ?: "").toString()
 
 android {
     namespace 'com.zionchat.app'
@@ -32,8 +40,8 @@ android {
         applicationId "com.zionchat.app"
         minSdk 24
         targetSdk 36
-        versionCode 235
-        versionName "0.18.202"
+        versionCode 236
+        versionName "0.18.203"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -43,6 +51,8 @@ android {
         buildConfigField "String", "RUNTIME_PACKAGER_TOKEN", "\"${escapeForBuildConfig(runtimePackagerToken)}\""
         buildConfigField "String", "RUNTIME_SHELL_PLUGIN_PACKAGE", "\"${escapeForBuildConfig(runtimeShellPluginPackage)}\""
         buildConfigField "String", "RUNTIME_SHELL_PLUGIN_DOWNLOAD_URL", "\"${escapeForBuildConfig(runtimeShellPluginDownloadUrl)}\""
+        buildConfigField "String", "IFLOW_CLIENT_ID", "\"${escapeForBuildConfig(iflowClientId)}\""
+        buildConfigField "String", "IFLOW_CLIENT_SECRET", "\"${escapeForBuildConfig(iflowClientSecret)}\""
     }
 
     def signingKeystorePath = System.getenv("SIGNING_KEYSTORE_PATH")
@@ -64,7 +74,8 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             if (hasSigning) {
                 signingConfig signingConfigs.release
             }
