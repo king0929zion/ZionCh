@@ -1,5 +1,6 @@
 package com.zionchat.app.data
 
+import com.zionchat.app.BuildConfig
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
@@ -1547,6 +1548,14 @@ class ChatApiClient {
                         if (isQwenCode(provider)) {
                             applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
                         }
+                        if (isGitHubCopilot(provider)) {
+                            applyGitHubCopilotHeadersIfNeeded(
+                                requestBuilder = requestBuilder,
+                                effectiveHeaders = effectiveHeaders,
+                                initiator = "user",
+                                visionRequest = false
+                            )
+                        }
 
                         client.newCall(requestBuilder.build()).execute().use { response ->
                             val raw = response.body?.string().orEmpty()
@@ -1752,6 +1761,9 @@ class ChatApiClient {
         return withContext(Dispatchers.IO) {
             runCatching {
                 val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
+                val copilotInitiator =
+                    if (messages.lastOrNull()?.role?.trim()?.lowercase() == "user") "user" else "agent"
+                val copilotVisionRequest = isVisionRequest(messages)
                 if (isGrokReverseDirect(provider)) {
                     return@runCatching grokReverseChatCompletion(
                         provider = provider,
@@ -1787,6 +1799,14 @@ class ChatApiClient {
                         }
                         if (isQwenCode(provider)) {
                             applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
+                        }
+                        if (isGitHubCopilot(provider)) {
+                            applyGitHubCopilotHeadersIfNeeded(
+                                requestBuilder = requestBuilder,
+                                effectiveHeaders = effectiveHeaders,
+                                initiator = copilotInitiator,
+                                visionRequest = copilotVisionRequest
+                            )
                         }
 
                         requestBuilder.header("Content-Type", "application/json")
@@ -1853,6 +1873,9 @@ class ChatApiClient {
         reasoningEffort: String? = null
     ): Flow<ChatStreamDelta> = flow {
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
+        val copilotInitiator =
+            if (messages.lastOrNull()?.role?.trim()?.lowercase() == "user") "user" else "agent"
+        val copilotVisionRequest = isVisionRequest(messages)
         val payload =
             linkedMapOf<String, Any>(
                 "model" to modelId,
@@ -1886,6 +1909,14 @@ class ChatApiClient {
                 }
                 if (isQwenCode(provider)) {
                     applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
+                }
+                if (isGitHubCopilot(provider)) {
+                    applyGitHubCopilotHeadersIfNeeded(
+                        requestBuilder = requestBuilder,
+                        effectiveHeaders = effectiveHeaders,
+                        initiator = copilotInitiator,
+                        visionRequest = copilotVisionRequest
+                    )
                 }
 
                 requestBuilder
@@ -2963,6 +2994,41 @@ class ChatApiClient {
         if (provider.type.trim().equals("qwen", ignoreCase = true)) return true
         return provider.apiUrl.contains("portal.qwen.ai", ignoreCase = true) ||
             provider.apiUrl.contains("chat.qwen.ai", ignoreCase = true)
+    }
+
+    private fun isGitHubCopilot(provider: ProviderConfig): Boolean {
+        if (provider.deviceProvider?.trim()?.equals("github_copilot", ignoreCase = true) == true) return true
+        if (provider.presetId?.trim()?.equals("github_copilot", ignoreCase = true) == true) return true
+        if (provider.apiUrl.contains("api.githubcopilot.com", ignoreCase = true)) return true
+        return provider.name.contains("copilot", ignoreCase = true)
+    }
+
+    private fun applyGitHubCopilotHeadersIfNeeded(
+        requestBuilder: Request.Builder,
+        effectiveHeaders: List<HttpHeader>,
+        initiator: String,
+        visionRequest: Boolean
+    ) {
+        if (!hasHeader(effectiveHeaders, "x-initiator")) {
+            requestBuilder.header("x-initiator", initiator)
+        }
+        if (!hasHeader(effectiveHeaders, "user-agent")) {
+            val version = BuildConfig.VERSION_NAME.trim().ifBlank { "dev" }
+            requestBuilder.header("User-Agent", "ZionChat/$version")
+        }
+        if (!hasHeader(effectiveHeaders, "openai-intent")) {
+            requestBuilder.header("Openai-Intent", "conversation-edits")
+        }
+        if (visionRequest && !hasHeader(effectiveHeaders, "copilot-vision-request")) {
+            requestBuilder.header("Copilot-Vision-Request", "true")
+        }
+    }
+
+    private fun isVisionRequest(messages: List<Message>): Boolean {
+        return messages.any { message ->
+            message.attachments?.any { it.type == "image" && it.url.isNotBlank() } == true ||
+                extractMarkdownImages(message.content).second.isNotEmpty()
+        }
     }
 
     private fun normalizeProviderApiUrl(provider: ProviderConfig): String {

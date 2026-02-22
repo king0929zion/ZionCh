@@ -31,6 +31,13 @@ val DEFAULT_PROVIDER_PRESETS: List<ProviderPreset> = listOf(
         iconAsset = "codex.svg"
     ),
     ProviderPreset(
+        id = "github_copilot",
+        name = "GitHub Copilot",
+        type = "openai",
+        apiUrl = "https://api.githubcopilot.com",
+        iconAsset = "github.svg"
+    ),
+    ProviderPreset(
         id = "qwen_code",
         name = "Qwen Code",
         type = "openai",
@@ -177,6 +184,7 @@ fun findProviderPreset(presetId: String?): ProviderPreset? {
     if (rawId.isBlank()) return null
     val id = when (rawId.lowercase()) {
         "bytedance" -> "doubao"
+        "github-copilot" -> "github_copilot"
         "grok" -> "grok2api"
         "qwen" -> "qwen_code"
         else -> rawId
@@ -195,6 +203,7 @@ fun resolveProviderIconAsset(provider: ProviderConfig): String? {
 private fun computeAIIconAssetByName(name: String): String? {
     val lowerName = name.lowercase()
     return when {
+        PATTERN_COPILOT.containsMatchIn(lowerName) -> "github.svg"
         PATTERN_CODEX.containsMatchIn(lowerName) -> "codex.svg"
         PATTERN_LONGCAT.containsMatchIn(lowerName) -> "longcat.svg"
         PATTERN_IFLOW.containsMatchIn(lowerName) -> "iflow.svg"
@@ -221,6 +230,7 @@ private fun computeAIIconAssetByName(name: String): String? {
     }
 }
 
+private val PATTERN_COPILOT = Regex("copilot")
 private val PATTERN_CODEX = Regex("codex")
 private val PATTERN_LONGCAT = Regex("longcat")
 private val PATTERN_IFLOW = Regex("iflow")

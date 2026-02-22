@@ -18,7 +18,9 @@ data class ProviderConfig(
     val oauthAccountId: String? = null,
     val oauthEmail: String? = null,
     val oauthProjectId: String? = null,
-    val oauthExpiresAtMs: Long? = null
+    val oauthExpiresAtMs: Long? = null,
+    val deviceProvider: String? = null,
+    val deviceExpiresAtMs: Long? = null
 )
 
 data class ModelConfig(

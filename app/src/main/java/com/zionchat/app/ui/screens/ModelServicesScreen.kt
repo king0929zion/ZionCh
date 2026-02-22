@@ -59,6 +59,7 @@ fun ModelServicesScreen(navController: NavController) {
 
     val configuredProviders by repository.providersFlow.collectAsState(initial = emptyList())
     val oauthPresetIds = remember { setOf("codex", "iflow", "qwen_code") }
+    val devicePresetIds = remember { setOf("github_copilot") }
     val builtInPresetIdSet = remember {
         DEFAULT_PROVIDER_PRESETS.map { it.id.trim().lowercase() }.toSet()
     }
@@ -142,8 +143,11 @@ fun ModelServicesScreen(navController: NavController) {
                             }
                     },
                     onClick = {
+                        val deviceProvider = provider.deviceProvider?.trim()?.lowercase().orEmpty()
                         val oauthProvider = provider.oauthProvider?.trim()?.lowercase().orEmpty()
-                        if (oauthProvider.isNotBlank()) {
+                        if (deviceProvider.isNotBlank()) {
+                            navController.navigate("add_device_provider?provider=$deviceProvider&providerId=${provider.id}")
+                        } else if (oauthProvider.isNotBlank()) {
                             navController.navigate("add_oauth_provider?provider=$oauthProvider&providerId=${provider.id}")
                         } else {
                             navController.navigate("add_provider?preset=&providerId=${provider.id}")
@@ -166,9 +170,12 @@ fun ModelServicesScreen(navController: NavController) {
                 ProviderItem(
                     provider = provider,
                     oauthBadge = oauthPresetIds.contains(provider.id),
+                    deviceBadge = devicePresetIds.contains(provider.id),
                     tokenBadge = provider.id.trim().equals("grok2api", ignoreCase = true) || provider.id.trim().equals("grok", ignoreCase = true),
                     onClick = {
-                        if (oauthPresetIds.contains(provider.id)) {
+                        if (devicePresetIds.contains(provider.id)) {
+                            navController.navigate("add_device_provider?provider=${provider.id}&providerId=")
+                        } else if (oauthPresetIds.contains(provider.id)) {
                             navController.navigate("add_oauth_provider?provider=${provider.id}&providerId=")
                         } else {
                             navController.navigate("add_provider?preset=${provider.id}&providerId=")
@@ -185,6 +192,7 @@ fun ModelServicesScreen(navController: NavController) {
 private fun ProviderItem(
     provider: ProviderPreset,
     oauthBadge: Boolean = false,
+    deviceBadge: Boolean = false,
     tokenBadge: Boolean = false,
     onClick: () -> Unit
 ) {
@@ -217,6 +225,7 @@ private fun ProviderItem(
         Spacer(modifier = Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (tokenBadge) TokenBadge()
+            if (deviceBadge) DeviceBadge()
             if (oauthBadge) OAuthBadge()
         }
     }
@@ -334,6 +343,9 @@ private fun SwipeableConfiguredProviderItem(
                 if (tokenBadge) {
                     TokenBadge()
                 }
+                if (!provider.deviceProvider.isNullOrBlank()) {
+                    DeviceBadge()
+                }
                 if (!provider.oauthProvider.isNullOrBlank()) {
                     OAuthBadge()
                 }
@@ -357,6 +369,27 @@ private fun OAuthBadge() {
             fontFamily = SourceSans3,
             fontWeight = FontWeight.Medium,
             color = Color.White,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun DeviceBadge() {
+    Box(
+        modifier = Modifier
+            .height(22.dp)
+            .background(Color(0xFFF3F4F6), RoundedCornerShape(11.dp))
+            .border(width = 1.dp, color = Color(0xFF111111), shape = RoundedCornerShape(11.dp))
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = stringResource(R.string.device_badge),
+            fontSize = 12.sp,
+            fontFamily = SourceSans3,
+            fontWeight = FontWeight.Medium,
+            color = Color(0xFF111111),
             maxLines = 1
         )
     }

@@ -154,6 +154,17 @@ class MainActivity : AppCompatActivity() {
                                 AddOAuthProviderScreen(navController, provider, providerId)
                             }
                             composable(
+                                route = "add_device_provider?provider={provider}&providerId={providerId}",
+                                arguments = listOf(
+                                    navArgument("provider") { defaultValue = "" },
+                                    navArgument("providerId") { defaultValue = "" }
+                                )
+                            ) { backStackEntry ->
+                                val provider = backStackEntry.arguments?.getString("provider")?.trim().takeIf { !it.isNullOrBlank() }
+                                val providerId = backStackEntry.arguments?.getString("providerId")?.trim().takeIf { !it.isNullOrBlank() }
+                                AddDeviceProviderScreen(navController, provider, providerId)
+                            }
+                            composable(
                                 route = "add_provider?preset={preset}&providerId={providerId}",
                                 arguments = listOf(
                                     navArgument("preset") { defaultValue = "" },

@@ -172,7 +172,9 @@ class AppRepository(context: Context) {
             oauthAccountId = safeTrimOrNull(provider.oauthAccountId),
             oauthEmail = safeTrimOrNull(provider.oauthEmail),
             oauthProjectId = safeTrimOrNull(provider.oauthProjectId),
-            oauthExpiresAtMs = provider.oauthExpiresAtMs
+            oauthExpiresAtMs = provider.oauthExpiresAtMs,
+            deviceProvider = safeTrimOrNull(provider.deviceProvider),
+            deviceExpiresAtMs = provider.deviceExpiresAtMs
         )
     }
 

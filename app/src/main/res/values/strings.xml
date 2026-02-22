@@ -68,6 +68,7 @@
     <string name="personalization_memories_count">%1$d memories</string>
 
     <string name="oauth_badge">OAuth</string>
+    <string name="device_badge">Device</string>
     <string name="model_services_configure_models">Configure models</string>
 
     <string name="add_provider_tap_change_avatar">Tap to change avatar</string>
@@ -83,6 +84,21 @@
     <string name="add_oauth_step2_device_tip">Finish authorization in browser, then tap Continue.</string>
     <string name="add_oauth_step2_device_hint">No callback URL is required for this provider.</string>
     <string name="add_oauth_connected">OAuth Connected!</string>
+
+    <string name="add_device_provider_name">Provider Name</string>
+    <string name="add_device_provider_name_placeholder">Enter provider name</string>
+    <string name="add_device_step1_tip">Log in with a device code to enable this provider</string>
+    <string name="add_device_connect">Login with device code</string>
+    <string name="add_device_step2_tip">Open the link below and enter the code, then tap Continue.</string>
+    <string name="add_device_user_code">Code: %1$s</string>
+    <string name="add_device_open_in_browser">Open browser</string>
+    <string name="add_device_connected">Device Connected!</string>
+    <string name="add_device_connected_tip">You can now sync and enable Copilot models.</string>
+    <string name="add_device_configure_models">Configure models</string>
+    <string name="add_device_disconnect">Disconnect</string>
+    <string name="add_device_relogin">Re-login</string>
+
+    <string name="error_open_browser">Failed to open browser</string>
     <string name="add_oauth_connected_tip">You can now select models from this provider</string>
     <string name="add_oauth_disconnect">Disconnect</string>
 

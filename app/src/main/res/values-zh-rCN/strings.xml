@@ -68,6 +68,7 @@
     <string name="personalization_memories_count">%1$d 条记忆</string>
 
     <string name="oauth_badge">OAuth</string>
+    <string name="device_badge">设备码</string>
     <string name="model_services_configure_models">配置模型</string>
 
     <string name="add_provider_tap_change_avatar">点击更换头像</string>
@@ -84,6 +85,21 @@
     <string name="add_oauth_step2_device_hint">该供应商无需粘贴回调 URL。</string>
     <string name="add_oauth_connected">OAuth 已连接</string>
     <string name="add_oauth_connected_tip">现在你可以为该供应商选择模型</string>
+
+    <string name="add_device_provider_name">供应商名称</string>
+    <string name="add_device_provider_name_placeholder">请输入供应商名称</string>
+    <string name="add_device_step1_tip">使用设备码登录以启用该供应商</string>
+    <string name="add_device_connect">设备码登录</string>
+    <string name="add_device_step2_tip">请打开下方链接并输入代码完成授权，然后点击继续。</string>
+    <string name="add_device_user_code">代码：%1$s</string>
+    <string name="add_device_open_in_browser">打开浏览器</string>
+    <string name="add_device_connected">设备码已连接！</string>
+    <string name="add_device_connected_tip">现在可以同步并启用 Copilot 模型。</string>
+    <string name="add_device_configure_models">配置模型</string>
+    <string name="add_device_disconnect">断开连接</string>
+    <string name="add_device_relogin">重新登录</string>
+
+    <string name="error_open_browser">打开浏览器失败</string>
     <string name="add_oauth_disconnect">断开连接</string>
 
     <string name="error_provider_name_required">供应商名称不能为空。</string>

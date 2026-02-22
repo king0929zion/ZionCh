@@ -20,6 +20,130 @@ class OAuthClient {
     private val client = OkHttpClient()
     private val gson = Gson()
 
+    suspend fun startGitHubCopilotDeviceCode(domain: String = "github.com"): Result<GitHubDeviceCodeStart> {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val normalizedDomain = normalizeGitHubDomain(domain)
+                val url = "https://$normalizedDomain/login/device/code"
+                val form =
+                    FormBody.Builder()
+                        .add("client_id", GITHUB_COPILOT_CLIENT_ID)
+                        .add("scope", GITHUB_COPILOT_SCOPE)
+                        .build()
+                val request =
+                    Request.Builder()
+                        .url(url)
+                        .post(form)
+                        .addHeader("Accept", "application/json")
+                        .addHeader("Content-Type", "application/x-www-form-urlencoded")
+                        .addHeader("User-Agent", buildGitHubUserAgent())
+                        .build()
+
+                client.newCall(request).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
+                    val parsed = gson.fromJson(raw, GitHubDeviceCodeResponse::class.java)
+
+                    val verificationUri =
+                        parsed.verification_uri_complete?.trim().takeIf { !it.isNullOrBlank() }
+                            ?: parsed.verification_uri?.trim().orEmpty()
+                    val userCode = parsed.user_code?.trim().orEmpty()
+                    val deviceCode = parsed.device_code?.trim().orEmpty()
+                    if (verificationUri.isBlank() || userCode.isBlank() || deviceCode.isBlank()) {
+                        error("Invalid GitHub device authorization response")
+                    }
+
+                    GitHubDeviceCodeStart(
+                        domain = normalizedDomain,
+                        verificationUri = verificationUri,
+                        userCode = userCode,
+                        deviceCode = deviceCode,
+                        pollIntervalSeconds = parsed.interval?.coerceAtLeast(1) ?: GITHUB_DEFAULT_POLL_INTERVAL_SECONDS,
+                        expiresInSeconds = parsed.expires_in?.coerceAtLeast(1) ?: GITHUB_DEFAULT_EXPIRES_IN_SECONDS
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun exchangeGitHubCopilotDeviceCode(
+        domain: String,
+        deviceCode: String,
+        pollIntervalSeconds: Int,
+        expiresInSeconds: Int
+    ): Result<GitHubDeviceTokenResult> {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val normalizedDomain = normalizeGitHubDomain(domain)
+                val url = "https://$normalizedDomain/login/oauth/access_token"
+                val safeDeviceCode = deviceCode.trim()
+                if (safeDeviceCode.isBlank()) error("Missing GitHub device_code")
+
+                var intervalSeconds = pollIntervalSeconds.coerceAtLeast(1)
+                val safeExpiresIn = expiresInSeconds.coerceAtLeast(1)
+                val maxAttempts =
+                    ((safeExpiresIn.toDouble() / intervalSeconds.toDouble()) + 2.0)
+                        .toInt()
+                        .coerceIn(10, 400)
+
+                repeat(maxAttempts) {
+                    val form =
+                        FormBody.Builder()
+                            .add("client_id", GITHUB_COPILOT_CLIENT_ID)
+                            .add("device_code", safeDeviceCode)
+                            .add("grant_type", GITHUB_DEVICE_GRANT_TYPE)
+                            .build()
+                    val request =
+                        Request.Builder()
+                            .url(url)
+                            .post(form)
+                            .addHeader("Accept", "application/json")
+                            .addHeader("Content-Type", "application/x-www-form-urlencoded")
+                            .addHeader("User-Agent", buildGitHubUserAgent())
+                            .build()
+
+                    client.newCall(request).execute().use { response ->
+                        val raw = response.body?.string().orEmpty()
+                        if (!response.isSuccessful) {
+                            error("HTTP ${response.code}: $raw")
+                        }
+
+                        val parsed = gson.fromJson(raw, GitHubDeviceTokenResponse::class.java)
+                        val token = parsed.access_token?.trim().orEmpty()
+                        if (token.isNotBlank()) {
+                            return@runCatching GitHubDeviceTokenResult(
+                                accessToken = token,
+                                tokenType = parsed.token_type?.trim(),
+                                scope = parsed.scope?.trim()
+                            )
+                        }
+
+                        when (parsed.error?.trim()?.lowercase()) {
+                            "authorization_pending" -> {
+                                delay(intervalSeconds * 1000L + GITHUB_POLLING_SAFETY_MARGIN_MS)
+                                return@use
+                            }
+                            "slow_down" -> {
+                                val serverInterval = parsed.interval?.takeIf { it > 0 }
+                                intervalSeconds = (serverInterval ?: (intervalSeconds + 5)).coerceAtLeast(1)
+                                delay(intervalSeconds * 1000L + GITHUB_POLLING_SAFETY_MARGIN_MS)
+                                return@use
+                            }
+                            null, "" -> error("Missing access_token in response")
+                            else -> {
+                                val description = parsed.error_description?.trim().orEmpty()
+                                val suffix = if (description.isBlank()) "" else ": $description"
+                                error("GitHub device code failed: ${parsed.error}$suffix")
+                            }
+                        }
+                    }
+                }
+
+                error("GitHub device code timed out")
+            }
+        }
+    }
+
     fun extractCodexAccountId(idToken: String?, accessToken: String?): String? {
         return parseCodexTokenClaims(idToken)?.accountId ?: parseCodexTokenClaims(accessToken)?.accountId
     }
@@ -592,6 +716,21 @@ class OAuthClient {
         val pollIntervalSeconds: Int? = null
     )
 
+    data class GitHubDeviceCodeStart(
+        val domain: String,
+        val verificationUri: String,
+        val userCode: String,
+        val deviceCode: String,
+        val pollIntervalSeconds: Int,
+        val expiresInSeconds: Int
+    )
+
+    data class GitHubDeviceTokenResult(
+        val accessToken: String,
+        val tokenType: String?,
+        val scope: String?
+    )
+
     enum class OAuthProvider {
         Codex,
         IFlow,
@@ -652,6 +791,24 @@ class OAuthClient {
         val interval: Int?
     )
 
+    private data class GitHubDeviceCodeResponse(
+        val device_code: String?,
+        val user_code: String?,
+        val verification_uri: String?,
+        val verification_uri_complete: String?,
+        val interval: Int?,
+        val expires_in: Int?
+    )
+
+    private data class GitHubDeviceTokenResponse(
+        val access_token: String?,
+        val token_type: String?,
+        val scope: String?,
+        val error: String?,
+        val error_description: String?,
+        val interval: Int?
+    )
+
     private data class QwenTokenResponse(
         val access_token: String?,
         val refresh_token: String?,
@@ -700,6 +857,18 @@ class OAuthClient {
         return secret
     }
 
+    private fun normalizeGitHubDomain(input: String): String {
+        val raw = input.trim()
+        if (raw.isBlank()) return "github.com"
+        val noScheme = raw.replace(Regex("^https?://", RegexOption.IGNORE_CASE), "")
+        return noScheme.trim().trimEnd('/').ifBlank { "github.com" }
+    }
+
+    private fun buildGitHubUserAgent(): String {
+        val v = BuildConfig.VERSION_NAME.trim().ifBlank { "dev" }
+        return "ZionChat/$v"
+    }
+
     companion object {
         private const val CODEX_AUTH_URL = "https://auth.openai.com/oauth/authorize"
         private const val CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token"
@@ -721,5 +890,12 @@ class OAuthClient {
         private const val QWEN_DEFAULT_API_BASE_URL = "https://portal.qwen.ai/v1"
         private const val QWEN_DEFAULT_POLL_INTERVAL_SECONDS = 5
         private const val QWEN_MAX_POLL_ATTEMPTS = 60
+
+        private const val GITHUB_COPILOT_CLIENT_ID = "Ov23li8tweQw6odWQebz"
+        private const val GITHUB_COPILOT_SCOPE = "read:user"
+        private const val GITHUB_DEVICE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
+        private const val GITHUB_DEFAULT_POLL_INTERVAL_SECONDS = 5
+        private const val GITHUB_DEFAULT_EXPIRES_IN_SECONDS = 900
+        private const val GITHUB_POLLING_SAFETY_MARGIN_MS = 3000L
     }
 }
