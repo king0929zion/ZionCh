@@ -167,6 +167,9 @@
     <string name="search_settings_depth_standard">Standard</string>
     <string name="search_settings_depth_deep">Deep</string>
     <string name="search_settings_bing_note">Bing mode uses crawler search and may occasionally be rate-limited.</string>
+    <string name="search_settings_providers_title">Search providers</string>
+    <string name="search_settings_provider_active">Active</string>
+    <string name="search_settings_provider_use">Use</string>
     <string name="search_settings_save">Save search config</string>
     <string name="app_dev_preview_title">Preview</string>
     <string name="app_dev_preview_unavailable">Preview is unavailable until HTML is generated.</string>

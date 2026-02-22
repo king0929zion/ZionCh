@@ -1,10 +1,12 @@
 package com.zionchat.app.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -58,7 +60,7 @@ import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
-private data class SearchEngineUi(
+private data class SearchProviderUi(
     val id: String,
     val title: String,
     val subtitle: String,
@@ -82,27 +84,27 @@ fun SearchSettingsScreen(navController: NavController) {
     var initialized by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf<String?>(null) }
 
-    val engineRows = remember {
+    val providerCards = remember {
         listOf(
-            SearchEngineUi(
+            SearchProviderUi(
                 id = "bing",
                 title = "Bing",
                 subtitle = "No API key required",
                 iconAsset = "bing.png"
             ),
-            SearchEngineUi(
+            SearchProviderUi(
                 id = "exa",
                 title = "Exa",
                 subtitle = "Semantic web search",
                 iconAsset = "exa.png"
             ),
-            SearchEngineUi(
+            SearchProviderUi(
                 id = "tavily",
                 title = "Tavily",
                 subtitle = "Research-focused search",
                 iconAsset = "tavily.png"
             ),
-            SearchEngineUi(
+            SearchProviderUi(
                 id = "linkup",
                 title = "Linkup",
                 subtitle = "Answer + citation retrieval",
@@ -188,20 +190,7 @@ fun SearchSettingsScreen(navController: NavController) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SearchSectionTitle(stringResource(R.string.search_settings_engine))
-            SearchCard {
-                engineRows.forEachIndexed { index, item ->
-                    SearchEngineRow(
-                        item = item,
-                        selected = engine == item.id,
-                        onClick = { engine = item.id }
-                    )
-                    if (index != engineRows.lastIndex) {
-                        Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
-
+            SearchSectionTitle(stringResource(R.string.settings_group_general))
             SearchCard {
                 SearchToggleRow(
                     title = stringResource(R.string.search_settings_auto_title),
@@ -217,69 +206,67 @@ fun SearchSettingsScreen(navController: NavController) {
                 )
             }
 
-            when (engine) {
-                "exa" -> {
-                    SearchSectionTitle(stringResource(R.string.search_settings_exa_key))
-                    SearchCard {
-                        FormField(
-                            label = stringResource(R.string.search_settings_exa_key),
-                            value = exaApiKey,
-                            onValueChange = { exaApiKey = it },
-                            placeholder = "exa_..."
-                        )
-                    }
-                }
+            SearchSectionTitle(stringResource(R.string.search_settings_providers_title))
+            providerCards.forEach { provider ->
+                SearchProviderCard(
+                    item = provider,
+                    selected = engine == provider.id,
+                    onSelect = { engine = provider.id }
+                ) {
+                    when (provider.id) {
+                        "exa" -> {
+                            FormField(
+                                label = stringResource(R.string.search_settings_exa_key),
+                                value = exaApiKey,
+                                onValueChange = { exaApiKey = it },
+                                placeholder = "exa_..."
+                            )
+                        }
 
-                "tavily" -> {
-                    SearchSectionTitle(stringResource(R.string.search_settings_tavily_key))
-                    SearchCard {
-                        FormField(
-                            label = stringResource(R.string.search_settings_tavily_key),
-                            value = tavilyApiKey,
-                            onValueChange = { tavilyApiKey = it },
-                            placeholder = "tvly-..."
-                        )
-                        Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
-                        SearchDepthRow(
-                            basicLabel = stringResource(R.string.search_settings_depth_basic),
-                            advancedLabel = stringResource(R.string.search_settings_depth_advanced),
-                            selected = tavilyDepth,
-                            onSelect = { tavilyDepth = it },
-                            basicValue = "basic",
-                            advancedValue = "advanced"
-                        )
-                    }
-                }
+                        "tavily" -> {
+                            FormField(
+                                label = stringResource(R.string.search_settings_tavily_key),
+                                value = tavilyApiKey,
+                                onValueChange = { tavilyApiKey = it },
+                                placeholder = "tvly-..."
+                            )
+                            Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
+                            SearchDepthRow(
+                                basicLabel = stringResource(R.string.search_settings_depth_basic),
+                                advancedLabel = stringResource(R.string.search_settings_depth_advanced),
+                                selected = tavilyDepth,
+                                onSelect = { tavilyDepth = it },
+                                basicValue = "basic",
+                                advancedValue = "advanced"
+                            )
+                        }
 
-                "linkup" -> {
-                    SearchSectionTitle(stringResource(R.string.search_settings_linkup_key))
-                    SearchCard {
-                        FormField(
-                            label = stringResource(R.string.search_settings_linkup_key),
-                            value = linkupApiKey,
-                            onValueChange = { linkupApiKey = it },
-                            placeholder = "linkup_..."
-                        )
-                        Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
-                        SearchDepthRow(
-                            basicLabel = stringResource(R.string.search_settings_depth_standard),
-                            advancedLabel = stringResource(R.string.search_settings_depth_deep),
-                            selected = linkupDepth,
-                            onSelect = { linkupDepth = it },
-                            basicValue = "standard",
-                            advancedValue = "deep"
-                        )
-                    }
-                }
+                        "linkup" -> {
+                            FormField(
+                                label = stringResource(R.string.search_settings_linkup_key),
+                                value = linkupApiKey,
+                                onValueChange = { linkupApiKey = it },
+                                placeholder = "linkup_..."
+                            )
+                            Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
+                            SearchDepthRow(
+                                basicLabel = stringResource(R.string.search_settings_depth_standard),
+                                advancedLabel = stringResource(R.string.search_settings_depth_deep),
+                                selected = linkupDepth,
+                                onSelect = { linkupDepth = it },
+                                basicValue = "standard",
+                                advancedValue = "deep"
+                            )
+                        }
 
-                else -> {
-                    SearchCard {
-                        Text(
-                            text = stringResource(R.string.search_settings_bing_note),
-                            color = TextSecondary,
-                            fontFamily = SourceSans3,
-                            fontSize = 14.sp
-                        )
+                        else -> {
+                            Text(
+                                text = stringResource(R.string.search_settings_bing_note),
+                                color = TextSecondary,
+                                fontFamily = SourceSans3,
+                                fontSize = 14.sp
+                            )
+                        }
                     }
                 }
             }
@@ -345,34 +332,52 @@ private fun SearchCard(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun SearchEngineRow(
-    item: SearchEngineUi,
+private fun SearchProviderCard(
+    item: SearchProviderUi,
     selected: Boolean,
-    onClick: () -> Unit
+    onSelect: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .pressableScale(pressedScale = 0.98f, onClick = onClick)
-            .padding(horizontal = 2.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        border = BorderStroke(1.dp, if (selected) TextPrimary.copy(alpha = 0.16f) else GrayLight.copy(alpha = 0.8f))
     ) {
-        Box(
+        Column(
             modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(GrayLighter, RoundedCornerShape(10.dp)),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            if (!item.iconAsset.isNullOrBlank()) {
-                AssetIcon(
-                    assetFileName = item.iconAsset,
-                    contentDescription = item.title,
-                    modifier = Modifier.size(22.dp),
-                    contentScale = ContentScale.Fit,
-                    error = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(GrayLighter, RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!item.iconAsset.isNullOrBlank()) {
+                        AssetIcon(
+                            assetFileName = item.iconAsset,
+                            contentDescription = item.title,
+                            modifier = Modifier.size(22.dp),
+                            contentScale = ContentScale.Fit,
+                            error = {
+                                Icon(
+                                    imageVector = AppIcons.Globe,
+                                    contentDescription = null,
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        )
+                    } else {
                         Icon(
                             imageVector = AppIcons.Globe,
                             contentDescription = null,
@@ -380,49 +385,69 @@ private fun SearchEngineRow(
                             modifier = Modifier.size(18.dp)
                         )
                     }
-                )
-            } else {
-                Icon(
-                    imageVector = AppIcons.Globe,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = item.title,
+                        fontSize = 16.sp,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = item.subtitle,
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                if (selected) {
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .clip(CircleShape)
+                            .background(TextPrimary, CircleShape)
+                            .padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.search_settings_provider_active),
+                            fontFamily = SourceSans3,
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .clip(CircleShape)
+                            .background(Color.Transparent, CircleShape)
+                            .border(1.dp, GrayLight, CircleShape)
+                            .pressableScale(pressedScale = 0.96f, onClick = onSelect)
+                            .padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.search_settings_provider_use),
+                            fontFamily = SourceSans3,
+                            color = TextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = item.title,
-                fontSize = 16.sp,
-                color = TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = item.subtitle,
-                fontSize = 12.sp,
-                color = TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Box(
-            modifier = Modifier
-                .size(20.dp)
-                .clip(CircleShape)
-                .background(if (selected) TextPrimary else Color.Transparent, CircleShape)
-                .padding(3.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = AppIcons.Check,
-                contentDescription = null,
-                tint = if (selected) Color.White else TextSecondary.copy(alpha = 0.35f),
-                modifier = Modifier.size(14.dp)
-            )
+
+            Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
+            content()
         }
     }
 }

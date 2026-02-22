@@ -158,6 +158,9 @@
     <string name="search_settings_depth_standard">标准</string>
     <string name="search_settings_depth_deep">深度</string>
     <string name="search_settings_bing_note">Bing 模式基于爬虫抓取，偶发会被限流。</string>
+    <string name="search_settings_providers_title">搜索供应商</string>
+    <string name="search_settings_provider_active">当前使用</string>
+    <string name="search_settings_provider_use">设为默认</string>
     <string name="search_settings_save">保存搜索配置</string>
     <string name="app_dev_preview_title">预览</string>
     <string name="app_dev_preview_unavailable">尚未生成 HTML，暂不可预览。</string>
