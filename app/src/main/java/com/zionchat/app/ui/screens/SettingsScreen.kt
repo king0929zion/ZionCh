@@ -165,8 +165,8 @@ fun SettingsScreen(navController: NavController) {
                     )
                 }
 
-                // Appearance 分组
-                SettingsGroup(title = stringResource(R.string.settings_group_appearance), itemCount = 2) {
+                // General 分组
+                SettingsGroup(title = stringResource(R.string.settings_group_general), itemCount = 4) {
                     Box(modifier = Modifier.onGloballyPositioned { coordinates ->
                         appearanceAnchorY = coordinates.positionInWindow().y
                     }) {
@@ -196,16 +196,13 @@ fun SettingsScreen(navController: NavController) {
                             label = stringResource(R.string.settings_item_accent_color),
                             value = accentColorLabel,
                             showChevron = true,
+                            showDivider = true,
                             onClick = {
                                 showAppearanceMenu = false
                                 showAccentColorMenu = true
                             }
                         )
                     }
-                }
-
-                // General 分组
-                SettingsGroup(title = stringResource(R.string.settings_group_general), itemCount = 2) {
                     SettingsItem(
                         icon = { Icon(AppIcons.Language, null, Modifier.size(22.dp), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_language),
@@ -223,7 +220,7 @@ fun SettingsScreen(navController: NavController) {
                 }
 
                 // AI Model 分组
-                SettingsGroup(title = stringResource(R.string.settings_group_ai_model), itemCount = 6) {
+                SettingsGroup(title = stringResource(R.string.settings_group_ai_model), itemCount = 5) {
                     SettingsItem(
                         icon = {
                             Icon(
@@ -272,9 +269,12 @@ fun SettingsScreen(navController: NavController) {
                         icon = { Icon(AppIcons.MCPTools, null, Modifier.size(22.dp), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_mcp_tools),
                         showChevron = true,
-                        showDivider = true,
                         onClick = { navController.navigate("mcp") }
                     )
+                }
+
+                // About 分组
+                SettingsGroup(title = stringResource(R.string.about_title), itemCount = 1) {
                     SettingsItem(
                         icon = { Icon(AppIcons.Info, null, Modifier.size(22.dp), tint = Color.Unspecified) },
                         label = stringResource(R.string.about_title),

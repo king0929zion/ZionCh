@@ -16,7 +16,7 @@
     <string name="settings_group_general">通用</string>
     <string name="settings_item_language">语言</string>
     <string name="settings_item_notifications">通知</string>
-    <string name="settings_group_ai_model">AI 模型</string>
+    <string name="settings_group_ai_model">模型与服务</string>
     <string name="settings_item_default_model">默认模型</string>
     <string name="settings_item_model_services">模型服务</string>
     <string name="settings_item_search">搜索</string>
@@ -32,7 +32,7 @@
     <string name="language_note">更改会立即生效。部分页面仍可能使用固定文本。</string>
 
     <string name="profile_default_name">Kendall Williamson</string>
-    <string name="settings_group_my_chatgpt">我的 ChatGPT</string>
+    <string name="settings_group_my_chatgpt">我的 ZionChat</string>
     <string name="settings_item_personalization">个性化</string>
     <string name="settings_group_appearance">外观</string>
     <string name="settings_item_appearance">外观</string>
