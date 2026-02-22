@@ -146,9 +146,9 @@
     <string name="chat_model_switched_toast">默认对话模型已切换为 %1$s</string>
     <string name="search_settings_engine">搜索引擎</string>
     <string name="search_settings_auto_title">AI 主动搜索</string>
-    <string name="search_settings_auto_subtitle">对实时/时效性问题自动触发联网搜索</string>
+    <string name="search_settings_auto_subtitle">自动搜索实时问题</string>
     <string name="search_settings_result_count">结果数量</string>
-    <string name="search_settings_result_count_subtitle">注入到模型上下文的来源数量</string>
+    <string name="search_settings_result_count_subtitle">注入上下文的来源数</string>
     <string name="search_settings_exa_key">Exa API Key</string>
     <string name="search_settings_tavily_key">Tavily API Key</string>
     <string name="search_settings_linkup_key">Linkup API Key</string>

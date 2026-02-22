@@ -155,9 +155,9 @@
     <string name="chat_model_switched_toast">Default chat model switched to %1$s</string>
     <string name="search_settings_engine">Search engine</string>
     <string name="search_settings_auto_title">AI proactive search</string>
-    <string name="search_settings_auto_subtitle">Automatically search for real-time/time-sensitive questions</string>
+    <string name="search_settings_auto_subtitle">Auto search real-time questions</string>
     <string name="search_settings_result_count">Result count</string>
-    <string name="search_settings_result_count_subtitle">How many sources to inject into model context</string>
+    <string name="search_settings_result_count_subtitle">Sources injected into context</string>
     <string name="search_settings_exa_key">Exa API key</string>
     <string name="search_settings_tavily_key">Tavily API key</string>
     <string name="search_settings_linkup_key">Linkup API key</string>

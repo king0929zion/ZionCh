@@ -198,6 +198,13 @@ class MainActivity : AppCompatActivity() {
                                 McpDetailScreen(navController, mcpId)
                             }
                             composable("search_settings") { SearchSettingsScreen(navController) }
+                            composable(
+                                route = "search_provider_config/{provider}",
+                                arguments = listOf(navArgument("provider") { defaultValue = "bing" })
+                            ) { backStackEntry ->
+                                val provider = backStackEntry.arguments?.getString("provider")
+                                SearchProviderConfigScreen(navController, provider)
+                            }
                             composable("about") { AboutScreen(navController) }
                             composable("web_hosting") { WebHostingScreen(navController) }
                         }

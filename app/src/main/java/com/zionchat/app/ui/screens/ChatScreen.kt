@@ -2692,7 +2692,6 @@ fun ChatScreen(navController: NavController) {
                 ModalBottomSheet(
                     onDismissRequest = { showChatModelPicker = false },
                     sheetState = chatModelPickerState,
-                    sheetGesturesEnabled = false,
                     containerColor = Surface,
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
                     dragHandle = { AppSheetDragHandle(backgroundColor = Surface) }
@@ -4994,60 +4993,74 @@ private fun ChatModelPickerSheetContent(
                 )
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                groupedModels.forEach { (providerName, providerModels) ->
-                    item(key = "chat_model_provider_$providerName") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = providerName.uppercase(),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = GrayLighter)
-                            ) {
-                                providerModels.forEachIndexed { index, model ->
-                                    val selected = isSameStoredOrRemoteModelId(model.id, selectedModelId)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .pressableScale(
-                                                pressedScale = 0.985f,
-                                                onClick = { onSelectModel(model) }
-                                            )
-                                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = model.displayName,
-                                            fontSize = 16.sp,
-                                            color = TextPrimary
-                                        )
-                                        Icon(
-                                            imageVector = AppIcons.Check,
-                                            contentDescription = null,
-                                            tint = TextPrimary,
+            Box(modifier = Modifier.weight(1f)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    groupedModels.forEach { (providerName, providerModels) ->
+                        item(key = "chat_model_provider_$providerName") {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = providerName.uppercase(),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextSecondary,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = GrayLighter)
+                                ) {
+                                    providerModels.forEachIndexed { index, model ->
+                                        val selected = isSameStoredOrRemoteModelId(model.id, selectedModelId)
+                                        Row(
                                             modifier = Modifier
-                                                .size(20.dp)
-                                                .alpha(if (selected) 1f else 0f)
-                                        )
-                                    }
-                                    if (index != providerModels.lastIndex) {
-                                        Divider(color = GrayLight)
+                                                .fillMaxWidth()
+                                                .pressableScale(
+                                                    pressedScale = 0.985f,
+                                                    onClick = { onSelectModel(model) }
+                                                )
+                                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = model.displayName,
+                                                fontSize = 16.sp,
+                                                color = TextPrimary
+                                            )
+                                            Icon(
+                                                imageVector = AppIcons.Check,
+                                                contentDescription = null,
+                                                tint = TextPrimary,
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .alpha(if (selected) 1f else 0f)
+                                            )
+                                        }
+                                        if (index != providerModels.lastIndex) {
+                                            Divider(color = GrayLight)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(9.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Surface, Surface.copy(alpha = 0f))
+                            )
+                        )
+                        .align(Alignment.TopCenter)
+                )
             }
         }
     }
