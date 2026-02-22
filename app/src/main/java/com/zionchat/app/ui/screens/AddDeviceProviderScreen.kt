@@ -25,7 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,13 +37,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.compose.material3.Surface as M3Surface
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.LocalOAuthClient
 import com.zionchat.app.R
@@ -52,6 +55,7 @@ import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.findProviderPreset
 import com.zionchat.app.ui.components.AssetIcon
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.GrayLight
@@ -61,7 +65,11 @@ import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 import java.util.UUID
-import androidx.compose.material3.Surface as M3Surface
+
+private const val GITHUB_COPILOT_PRESET_ID = "github_copilot"
+private const val GITHUB_COPILOT_NAME = "GitHub Copilot"
+private const val GITHUB_COPILOT_ICON = "github.svg"
+private const val GITHUB_COPILOT_API_URL = "https://api.githubcopilot.com"
 
 private enum class DeviceStep {
     STEP_1_CONNECT,
@@ -81,7 +89,7 @@ fun AddDeviceProviderScreen(
     val scope = rememberCoroutineScope()
 
     val lockedProvider = remember(initialProvider) {
-        initialProvider?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: "github_copilot"
+        initialProvider?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: GITHUB_COPILOT_PRESET_ID
     }
     val existingProviderId = remember(providerId) { providerId?.trim()?.takeIf { it.isNotBlank() } }
     val providers by repository.providersFlow.collectAsState(initial = emptyList())
@@ -100,7 +108,6 @@ fun AddDeviceProviderScreen(
         existingProviderId?.let { id -> providers.firstOrNull { it.id == id } } ?: matchedBuiltInProvider
     }
 
-    var providerName by remember { mutableStateOf("") }
     var currentStep by remember { mutableStateOf(DeviceStep.STEP_1_CONNECT) }
     var deviceStart by remember { mutableStateOf<OAuthClient.GitHubDeviceCodeStart?>(null) }
     var isWorking by remember { mutableStateOf(false) }
@@ -108,11 +115,13 @@ fun AddDeviceProviderScreen(
     var connectedProvider by remember { mutableStateOf<ProviderConfig?>(null) }
 
     val preset = remember(lockedProvider) { findProviderPreset(lockedProvider) }
-    val iconAsset = remember(preset?.iconAsset) { preset?.iconAsset }
+    val iconAsset = remember(preset?.iconAsset) { preset?.iconAsset ?: GITHUB_COPILOT_ICON }
+    val activeProvider = connectedProvider ?: existingProvider
+    val activeProviderId = activeProvider?.id?.trim()?.takeIf { it.isNotBlank() }
+    val canManageModels = !activeProviderId.isNullOrBlank()
 
     LaunchedEffect(existingProvider?.id) {
         val providerConfig = existingProvider ?: return@LaunchedEffect
-        providerName = providerConfig.name
         if (!providerConfig.deviceProvider.isNullOrBlank() && providerConfig.apiKey.isNotBlank()) {
             connectedProvider = providerConfig
             currentStep = DeviceStep.STEP_3_COMPLETED
@@ -153,26 +162,25 @@ fun AddDeviceProviderScreen(
                             .height(44.dp)
                             .clip(CircleShape)
                     ) {
-                        if (!iconAsset.isNullOrBlank()) {
-                            AssetIcon(
-                                assetFileName = iconAsset,
-                                contentDescription = preset?.name ?: "GitHub Copilot",
-                                modifier = Modifier
-                                    .height(44.dp)
-                                    .clip(CircleShape)
-                            )
-                        } else {
-                            androidx.compose.material3.Icon(
-                                imageVector = AppIcons.ChatGPTLogo,
-                                contentDescription = null,
-                                tint = TextSecondary
-                            )
-                        }
+                        AssetIcon(
+                            assetFileName = iconAsset,
+                            contentDescription = preset?.name ?: GITHUB_COPILOT_NAME,
+                            modifier = Modifier
+                                .height(44.dp)
+                                .clip(CircleShape),
+                            error = {
+                                Icon(
+                                    imageVector = AppIcons.ChatGPTLogo,
+                                    contentDescription = null,
+                                    tint = TextSecondary
+                                )
+                            }
+                        )
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = preset?.name ?: "GitHub Copilot",
+                            text = preset?.name ?: GITHUB_COPILOT_NAME,
                             fontSize = 17.sp,
                             fontFamily = SourceSans3,
                             fontWeight = FontWeight.SemiBold,
@@ -185,31 +193,6 @@ fun AddDeviceProviderScreen(
                             color = TextSecondary
                         )
                     }
-                }
-            }
-
-            M3Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Surface,
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.add_device_provider_name),
-                        fontSize = 13.sp,
-                        fontFamily = SourceSans3,
-                        color = TextSecondary
-                    )
-                    OutlinedTextField(
-                        value = providerName,
-                        onValueChange = { providerName = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text(text = stringResource(R.string.add_device_provider_name_placeholder)) },
-                        singleLine = true
-                    )
                 }
             }
 
@@ -272,7 +255,6 @@ fun AddDeviceProviderScreen(
                                 strokeWidth = 2.dp,
                                 color = Surface
                             )
-                            Spacer(modifier = Modifier.height(0.dp))
                         } else {
                             Text(
                                 text = stringResource(R.string.add_device_connect),
@@ -351,31 +333,32 @@ fun AddDeviceProviderScreen(
                                                 deviceCode = startValue.deviceCode,
                                                 pollIntervalSeconds = startValue.pollIntervalSeconds,
                                                 expiresInSeconds = startValue.expiresInSeconds
-                                            )
-                                                .onSuccess { token ->
-                                                    val resolvedProviderId =
-                                                        existingProvider?.id?.trim()?.takeIf { it.isNotBlank() }
-                                                            ?: UUID.randomUUID().toString()
-                                                    val created =
-                                                        ProviderConfig(
-                                                            id = resolvedProviderId,
-                                                            presetId = "github_copilot",
-                                                            iconAsset = "github.svg",
-                                                            name = providerName.trim().ifBlank { "GitHub Copilot" },
-                                                            type = "openai",
-                                                            apiUrl = "https://api.githubcopilot.com",
-                                                            apiKey = token.accessToken,
-                                                            headers = existingProvider?.headers.orEmpty(),
-                                                            deviceProvider = "github_copilot",
-                                                            deviceExpiresAtMs = null
-                                                        )
-                                                    repository.upsertProvider(created)
-                                                    connectedProvider = created
-                                                    currentStep = DeviceStep.STEP_3_COMPLETED
-                                                }
-                                                .onFailure { throwable ->
-                                                    errorText = throwable.message ?: throwable.toString()
-                                                }
+                                            ).onSuccess { token ->
+                                                val resolvedProviderId =
+                                                    existingProvider?.id?.trim()?.takeIf { it.isNotBlank() }
+                                                        ?: UUID.randomUUID().toString()
+                                                val providerName =
+                                                    existingProvider?.name?.trim()?.takeIf { it.isNotBlank() }
+                                                        ?: GITHUB_COPILOT_NAME
+                                                val created =
+                                                    ProviderConfig(
+                                                        id = resolvedProviderId,
+                                                        presetId = GITHUB_COPILOT_PRESET_ID,
+                                                        iconAsset = GITHUB_COPILOT_ICON,
+                                                        name = providerName,
+                                                        type = "openai",
+                                                        apiUrl = GITHUB_COPILOT_API_URL,
+                                                        apiKey = token.accessToken,
+                                                        headers = existingProvider?.headers.orEmpty(),
+                                                        deviceProvider = GITHUB_COPILOT_PRESET_ID,
+                                                        deviceExpiresAtMs = null
+                                                    )
+                                                repository.upsertProvider(created)
+                                                connectedProvider = created
+                                                currentStep = DeviceStep.STEP_3_COMPLETED
+                                            }.onFailure { throwable ->
+                                                errorText = throwable.message ?: throwable.toString()
+                                            }
                                             isWorking = false
                                         }
                                     },
@@ -404,81 +387,45 @@ fun AddDeviceProviderScreen(
                 }
 
                 DeviceStep.STEP_3_COMPLETED -> {
-                    val providerConfig = connectedProvider ?: existingProvider
                     M3Surface(
                         modifier = Modifier.fillMaxWidth(),
                         color = Surface,
                         shape = RoundedCornerShape(20.dp)
                     ) {
-                        Column(
+                        Row(
                             modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(
-                                text = stringResource(R.string.add_device_connected),
-                                fontSize = 17.sp,
-                                fontFamily = SourceSans3,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = stringResource(R.string.add_device_connected_tip),
-                                fontSize = 13.sp,
-                                fontFamily = SourceSans3,
-                                color = TextSecondary
-                            )
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Button(
-                                    onClick = {
-                                        val id = providerConfig?.id ?: return@Button
-                                        navController.navigate("models?providerId=$id")
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = TextPrimary)
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.add_device_configure_models),
-                                        fontSize = 14.sp,
-                                        fontFamily = SourceSans3,
-                                        color = Surface
-                                    )
-                                }
-                                Button(
-                                    onClick = {
-                                        val id = providerConfig?.id ?: return@Button
-                                        scope.launch {
-                                            repository.deleteProviderAndModels(id)
-                                            connectedProvider = null
-                                            deviceStart = null
-                                            providerName = ""
-                                            currentStep = DeviceStep.STEP_1_CONNECT
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = GrayLight)
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.add_device_disconnect),
-                                        fontSize = 14.sp,
-                                        fontFamily = SourceSans3,
-                                        color = TextPrimary
-                                    )
-                                }
+                            Button(
+                                onClick = {
+                                    val id = activeProviderId ?: return@Button
+                                    scope.launch {
+                                        repository.deleteProviderAndModels(id)
+                                        connectedProvider = null
+                                        deviceStart = null
+                                        currentStep = DeviceStep.STEP_1_CONNECT
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = GrayLight)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.add_device_disconnect),
+                                    fontSize = 14.sp,
+                                    fontFamily = SourceSans3,
+                                    color = TextPrimary
+                                )
                             }
 
                             Button(
                                 onClick = {
                                     connectedProvider = null
                                     deviceStart = null
+                                    errorText = null
                                     currentStep = DeviceStep.STEP_1_CONNECT
                                 },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(44.dp),
+                                modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = GrayLight)
                             ) {
@@ -491,6 +438,44 @@ fun AddDeviceProviderScreen(
                             }
                         }
                     }
+                }
+            }
+
+            M3Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Color.White,
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (canManageModels) {
+                                Modifier.pressableScale(pressedScale = 0.985f) {
+                                    val id = activeProviderId ?: return@pressableScale
+                                    navController.navigate("models?providerId=$id")
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.add_device_configure_models),
+                        fontSize = 16.sp,
+                        fontFamily = SourceSans3,
+                        fontWeight = FontWeight.Medium,
+                        color = if (canManageModels) TextPrimary else TextSecondary
+                    )
+                    Icon(
+                        imageVector = AppIcons.ChevronRight,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.alpha(if (canManageModels) 1f else 0.45f)
+                    )
                 }
             }
 

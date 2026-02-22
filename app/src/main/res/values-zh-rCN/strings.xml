@@ -88,7 +88,7 @@
 
     <string name="add_device_provider_name">供应商名称</string>
     <string name="add_device_provider_name_placeholder">请输入供应商名称</string>
-    <string name="add_device_step1_tip">使用设备码登录以启用该供应商</string>
+    <string name="add_device_step1_tip">Login with a device code</string>
     <string name="add_device_connect">设备码登录</string>
     <string name="add_device_step2_tip">请打开下方链接并输入代码完成授权，然后点击继续。</string>
     <string name="add_device_user_code">代码：%1$s</string>

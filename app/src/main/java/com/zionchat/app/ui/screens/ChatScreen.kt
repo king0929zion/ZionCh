@@ -2692,6 +2692,7 @@ fun ChatScreen(navController: NavController) {
                 ModalBottomSheet(
                     onDismissRequest = { showChatModelPicker = false },
                     sheetState = chatModelPickerState,
+                    sheetGesturesEnabled = false,
                     containerColor = Surface,
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
                     dragHandle = { AppSheetDragHandle(backgroundColor = Surface) }
@@ -4994,7 +4995,7 @@ private fun ChatModelPickerSheetContent(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.weight(1f, fill = false),
+                modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 groupedModels.forEach { (providerName, providerModels) ->
@@ -5726,19 +5727,34 @@ private fun groupEnabledModelsByProvider(
     models: List<ModelConfig>
 ): List<Pair<String, List<ModelConfig>>> {
     if (models.isEmpty()) return emptyList()
-    val providerNameById = providers.associateBy({ it.id }, { it.name })
-    return models
-        .filter { it.enabled }
-        .groupBy { model ->
-            model.providerId?.let { providerId ->
-                providerNameById[providerId]
-            } ?: "Other"
-        }
-        .toList()
-        .sortedBy { it.first }
-        .map { (providerName, providerModels) ->
-            providerName to providerModels.sortedBy { it.displayName.lowercase() }
-        }
+    val enabledModels = models.filter { it.enabled }
+    if (enabledModels.isEmpty()) return emptyList()
+
+    val providerById = providers.associateBy { it.id }
+    val groupedByProviderId = enabledModels.groupBy { it.providerId?.trim().orEmpty() }
+    val ordered = mutableListOf<Pair<String, List<ModelConfig>>>()
+    val usedProviderIds = mutableSetOf<String>()
+
+    providers.forEach { provider ->
+        val providerId = provider.id.trim()
+        if (providerId.isBlank()) return@forEach
+        val providerModels = groupedByProviderId[providerId].orEmpty()
+        if (providerModels.isEmpty()) return@forEach
+        usedProviderIds += providerId
+        ordered += provider.name to providerModels.sortedBy { it.displayName.lowercase() }
+    }
+
+    groupedByProviderId.forEach { (providerId, providerModels) ->
+        if (providerModels.isEmpty()) return@forEach
+        if (providerId in usedProviderIds) return@forEach
+        val fallbackName =
+            providerById[providerId]?.name
+                ?: providerId.takeIf { it.isNotBlank() }
+                ?: "Other"
+        ordered += fallbackName to providerModels.sortedBy { it.displayName.lowercase() }
+    }
+
+    return ordered
 }
 
 private fun isSameStoredOrRemoteModelId(lhs: String?, rhs: String?): Boolean {
