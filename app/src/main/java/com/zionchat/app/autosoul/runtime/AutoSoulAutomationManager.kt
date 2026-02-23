@@ -3,7 +3,7 @@ package com.zionchat.app.autosoul.runtime
 import android.content.Context
 import android.provider.Settings
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import com.google.gson.JsonParser
 import com.zionchat.app.autosoul.AutoSoulAccessibilityService
 import com.zionchat.app.autosoul.AutoSoulAccessibilityStatus
 import com.zionchat.app.autosoul.overlay.AutoSoulFloatingOverlay
@@ -33,7 +33,6 @@ object AutoSoulAutomationManager {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val gson = Gson()
-    private val logListType = object : TypeToken<List<Any?>>() {}.type
     private val logsLock = Any()
     private var runJob: Job? = null
     private var appContext: Context? = null
@@ -253,19 +252,31 @@ object AutoSoulAutomationManager {
             if (logsHydrated) return
             val prefs = context.getSharedPreferences(LOG_PREFS_NAME, Context.MODE_PRIVATE)
             val raw = prefs.getString(LOG_PREFS_KEY, "").orEmpty()
-            val loaded =
-                runCatching { gson.fromJson<List<Any?>>(raw, logListType) }
-                    .getOrNull()
-                    .orEmpty()
-                    .mapNotNull { item ->
-                        item?.toString()?.trim()?.takeIf { line -> line.isNotBlank() }
-                    }
-                    .takeLast(MAX_LOG_SIZE)
+            val loaded = parsePersistedLogs(raw)
             if (loaded.isNotEmpty()) {
                 _logs.value = loaded
             }
             logsHydrated = true
         }
+    }
+
+    private fun parsePersistedLogs(raw: String): List<String> {
+        if (raw.isBlank()) return emptyList()
+        val jsonArray =
+            runCatching {
+                JsonParser.parseString(raw).takeIf { it.isJsonArray }?.asJsonArray
+            }.getOrNull() ?: return emptyList()
+        return jsonArray
+            .mapNotNull { element ->
+                when {
+                    element == null || element.isJsonNull -> null
+                    element.isJsonPrimitive && element.asJsonPrimitive.isString -> {
+                        element.asString.trim().takeIf { it.isNotBlank() }
+                    }
+                    else -> element.toString().trim().takeIf { it.isNotBlank() }
+                }
+            }
+            .takeLast(MAX_LOG_SIZE)
     }
 
     private fun persistLogs(context: Context, logs: List<String>) {
