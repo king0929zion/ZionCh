@@ -2,6 +2,8 @@ package com.zionchat.app.autosoul.runtime
 
 import android.content.Context
 import android.provider.Settings
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.zionchat.app.autosoul.AutoSoulAccessibilityService
 import com.zionchat.app.autosoul.AutoSoulAccessibilityStatus
 import com.zionchat.app.autosoul.overlay.AutoSoulFloatingOverlay
@@ -25,10 +27,18 @@ data class AutoSoulRuntimeState(
 )
 
 object AutoSoulAutomationManager {
+    private const val LOG_PREFS_NAME = "autosoul_runtime_prefs"
+    private const val LOG_PREFS_KEY = "autosoul_logs_json"
+    private const val MAX_LOG_SIZE = 260
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val gson = Gson()
+    private val logListType = object : TypeToken<List<String>>() {}.type
+    private val logsLock = Any()
     private var runJob: Job? = null
     private var appContext: Context? = null
     private var lastScript: String = ""
+    private var logsHydrated = false
 
     private val _state = MutableStateFlow(AutoSoulRuntimeState())
     val state: StateFlow<AutoSoulRuntimeState> = _state.asStateFlow()
@@ -40,6 +50,7 @@ object AutoSoulAutomationManager {
         return runCatching {
             val ctx = context.applicationContext
             appContext = ctx
+            hydrateLogsFromStorageIfNeeded(ctx)
             if (!AutoSoulAccessibilityStatus.isServiceEnabled(ctx)) {
                 error("无障碍服务未开启")
             }
@@ -196,7 +207,9 @@ object AutoSoulAutomationManager {
     }
 
     fun bindOverlayActions(context: Context) {
-        appContext = context.applicationContext
+        val appCtx = context.applicationContext
+        appContext = appCtx
+        hydrateLogsFromStorageIfNeeded(appCtx)
         AutoSoulFloatingOverlay.setActionCallbacks(
             onStop = { stop("悬浮窗终止") },
             onSend = {
@@ -226,7 +239,36 @@ object AutoSoulAutomationManager {
     private fun appendLog(line: String) {
         val trimmed = line.trim()
         if (trimmed.isBlank()) return
-        val old = _logs.value
-        _logs.value = (old + "${System.currentTimeMillis()} | $trimmed").takeLast(180)
+        synchronized(logsLock) {
+            val old = _logs.value
+            val updated = (old + "${System.currentTimeMillis()} | $trimmed").takeLast(MAX_LOG_SIZE)
+            _logs.value = updated
+            appContext?.let { persistLogs(it, updated) }
+        }
+    }
+
+    private fun hydrateLogsFromStorageIfNeeded(context: Context) {
+        if (logsHydrated) return
+        synchronized(logsLock) {
+            if (logsHydrated) return
+            val prefs = context.getSharedPreferences(LOG_PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(LOG_PREFS_KEY, "").orEmpty()
+            val loaded =
+                runCatching { gson.fromJson<List<String>>(raw, logListType) }
+                    .getOrDefault(emptyList())
+                    .mapNotNull { it?.trim()?.takeIf { line -> line.isNotBlank() } }
+                    .takeLast(MAX_LOG_SIZE)
+            if (loaded.isNotEmpty()) {
+                _logs.value = loaded
+            }
+            logsHydrated = true
+        }
+    }
+
+    private fun persistLogs(context: Context, logs: List<String>) {
+        runCatching {
+            val prefs = context.getSharedPreferences(LOG_PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putString(LOG_PREFS_KEY, gson.toJson(logs)).apply()
+        }
     }
 }

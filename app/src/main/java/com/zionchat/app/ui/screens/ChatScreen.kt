@@ -5284,42 +5284,42 @@ private fun ChatThinkingToggleButton(
         label = "thinking_switch_track"
     )
     val thumbOffsetX by animateDpAsState(
-        targetValue = if (enabled) 23.dp else 3.dp,
+        targetValue = if (enabled) 21.dp else 3.dp,
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "thinking_switch_thumb"
     )
     Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = stringResource(R.string.chat_model_picker_thinking_label),
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             color = TextSecondary
         )
         Box(
             modifier = Modifier
-                .width(52.dp)
-                .height(32.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(trackColor, RoundedCornerShape(10.dp))
+                .width(44.dp)
+                .height(26.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(trackColor, RoundedCornerShape(8.dp))
                 .pressableScale(pressedScale = 0.98f, onClick = { onToggle(!enabled) })
         )
         {
             Box(
                 modifier = Modifier
                     .offset(x = thumbOffsetX, y = 3.dp)
-                    .size(26.dp)
+                    .size(20.dp)
                     .shadow(
-                        elevation = 2.dp,
-                        shape = RoundedCornerShape(8.dp),
+                        elevation = 1.5.dp,
+                        shape = RoundedCornerShape(6.dp),
                         clip = false,
                         ambientColor = Color.Black.copy(alpha = 0.15f),
                         spotColor = Color.Black.copy(alpha = 0.15f)
                     )
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White, RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.White, RoundedCornerShape(6.dp))
             )
         }
     }
@@ -5584,6 +5584,17 @@ private suspend fun executeAutoSoulTask(
                 decision.action?.trim().orEmpty().ifBlank {
                     throw IllegalStateException("AutoSoul 决策缺少 action。")
                 }
+            val currentFingerprint = buildAutoSoulActionFingerprint(actionName, decision.args)
+            val repeatedSuccessCount =
+                stepTraces
+                    .asReversed()
+                    .takeWhile { trace ->
+                        trace.success && buildAutoSoulActionFingerprint(trace.action, trace.args) == currentFingerprint
+                    }
+                    .size
+            if (repeatedSuccessCount >= 2) {
+                throw IllegalStateException("AutoSoul 检测到重复动作循环（$actionName），已自动停止。请补充更具体任务目标后重试。")
+            }
             val singleStepScript = buildAutoSoulSingleStepScript(actionName, decision.args)
             val parsedStep =
                 AutoSoulScriptParser.parse(singleStepScript).getOrElse { error ->
@@ -5932,6 +5943,34 @@ private fun buildAutoSoulExecutionTraceJson(
     return GsonBuilder().disableHtmlEscaping().create().toJson(payload)
 }
 
+private fun buildAutoSoulActionFingerprint(
+    action: String,
+    args: Map<String, String>
+): String {
+    val normalizedAction = action.trim().lowercase()
+    val filteredArgs =
+        args.entries
+            .filterNot { (key, _) ->
+                key.equals("reason", ignoreCase = true) ||
+                    key.equals("explain", ignoreCase = true) ||
+                    key.equals("note", ignoreCase = true)
+            }
+            .associate { (key, value) -> key.trim().lowercase() to value.trim() }
+
+    return when (normalizedAction) {
+        "home", "back" -> normalizedAction
+        "wait" -> {
+            val duration = filteredArgs["duration_ms"] ?: filteredArgs["duration"] ?: ""
+            "$normalizedAction|$duration"
+        }
+        else -> {
+            val sorted = filteredArgs.toSortedMap()
+            val tail = sorted.entries.joinToString(separator = "&") { (k, v) -> "$k=$v" }
+            "$normalizedAction|$tail"
+        }
+    }
+}
+
 private fun buildAutoSoulPlannerSystemPrompt(): String {
     return buildString {
         appendLine("你是 AutoSoul 执行智能体。")
@@ -5943,6 +5982,7 @@ private fun buildAutoSoulPlannerSystemPrompt(): String {
         appendLine("任务完成时输出：{\"status\":\"done\",\"message\":\"...\"}")
         appendLine("需要继续时输出：{\"status\":\"continue\",\"step\":{\"action\":\"Tap\",\"x\":\"0.50\",\"y\":\"0.72\"},\"reason\":\"...\"}")
         appendLine("如果上一步失败，优先调整策略并继续，不要直接 done。")
+        appendLine("禁止连续重复输出相同成功动作（尤其 Home/Back/Wait），若遇到循环应切换策略或直接 done。")
     }.trim()
 }
 
