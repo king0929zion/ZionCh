@@ -5507,6 +5507,7 @@ private fun extractImageQuotedTextBlocks(prompt: String): List<String> {
         }
         .distinct()
         .take(6)
+        .toList()
 }
 
 private data class AutoSoulExecutionResult(
