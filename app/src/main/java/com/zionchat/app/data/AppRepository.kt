@@ -53,6 +53,7 @@ class AppRepository(context: Context) {
     private val defaultTitleModelIdKey = stringPreferencesKey("default_title_model_id")
     private val defaultAppBuilderModelIdKey = stringPreferencesKey("default_app_builder_model_id")
     private val defaultAutoSoulModelIdKey = stringPreferencesKey("default_autosoul_model_id")
+    private val chatThinkingEnabledKey = booleanPreferencesKey("chat_thinking_enabled")
     private val webHostingProviderKey = stringPreferencesKey("web_hosting_provider")
     private val vercelTokenKey = stringPreferencesKey("vercel_token")
     private val vercelProjectIdKey = stringPreferencesKey("vercel_project_id")
@@ -540,6 +541,10 @@ class AppRepository(context: Context) {
         prefs[defaultAutoSoulModelIdKey]
     }
 
+    val chatThinkingEnabledFlow: Flow<Boolean> = prefsFlow.map { prefs ->
+        prefs[chatThinkingEnabledKey] ?: true
+    }
+
     suspend fun setCurrentConversationId(conversationId: String?) {
         dataStore.edit { prefs ->
             if (conversationId.isNullOrBlank()) {
@@ -649,6 +654,12 @@ class AppRepository(context: Context) {
     suspend fun setDefaultAutoSoulModelId(modelId: String?) {
         dataStore.edit { prefs ->
             if (modelId.isNullOrBlank()) prefs.remove(defaultAutoSoulModelIdKey) else prefs[defaultAutoSoulModelIdKey] = modelId
+        }
+    }
+
+    suspend fun setChatThinkingEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[chatThinkingEnabledKey] = enabled
         }
     }
 

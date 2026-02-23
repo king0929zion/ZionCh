@@ -220,6 +220,7 @@ fun ChatScreen(navController: NavController) {
     val avatarUri by repository.avatarUriFlow.collectAsState(initial = "")
     val customInstructions by repository.customInstructionsFlow.collectAsState(initial = "")
     val defaultChatModelId by repository.defaultChatModelIdFlow.collectAsState(initial = null)
+    val chatThinkingEnabled by repository.chatThinkingEnabledFlow.collectAsState(initial = true)
     val defaultImageModelId by repository.defaultImageModelIdFlow.collectAsState(initial = null)
     val defaultAppBuilderModelId by repository.defaultAppBuilderModelIdFlow.collectAsState(initial = null)
     val webSearchConfig by repository.webSearchConfigFlow.collectAsState(initial = WebSearchConfig())
@@ -1562,7 +1563,7 @@ fun ChatScreen(navController: NavController) {
                             modelId = modelId,
                             messages = requestMessages,
                             extraHeaders = selectedModel.headers,
-                            reasoningEffort = selectedModel.reasoningEffort,
+                            reasoningEffort = if (chatThinkingEnabled) selectedModel.reasoningEffort else null,
                             conversationId = safeConversationId
                         ).takeWhile { delta ->
                             val now = System.currentTimeMillis()
@@ -2806,13 +2807,19 @@ fun ChatScreen(navController: NavController) {
                 ModalBottomSheet(
                     onDismissRequest = { showChatModelPicker = false },
                     sheetState = chatModelPickerState,
+                    sheetGesturesEnabled = false,
                     containerColor = Surface,
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                    dragHandle = { AppSheetDragHandle(backgroundColor = Surface) }
+                    dragHandle = null
                 ) {
                     ChatModelPickerSheetContent(
                         groupedModels = chatModelGroups,
                         selectedModelId = defaultChatModelId,
+                        thinkingEnabled = chatThinkingEnabled,
+                        onToggleThinking = { enabled ->
+                            scope.launch { repository.setChatThinkingEnabled(enabled) }
+                        },
+                        onDismissRequest = { showChatModelPicker = false },
                         onSelectModel = { model ->
                             scope.launch {
                                 repository.setDefaultChatModelId(model.id)
@@ -5093,21 +5100,77 @@ private fun McpServerPickerPanel(
 private fun ChatModelPickerSheetContent(
     groupedModels: List<Pair<String, List<ModelConfig>>>,
     selectedModelId: String?,
+    thinkingEnabled: Boolean,
+    onToggleThinking: (Boolean) -> Unit,
+    onDismissRequest: () -> Unit,
     onSelectModel: (ModelConfig) -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+    val dismissThresholdPx = remember(density) { with(density) { 86.dp.toPx() } }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 260.dp, max = 640.dp)
+            .offset { IntOffset(0, dragOffsetPx.roundToInt()) }
             .padding(horizontal = 18.dp, vertical = 8.dp)
     ) {
-        Text(
-            text = stringResource(R.string.chat_model_picker_title),
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = TextPrimary,
-            modifier = Modifier.padding(bottom = 12.dp, top = 4.dp)
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState { delta ->
+                        dragOffsetPx = (dragOffsetPx + delta).coerceAtLeast(0f)
+                    },
+                    onDragStopped = { velocity ->
+                        val shouldDismiss = dragOffsetPx > dismissThresholdPx || velocity > 1800f
+                        if (shouldDismiss) {
+                            onDismissRequest()
+                            dragOffsetPx = 0f
+                        } else {
+                            scope.launch {
+                                animate(
+                                    initialValue = dragOffsetPx,
+                                    targetValue = 0f,
+                                    animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing)
+                                ) { value, _ ->
+                                    dragOffsetPx = value
+                                }
+                            }
+                        }
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(38.dp)
+                    .height(4.dp)
+                    .background(GrayLight, RoundedCornerShape(2.dp))
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.chat_model_picker_title),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary
+            )
+            ChatThinkingToggleButton(
+                enabled = thinkingEnabled,
+                onToggle = onToggleThinking
+            )
+        }
 
         if (groupedModels.isEmpty()) {
             Box(
@@ -5193,6 +5256,35 @@ private fun ChatModelPickerSheetContent(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ChatThinkingToggleButton(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (enabled) TextPrimary else GrayLighter, RoundedCornerShape(14.dp))
+            .pressableScale(pressedScale = 0.97f, onClick = { onToggle(!enabled) })
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.chat_model_picker_thinking_short),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (enabled) Surface else TextPrimary
+        )
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(if (enabled) Color(0xFF30D158) else Color(0xFF8E8E93))
+        )
     }
 }
 

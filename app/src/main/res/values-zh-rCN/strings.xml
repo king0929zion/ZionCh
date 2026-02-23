@@ -144,6 +144,7 @@
     <string name="chat_tool_mcp_choose_providers">选择 MCP 提供方</string>
     <string name="chat_tool_autosoul_subtitle">规划并执行手机自动化</string>
     <string name="chat_model_picker_title">选择默认对话模型</string>
+    <string name="chat_model_picker_thinking_short">思考</string>
     <string name="chat_model_picker_empty">暂无可用模型</string>
     <string name="chat_model_switched_toast">默认对话模型已切换为 %1$s</string>
     <string name="search_settings_engine">搜索引擎</string>

@@ -153,6 +153,7 @@
     <string name="chat_tool_mcp_choose_providers">Choose MCP providers</string>
     <string name="chat_tool_autosoul_subtitle">Plan and run phone automation</string>
     <string name="chat_model_picker_title">Select default chat model</string>
+    <string name="chat_model_picker_thinking_short">Thinking</string>
     <string name="chat_model_picker_empty">No models available</string>
     <string name="chat_model_switched_toast">Default chat model switched to %1$s</string>
     <string name="search_settings_engine">Search engine</string>
