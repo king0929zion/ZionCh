@@ -5375,9 +5375,6 @@ private suspend fun executeAutoSoulTask(
                 ?: allModels.firstOrNull { extractRemoteModelId(it.id) == modelKey }
                 ?: throw IllegalStateException("AutoSoul 模型不存在：$modelKey。请在 Settings → AutoSoul 重新选择。")
 
-        if (!selectedModel.enabled) {
-            throw IllegalStateException("AutoSoul 模型已被禁用，请在 Models 里启用后重试。")
-        }
         if (!isLikelyVisionModel(selectedModel)) {
             throw IllegalStateException("当前 AutoSoul 模型不符合视觉模型要求，请在 Settings → AutoSoul 重新选择视觉模型。")
         }
