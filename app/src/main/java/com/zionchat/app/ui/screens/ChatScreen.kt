@@ -5428,10 +5428,11 @@ private suspend fun handleImageGeneration(
     }
 
     // 调用图片生成API
+    val optimizedPrompt = buildImageGenerationPrompt(userPrompt)
     val result = chatApiClient.generateImage(
         provider = provider,
         modelId = extractRemoteModelId(imageModel.id),
-        prompt = userPrompt,
+        prompt = optimizedPrompt,
         extraHeaders = imageModel.headers,
         size = "1024x1024",
         quality = "standard",
@@ -5456,6 +5457,56 @@ private suspend fun handleImageGeneration(
             )
         }
     )
+}
+
+private fun buildImageGenerationPrompt(rawPrompt: String): String {
+    val prompt = rawPrompt.trim()
+    if (prompt.isBlank()) return rawPrompt
+
+    val hasTypographySignal =
+        Regex("(?i)\\b(text|typography|title|caption|poster|banner|flyer|slogan|logo|cover)\\b|文字|文案|标题|海报|字体|排版|标语|封面")
+            .containsMatchIn(prompt)
+    val quotedTextBlocks = extractImageQuotedTextBlocks(prompt)
+
+    val guardrail =
+        buildString {
+            appendLine("Generation constraints:")
+            appendLine("- Keep composition clean with stable visual hierarchy and balanced spacing.")
+            appendLine("- If any text appears in the image, keep typography clear and aligned.")
+            appendLine("- Avoid scrambled letters, random symbols, mirrored text, and broken line spacing.")
+
+            if (hasTypographySignal || quotedTextBlocks.isNotEmpty()) {
+                appendLine("- Prioritize readability over decorative distortion for all textual elements.")
+                appendLine("- Keep consistent baseline, kerning, and line-height for Chinese and English text.")
+            }
+
+            if (quotedTextBlocks.isNotEmpty()) {
+                appendLine("- Render these text blocks exactly as written (same order, punctuation, and language):")
+                quotedTextBlocks.forEachIndexed { index, text ->
+                    append("- ")
+                    append(index + 1)
+                    append(") ")
+                    appendLine(text)
+                }
+            }
+        }.trim()
+
+    return if (guardrail.isBlank()) prompt else "$prompt\n\n$guardrail"
+}
+
+private fun extractImageQuotedTextBlocks(prompt: String): List<String> {
+    val regex =
+        Regex("\"([^\"]{1,80})\"|'([^']{1,80})'|“([^”]{1,80})”|「([^」]{1,80})」|『([^』]{1,80})』")
+    return regex.findAll(prompt)
+        .mapNotNull { match ->
+            match.groupValues
+                .drop(1)
+                .firstOrNull { it.isNotBlank() }
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        }
+        .distinct()
+        .take(6)
 }
 
 private data class AutoSoulExecutionResult(
