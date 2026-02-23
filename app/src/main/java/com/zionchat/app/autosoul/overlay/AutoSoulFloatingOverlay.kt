@@ -62,12 +62,21 @@ object AutoSoulFloatingOverlay {
             val wm = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             windowManager = wm
             val display = appContext.resources.displayMetrics
-            val initialX = (display.widthPixels * 0.5f - 130f.dpPx(appContext)).toInt().coerceAtLeast(0)
+            val sidePaddingPx = 16f.dpPx(appContext)
+            val toolButtonWidthPx = 46f.dpPx(appContext)
+            val toolGapPx = 12f.dpPx(appContext)
+            val minWidthPx = 220f.dpPx(appContext).toInt()
+            val maxWidthPx = 420f.dpPx(appContext).toInt()
+            val targetWidth =
+                (display.widthPixels - sidePaddingPx * 2f - toolButtonWidthPx - toolGapPx)
+                    .toInt()
+                    .coerceIn(minWidthPx, maxWidthPx)
+            val initialX = ((display.widthPixels - targetWidth) * 0.5f).toInt().coerceAtLeast(0)
             val initialY = (display.heightPixels * 0.72f).toInt().coerceAtLeast(0)
 
             val params =
                 WindowManager.LayoutParams().apply {
-                    width = WindowManager.LayoutParams.WRAP_CONTENT
+                    width = targetWidth
                     height = WindowManager.LayoutParams.WRAP_CONTENT
                     gravity = Gravity.TOP or Gravity.START
                     x = initialX

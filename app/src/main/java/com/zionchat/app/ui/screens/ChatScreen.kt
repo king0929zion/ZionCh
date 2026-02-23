@@ -1163,6 +1163,10 @@ fun ChatScreen(navController: NavController) {
                     val explicitAppBuilder = selectedTool == "app_builder"
                     val useWebSearch = explicitWebSearchRequest || weakAutoWebSearchIntent
                     val canUseAppBuilder = explicitAppBuilder
+                    val canUseAutoSoulTool =
+                        repository.defaultAutoSoulModelIdFlow.first()
+                            ?.trim()
+                            ?.isNotBlank() == true
                     val configuredAppBuilderModel =
                         defaultAppBuilderModelId?.trim()?.takeIf { it.isNotBlank() }?.let { key ->
                             allModels.firstOrNull { it.id == key }
@@ -1261,7 +1265,7 @@ fun ChatScreen(navController: NavController) {
                         }
                     val availableMcpServers = scopedMcpServers.filter { it.tools.isNotEmpty() }
                     val canUseMcp = mcpAutoEnabled && availableMcpServers.isNotEmpty()
-                    val canUseAnyTool = canUseMcp || canUseAppBuilder
+                    val canUseAnyTool = canUseMcp || canUseAppBuilder || canUseAutoSoulTool
 
                     if (mcpAutoEnabled && !canUseMcp) {
                         val msg =
@@ -1284,13 +1288,13 @@ fun ChatScreen(navController: NavController) {
                         when {
                             !canUseAnyTool -> 1
                             canUseMcp -> 6
-                            explicitAppBuilder -> 4
+                            canUseAppBuilder || canUseAutoSoulTool -> 4
                             else -> 4
                         }
                     val maxCallsPerRound =
                         when {
                             canUseMcp -> 4
-                            explicitAppBuilder -> 2
+                            canUseAppBuilder || canUseAutoSoulTool -> 2
                             else -> 3
                         }
                     val modelId = extractRemoteModelId(selectedModel.id)
@@ -1347,10 +1351,22 @@ fun ChatScreen(navController: NavController) {
                             } else {
                                 null
                             }
+                        val autoSoulInstruction =
+                            if (canUseAutoSoulTool) {
+                                buildAutoSoulToolInstruction(
+                                    roundIndex = roundIndex,
+                                    maxCallsPerRound = maxCallsPerRound
+                                )
+                            } else {
+                                null
+                            }
 
                         val requestMessages = buildList {
                             if (!appBuilderInstruction.isNullOrBlank()) {
                                 add(Message(role = "system", content = appBuilderInstruction))
+                            }
+                            if (!autoSoulInstruction.isNullOrBlank()) {
+                                add(Message(role = "system", content = autoSoulInstruction))
                             }
                             if (!mcpInstruction.isNullOrBlank()) {
                                 add(Message(role = "system", content = mcpInstruction))
@@ -1712,6 +1728,82 @@ fun ChatScreen(navController: NavController) {
                                     }
                                     .toMap()
                             val argsJson = prettyGson.toJson(args)
+
+                            if (isBuiltInAutoSoulCall(call)) {
+                                val taskPrompt = resolveAutoSoulTaskPrompt(args, trimmed)
+                                val pendingTag =
+                                    MessageTag(
+                                        kind = "mcp",
+                                        title = "AutoSoul",
+                                        content = buildMcpTagDetailContent(
+                                            round = roundIndex,
+                                            serverName = "AutoSoul",
+                                            toolName = call.toolName.ifBlank { "autosoul_agent" },
+                                            argumentsJson = argsJson,
+                                            statusText = "Running...",
+                                            attempts = 1,
+                                            elapsedMs = null,
+                                            resultText = null,
+                                            errorText = null
+                                        ),
+                                        status = "running"
+                                    )
+                                appendAssistantTag(pendingTag)
+
+                                val startedAt = System.currentTimeMillis()
+                                val execution =
+                                    executeAutoSoulTask(
+                                        repository = repository,
+                                        chatApiClient = chatApiClient,
+                                        context = context,
+                                        taskPrompt = taskPrompt,
+                                        attachments = userMessage.attachments
+                                    ).getOrElse { error ->
+                                        val errorText =
+                                            error.message?.trim().orEmpty().ifBlank { "AutoSoul execution failed." }
+                                        val tagContent = buildMcpTagDetailContent(
+                                            round = roundIndex,
+                                            serverName = "AutoSoul",
+                                            toolName = call.toolName.ifBlank { "autosoul_agent" },
+                                            argumentsJson = argsJson,
+                                            statusText = "Failed",
+                                            attempts = 1,
+                                            elapsedMs = System.currentTimeMillis() - startedAt,
+                                            resultText = null,
+                                            errorText = errorText
+                                        )
+                                        updateAssistantTag(pendingTag.id) {
+                                            it.copy(content = tagContent, status = "error")
+                                        }
+                                        roundSummary.append("- autosoul_agent: failed - ")
+                                        roundSummary.append(errorText.take(300))
+                                        roundSummary.append('\n')
+                                        return@forEach
+                                    }
+
+                                val elapsedMs = System.currentTimeMillis() - startedAt
+                                val resultText = buildAutoSoulToolResultText(execution)
+                                val tagContent = buildMcpTagDetailContent(
+                                    round = roundIndex,
+                                    serverName = "AutoSoul",
+                                    toolName = call.toolName.ifBlank { "autosoul_agent" },
+                                    argumentsJson = argsJson,
+                                    statusText = if (execution.success) "Completed" else "Failed",
+                                    attempts = 1,
+                                    elapsedMs = elapsedMs,
+                                    resultText = resultText,
+                                    errorText = if (execution.success) null else execution.error
+                                )
+                                updateAssistantTag(pendingTag.id) {
+                                    it.copy(content = tagContent, status = if (execution.success) "success" else "error")
+                                }
+                                roundSummary.append("- autosoul_agent: ")
+                                roundSummary.append(if (execution.success) "success" else "failed")
+                                roundSummary.append(" | ")
+                                roundSummary.append(resultText.replace('\n', ' ').take(560))
+                                roundSummary.append('\n')
+                                return@forEach
+                            }
 
                             if (isBuiltInAppDeveloperCall(call)) {
                                 val parsedSpec = parseAppDevToolSpec(args)
@@ -4735,8 +4827,11 @@ private fun ToolMenuPanel(
                             label = "tool_menu_page_switch"
                         ) { currentPage ->
                             if (currentPage == ToolMenuPage.Tools) {
+                                val toolsScrollState = rememberScrollState()
                                 Column(
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(toolsScrollState)
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -5209,84 +5304,209 @@ private suspend fun handleImageGeneration(
     )
 }
 
+private data class AutoSoulExecutionResult(
+    val success: Boolean,
+    val script: String,
+    val stepCount: Int,
+    val statusText: String,
+    val error: String?,
+    val logs: List<String>,
+    val timedOut: Boolean
+)
+
 private suspend fun handleAutoSoulInvocation(
     repository: AppRepository,
     chatApiClient: ChatApiClient,
     context: Context,
     userMessage: Message
 ): String {
-    val modelKey = repository.defaultAutoSoulModelIdFlow.first()?.trim().orEmpty()
-    if (modelKey.isBlank()) {
-        return "AutoSoul 模型未配置。请先在 Settings → AutoSoul 里选择支持视觉的模型。"
-    }
+    val taskPrompt = userMessage.content.trim().ifBlank { "请根据当前需求执行 Android 自动化任务。" }
+    val execution =
+        executeAutoSoulTask(
+            repository = repository,
+            chatApiClient = chatApiClient,
+            context = context,
+            taskPrompt = taskPrompt,
+            attachments = userMessage.attachments
+        ).getOrElse { error ->
+            return error.message?.trim().orEmpty().ifBlank { "AutoSoul 执行失败。" }
+        }
 
-    val allModels = repository.modelsFlow.first()
-    val providers = repository.providersFlow.first()
-    val selectedModel =
-        allModels.firstOrNull { it.id == modelKey }
-            ?: allModels.firstOrNull { extractRemoteModelId(it.id) == modelKey }
-            ?: return "AutoSoul 模型不存在：$modelKey。请在 Settings → AutoSoul 重新选择。"
+    val logsText = execution.logs.takeLast(10).joinToString("\n")
+    return buildString {
+        append(if (execution.success) "✅ AutoSoul 执行完成" else "❌ AutoSoul 执行失败")
+        append("（${execution.stepCount} 步）")
+        append("\n状态：")
+        append(execution.statusText.ifBlank { if (execution.success) "执行完成" else "执行失败" })
+        execution.error?.trim()?.takeIf { it.isNotBlank() }?.let { err ->
+            append("\n错误：")
+            append(err.take(280))
+        }
+        if (logsText.isNotBlank()) {
+            append("\n\n最近日志：\n")
+            append(logsText)
+        }
+        append("\n\n```json\n")
+        append(execution.script)
+        append("\n```")
+    }.trim()
+}
 
-    if (!selectedModel.enabled) {
-        return "AutoSoul 模型已被禁用，请在 Models 里启用后重试。"
-    }
-    if (!isLikelyVisionModel(selectedModel)) {
-        return "当前 AutoSoul 模型不符合视觉模型要求，请在 Settings → AutoSoul 重新选择视觉模型。"
-    }
+private suspend fun executeAutoSoulTask(
+    repository: AppRepository,
+    chatApiClient: ChatApiClient,
+    context: Context,
+    taskPrompt: String,
+    attachments: List<MessageAttachment>?
+): Result<AutoSoulExecutionResult> {
+    return runCatching {
+        val modelKey =
+            repository.defaultAutoSoulModelIdFlow.first()
+                ?.trim()
+                .orEmpty()
+                .ifBlank {
+                    throw IllegalStateException("AutoSoul 模型未配置。请先在 Settings → AutoSoul 里选择支持视觉的模型。")
+                }
 
-    val provider =
-        selectedModel.providerId?.let { pid -> providers.firstOrNull { it.id == pid } }
-            ?: providers.firstOrNull()
-    if (provider == null || provider.apiUrl.isBlank() || provider.apiKey.isBlank()) {
-        return "AutoSoul 模型的提供方未正确配置 API URL / API Key。"
-    }
+        val allModels = repository.modelsFlow.first()
+        val providers = repository.providersFlow.first()
+        val selectedModel =
+            allModels.firstOrNull { it.id == modelKey }
+                ?: allModels.firstOrNull { extractRemoteModelId(it.id) == modelKey }
+                ?: throw IllegalStateException("AutoSoul 模型不存在：$modelKey。请在 Settings → AutoSoul 重新选择。")
 
-    val plannerMessages =
-        buildList {
-            add(Message(role = "system", content = buildAutoSoulPlannerSystemPrompt()))
-            val prompt = userMessage.content.trim().ifBlank { "请根据当前目标生成 AutoSoul 自动化脚本。" }
-            add(
-                Message(
-                    role = "user",
-                    content = prompt,
-                    attachments = userMessage.attachments
+        if (!selectedModel.enabled) {
+            throw IllegalStateException("AutoSoul 模型已被禁用，请在 Models 里启用后重试。")
+        }
+        if (!isLikelyVisionModel(selectedModel)) {
+            throw IllegalStateException("当前 AutoSoul 模型不符合视觉模型要求，请在 Settings → AutoSoul 重新选择视觉模型。")
+        }
+
+        val provider =
+            selectedModel.providerId?.let { pid -> providers.firstOrNull { it.id == pid } }
+                ?: providers.firstOrNull()
+        if (provider == null || provider.apiUrl.isBlank() || provider.apiKey.isBlank()) {
+            throw IllegalStateException("AutoSoul 模型的提供方未正确配置 API URL / API Key。")
+        }
+
+        val plannerMessages =
+            buildList {
+                add(Message(role = "system", content = buildAutoSoulPlannerSystemPrompt()))
+                add(
+                    Message(
+                        role = "user",
+                        content = taskPrompt.trim().ifBlank { "请根据当前目标生成 AutoSoul 自动化脚本。" },
+                        attachments = attachments
+                    )
                 )
+            }
+
+        val plannerText =
+            chatApiClient.chatCompletions(
+                provider = provider,
+                modelId = extractRemoteModelId(selectedModel.id),
+                messages = plannerMessages,
+                extraHeaders = selectedModel.headers
+            ).getOrElse { error ->
+                throw IllegalStateException("AutoSoul 规划失败：${error.message ?: error.toString()}")
+            }.trim()
+        if (plannerText.isBlank()) {
+            throw IllegalStateException("AutoSoul 规划失败：模型没有返回可执行脚本。")
+        }
+
+        val script =
+            normalizeAutoSoulScriptCandidate(plannerText).getOrElse { error ->
+                throw IllegalStateException("AutoSoul 脚本解析失败：${error.message ?: "unknown"}")
+            }
+        val steps =
+            AutoSoulScriptParser.parse(script).getOrElse { error ->
+                throw IllegalStateException("AutoSoul 脚本校验失败：${error.message ?: "unknown"}")
+            }
+
+        awaitAutoSoulCompletion(
+            context = context.applicationContext,
+            script = script,
+            stepCount = steps.size,
+            timeoutMs = 180_000L
+        )
+    }
+}
+
+private suspend fun awaitAutoSoulCompletion(
+    context: Context,
+    script: String,
+    stepCount: Int,
+    timeoutMs: Long
+): AutoSoulExecutionResult {
+    AutoSoulAutomationManager.bindOverlayActions(context.applicationContext)
+    val logStartIndex = AutoSoulAutomationManager.logs.value.size
+    AutoSoulAutomationManager.start(context.applicationContext, script).getOrThrow()
+
+    val startedAt = System.currentTimeMillis()
+    var seenRunning = false
+    while (System.currentTimeMillis() - startedAt < timeoutMs) {
+        val state = AutoSoulAutomationManager.state.value
+        if (state.running) seenRunning = true
+
+        val error = state.lastError?.trim()?.takeIf { it.isNotBlank() }
+        val logs = AutoSoulAutomationManager.logs.value.drop(logStartIndex).takeLast(40)
+        if (!state.running && !error.isNullOrBlank() && !seenRunning) {
+            return AutoSoulExecutionResult(
+                success = false,
+                script = script,
+                stepCount = stepCount,
+                statusText = state.statusText,
+                error = error,
+                logs = logs,
+                timedOut = false
             )
         }
-
-    val plannerResult =
-        chatApiClient.chatCompletions(
-            provider = provider,
-            modelId = extractRemoteModelId(selectedModel.id),
-            messages = plannerMessages,
-            extraHeaders = selectedModel.headers
-        )
-
-    val plannerText =
-        plannerResult.getOrElse { error ->
-            return "AutoSoul 规划失败：${error.message ?: error.toString()}"
-        }.trim()
-    if (plannerText.isBlank()) {
-        return "AutoSoul 规划失败：模型没有返回可执行脚本。"
+        if (seenRunning && !state.running) {
+            return AutoSoulExecutionResult(
+                success = error.isNullOrBlank(),
+                script = script,
+                stepCount = stepCount,
+                statusText = state.statusText,
+                error = error,
+                logs = logs,
+                timedOut = false
+            )
+        }
+        delay(260L)
     }
 
-    val script =
-        normalizeAutoSoulScriptCandidate(plannerText).getOrElse { error ->
-            val preview = plannerText.take(1500)
-            return "AutoSoul 脚本解析失败：${error.message ?: "unknown"}\n\n$preview"
-        }
-    val steps =
-        AutoSoulScriptParser.parse(script).getOrElse { error ->
-            return "AutoSoul 脚本校验失败：${error.message ?: "unknown"}"
-        }
+    AutoSoulAutomationManager.stop("执行超时自动停止")
+    return AutoSoulExecutionResult(
+        success = false,
+        script = script,
+        stepCount = stepCount,
+        statusText = "执行超时",
+        error = "执行超时（>${timeoutMs / 1000}s）",
+        logs = AutoSoulAutomationManager.logs.value.drop(logStartIndex).takeLast(40),
+        timedOut = true
+    )
+}
 
-    AutoSoulAutomationManager.bindOverlayActions(context.applicationContext)
-    val startResult = AutoSoulAutomationManager.start(context.applicationContext, script)
-    startResult.exceptionOrNull()?.let { error ->
-        return "AutoSoul 脚本已生成，但启动失败：${error.message ?: error.toString()}\n\n```json\n$script\n```"
+private fun buildAutoSoulToolResultText(result: AutoSoulExecutionResult): String {
+    val headline =
+        buildString {
+            append(if (result.success) "success" else "failed")
+            append(", steps=")
+            append(result.stepCount)
+            append(", status=")
+            append(result.statusText.ifBlank { if (result.success) "done" else "failed" })
+            if (result.timedOut) append(", timeout=true")
+            result.error?.trim()?.takeIf { it.isNotBlank() }?.let { err ->
+                append(", error=")
+                append(err.take(220))
+            }
+        }
+    val compactLogs = result.logs.takeLast(8).joinToString("\n").trim()
+    return if (compactLogs.isBlank()) {
+        headline
+    } else {
+        "$headline\nLogs:\n$compactLogs"
     }
-
-    return "✅ AutoSoul 已启动（${steps.size} 步）\n\n```json\n$script\n```"
 }
 
 private fun normalizeAutoSoulScriptCandidate(raw: String): Result<String> {
@@ -6086,6 +6306,65 @@ private fun isBuiltInAppDeveloperCall(call: PlannedMcpToolCall): Boolean {
         "app_builder",
         "internal_app_developer"
     )
+}
+
+private fun isBuiltInAutoSoulCall(call: PlannedMcpToolCall): Boolean {
+    val server = call.serverId.trim().lowercase()
+    val tool = call.toolName.trim().lowercase()
+    return tool in setOf(
+        "autosoul",
+        "autosoul_agent",
+        "autosoul_execute",
+        "phone_automation",
+        "android_automation"
+    ) || server in setOf(
+        "builtin_autosoul",
+        "autosoul",
+        "internal_autosoul"
+    )
+}
+
+private fun resolveAutoSoulTaskPrompt(
+    arguments: Map<String, Any?>,
+    fallbackUserPrompt: String
+): String {
+    fun anyString(vararg keys: String): String {
+        return keys
+            .asSequence()
+            .mapNotNull { key ->
+                val raw = arguments.entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value ?: return@mapNotNull null
+                when (raw) {
+                    is String -> raw.trim().takeIf { it.isNotBlank() }
+                    is Number, is Boolean -> raw.toString()
+                    else -> raw?.toString()?.trim()?.takeIf { it.isNotBlank() }
+                }
+            }.firstOrNull()
+            .orEmpty()
+    }
+
+    val direct =
+        anyString(
+            "task",
+            "prompt",
+            "goal",
+            "instruction",
+            "instructions",
+            "query",
+            "request",
+            "target"
+        )
+    if (direct.isNotBlank()) return direct.take(2000)
+
+    val app = anyString("app", "package", "package_name")
+    val action = anyString("action", "operation", "intent")
+    if (app.isNotBlank() && action.isNotBlank()) {
+        return "在 Android 手机上执行自动化任务：先打开 $app，然后完成 $action。".take(2000)
+    }
+    if (app.isNotBlank()) {
+        return "在 Android 手机上执行自动化任务：打开 $app 并完成用户请求。".take(2000)
+    }
+
+    return fallbackUserPrompt.trim().ifBlank { "请执行安卓手机自动化任务。" }.take(2000)
 }
 
 private fun isHanChar(ch: Char): Boolean {
@@ -7473,6 +7752,28 @@ private fun buildPendingAppAutomationPrompt(task: AppAutomationTask): String {
     }.trim()
 }
 
+private fun buildAutoSoulToolInstruction(
+    roundIndex: Int,
+    maxCallsPerRound: Int
+): String {
+    return buildString {
+        appendLine("Built-in tool available: autosoul_agent.")
+        appendLine("Current round: $roundIndex")
+        appendLine("Use this tool only for Android phone automation tasks (open app / tap / swipe / input / back / home).")
+        appendLine("Do not call this tool for normal Q&A.")
+        appendLine("First write a normal visible reply, then append tool call tags if needed.")
+        appendLine("At most $maxCallsPerRound tool calls in this round.")
+        appendLine()
+        appendLine("Tool call format:")
+        appendLine("<tool_call>{\"serverId\":\"builtin_autosoul\",\"toolName\":\"autosoul_agent\",\"arguments\":{\"task\":\"...\"}}</tool_call>")
+        appendLine()
+        appendLine("Arguments policy:")
+        appendLine("- task: required, concise and executable Android automation goal.")
+        appendLine("- Optional: app/package for target app hint.")
+        appendLine("- Never fabricate execution results. Wait for tool result context in next round.")
+    }.trim()
+}
+
 private fun buildMcpToolCallInstruction(
     servers: List<McpConfig>,
     roundIndex: Int,
@@ -7536,13 +7837,13 @@ private fun buildMcpToolCallInstruction(
 private fun buildMcpRoundResultContext(roundIndex: Int, summary: String): String {
     val cleaned = summary.trim().ifBlank { "- No tool output." }
     return buildString {
-        append("MCP tool results from round ")
+        append("Tool results from round ")
         append(roundIndex)
         appendLine(":")
         appendLine(cleaned.take(5000))
         appendLine()
         appendLine("Use these results to continue the same user request.")
-        appendLine("If more data is needed, you may output new <mcp_call> tags.")
+        appendLine("If more data is needed, you may output new <tool_call> tags.")
     }.trim()
 }
 
