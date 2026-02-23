@@ -11,6 +11,23 @@
     <string name="add_provider">Add Provider</string>
     <string name="models">Models</string>
     <string name="model_configuration">Model Configuration</string>
+    <string name="models_test_entry">Test models</string>
+    <string name="models_test_title">Connection Test</string>
+    <string name="models_test_subtitle">Select one model for independent test, or run one-click test for all models.</string>
+    <string name="models_test_button_selected">Test selected</string>
+    <string name="models_test_button_all">Test all</string>
+    <string name="models_test_empty">No models available for testing.</string>
+    <string name="models_test_status_idle">Not tested</string>
+    <string name="models_test_status_testing">Testing...</string>
+    <string name="models_test_status_success">Connected</string>
+    <string name="models_test_status_failed">Failed</string>
+    <string name="models_test_summary_no_provider">No provider configured.</string>
+    <string name="models_test_summary_no_models">No model available for testing.</string>
+    <string name="models_test_summary_no_selection">Please select a model first.</string>
+    <string name="models_test_summary_single_ok">Selected model test passed.</string>
+    <string name="models_test_summary_single_failed">Selected model test failed.</string>
+    <string name="models_test_summary_all_template">All tests finished: %1$d/%2$d connected.</string>
+    <string name="models_test_prompt">Reply with OK only.</string>
 
     <string name="not_set">Not set</string>
 

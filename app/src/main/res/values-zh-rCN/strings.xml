@@ -11,6 +11,23 @@
     <string name="add_provider">添加供应商</string>
     <string name="models">模型</string>
     <string name="model_configuration">模型配置</string>
+    <string name="models_test_entry">测试模型</string>
+    <string name="models_test_title">连接测试</string>
+    <string name="models_test_subtitle">可单独选择一个模型测试连接，也可一键测试全部模型。</string>
+    <string name="models_test_button_selected">测试所选</string>
+    <string name="models_test_button_all">一键测试全部</string>
+    <string name="models_test_empty">暂无可测试模型。</string>
+    <string name="models_test_status_idle">未测试</string>
+    <string name="models_test_status_testing">测试中...</string>
+    <string name="models_test_status_success">连接成功</string>
+    <string name="models_test_status_failed">连接失败</string>
+    <string name="models_test_summary_no_provider">当前未配置供应商。</string>
+    <string name="models_test_summary_no_models">当前没有可测试的模型。</string>
+    <string name="models_test_summary_no_selection">请先选择一个模型。</string>
+    <string name="models_test_summary_single_ok">所选模型测试通过。</string>
+    <string name="models_test_summary_single_failed">所选模型测试失败。</string>
+    <string name="models_test_summary_all_template">测试完成：%1$d/%2$d 连接成功。</string>
+    <string name="models_test_prompt">请只回复 OK。</string>
 
     <string name="not_set">未设置</string>
 
