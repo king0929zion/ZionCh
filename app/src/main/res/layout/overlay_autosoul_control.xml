@@ -6,7 +6,6 @@
     android:orientation="horizontal"
     android:gravity="center_vertical"
     android:background="@drawable/bg_autosoul_float"
-    android:elevation="8dp"
     android:paddingStart="16dp"
     android:paddingEnd="12dp"
     android:paddingTop="10dp"
@@ -56,4 +55,3 @@
     </FrameLayout>
 
 </LinearLayout>
-

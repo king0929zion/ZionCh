@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import com.zionchat.app.autosoul.AutoSoulAccessibilityService
@@ -29,7 +30,7 @@ class AutoSoulActionExecutor(
 
             "launch" -> {
                 val target = step.args["package"].orEmpty().ifBlank { step.args["app"].orEmpty() }
-                launchApp(target)
+                launchApp(target, onLog)
             }
 
             "tap" -> {
@@ -78,42 +79,118 @@ class AutoSoulActionExecutor(
         }
     }
 
-    private fun launchApp(target: String): Boolean {
+    private fun launchApp(
+        target: String,
+        onLog: (String) -> Unit
+    ): Boolean {
         val trimmed = target.trim()
         if (trimmed.isBlank()) return false
 
-        val packageName =
-            if (trimmed.contains(".")) {
-                trimmed
-            } else {
-                resolvePackageByAppName(trimmed) ?: return false
+        val candidates = resolveLaunchPackageCandidates(trimmed)
+        if (candidates.isEmpty()) {
+            onLog("无法解析应用：$trimmed")
+            return false
+        }
+
+        val pm = context.packageManager
+        for (packageName in candidates.distinct()) {
+            val intent = pm.getLaunchIntentForPackage(packageName) ?: continue
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val launched =
+                runCatching {
+                    context.startActivity(intent)
+                    true
+                }.getOrDefault(false)
+            if (launched) {
+                onLog("已启动应用：$packageName")
+                return true
             }
-        val intent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return false
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return runCatching {
-            context.startActivity(intent)
-            true
-        }.getOrDefault(false)
+        }
+        onLog("启动失败：$trimmed（候选：${candidates.joinToString()}）")
+        return false
     }
 
-    private fun resolvePackageByAppName(appName: String): String? {
+    private fun resolveLaunchPackageCandidates(target: String): List<String> {
+        val candidates = linkedSetOf<String>()
+        if (target.contains(".")) {
+            candidates += target
+        } else {
+            candidates += knownPackageAliases(target)
+            candidates += resolvePackagesByAppName(target)
+        }
+        return candidates.toList()
+    }
+
+    private fun resolvePackagesByAppName(appName: String): List<String> {
         val pm = context.packageManager
         val launcherIntent =
             Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val list = pm.queryIntentActivities(launcherIntent, 0)
+        val list = queryLauncherActivities(pm, launcherIntent)
+        if (list.isEmpty()) return emptyList()
+
+        val normalizedTarget = normalizeAppName(appName)
         val exact =
-            list.firstOrNull { item ->
+            list.filter { item ->
                 val label = item.loadLabel(pm)?.toString().orEmpty()
-                label.equals(appName, ignoreCase = true)
+                label.equals(appName, ignoreCase = true) || normalizeAppName(label) == normalizedTarget
             }
-        if (exact != null) return exact.activityInfo.packageName
+            .mapNotNull { it.activityInfo?.packageName }
+            .filter { it.isNotBlank() }
+        if (exact.isNotEmpty()) return exact
 
         val fuzzy =
-            list.firstOrNull { item ->
+            list.filter { item ->
                 val label = item.loadLabel(pm)?.toString().orEmpty()
-                label.contains(appName, ignoreCase = true)
+                val normalizedLabel = normalizeAppName(label)
+                label.contains(appName, ignoreCase = true) ||
+                    appName.contains(label, ignoreCase = true) ||
+                    normalizedLabel.contains(normalizedTarget) ||
+                    normalizedTarget.contains(normalizedLabel)
             }
-        return fuzzy?.activityInfo?.packageName
+            .mapNotNull { it.activityInfo?.packageName }
+            .filter { it.isNotBlank() }
+        return fuzzy
+    }
+
+    private fun queryLauncherActivities(
+        pm: PackageManager,
+        intent: Intent
+    ): List<android.content.pm.ResolveInfo> {
+        val withAll = runCatching { pm.queryIntentActivities(intent, PackageManager.MATCH_ALL) }.getOrDefault(emptyList())
+        if (withAll.isNotEmpty()) return withAll
+        return runCatching { pm.queryIntentActivities(intent, 0) }.getOrDefault(emptyList())
+    }
+
+    private fun knownPackageAliases(appName: String): List<String> {
+        val normalized = normalizeAppName(appName)
+        return when {
+            normalized.contains("抖音极速版") -> listOf("com.ss.android.ugc.aweme.lite")
+            normalized.contains("抖音") || normalized.contains("douyin") -> listOf(
+                "com.ss.android.ugc.aweme",
+                "com.ss.android.ugc.aweme.lite",
+                "com.ss.android.ugc.trill"
+            )
+            normalized == "微信" || normalized == "weixin" || normalized == "wechat" -> listOf("com.tencent.mm")
+            normalized == "qq" -> listOf("com.tencent.mobileqq")
+            normalized.contains("支付宝") || normalized == "alipay" -> listOf("com.eg.android.AlipayGphone")
+            normalized.contains("小红书") || normalized == "xiaohongshu" || normalized == "red" -> listOf("com.xingin.xhs")
+            normalized == "淘宝" || normalized == "taobao" -> listOf("com.taobao.taobao")
+            normalized == "京东" || normalized == "jingdong" || normalized == "jd" -> listOf("com.jingdong.app.mall")
+            normalized.contains("哔哩") || normalized == "bilibili" -> listOf("tv.danmaku.bili")
+            else -> emptyList()
+        }
+    }
+
+    private fun normalizeAppName(raw: String): String {
+        return raw
+            .trim()
+            .lowercase()
+            .replace(" ", "")
+            .replace("　", "")
+            .replace("-", "")
+            .replace("_", "")
+            .replace("·", "")
+            .replace(".", "")
     }
 
     private fun inputText(
@@ -197,4 +274,3 @@ class AutoSoulActionExecutor(
         return latch.await(7L, TimeUnit.SECONDS) && ok
     }
 }
-
