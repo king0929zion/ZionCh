@@ -3332,12 +3332,26 @@ private fun MessageTagRow(
     }
 
     val tagRunning = isTagRunning(tag)
+    val isAutoSoulTag =
+        remember(tag.kind, tag.title, tag.content) {
+            if (tag.kind != "mcp") {
+                false
+            } else {
+                val titleHit = tag.title.trim().contains("autosoul", ignoreCase = true)
+                val detail = parseMcpTagDetail(tag.content)
+                val serverHit = detail.server.trim().contains("autosoul", ignoreCase = true)
+                val toolHit = detail.tool.trim().contains("autosoul", ignoreCase = true)
+                titleHit || serverHit || toolHit
+            }
+        }
     val toolName = remember(tag.title) {
         tag.title.trim().takeIf { it.isNotBlank() && !it.equals("tool", ignoreCase = true) }
     }
     val displayText =
         if (tag.kind == "mcp") {
-            if (toolName == null) {
+            if (isAutoSoulTag) {
+                stringResource(R.string.settings_item_autosoul)
+            } else if (toolName == null) {
                 stringResource(R.string.tool_label)
             } else {
                 stringResource(R.string.tool_label_with_name, stringResource(R.string.tool_label), toolName)
@@ -3357,12 +3371,21 @@ private fun MessageTagRow(
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         if (tag.kind == "mcp") {
-            Icon(
-                imageVector = AppIcons.Tool,
-                contentDescription = null,
-                tint = ThinkingLabelColor,
-                modifier = Modifier.size(14.dp)
-            )
+            if (isAutoSoulTag) {
+                Icon(
+                    painter = rememberResourceDrawablePainter(R.drawable.ic_autosoul),
+                    contentDescription = null,
+                    tint = ThinkingLabelColor,
+                    modifier = Modifier.size(14.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = AppIcons.Tool,
+                    contentDescription = null,
+                    tint = ThinkingLabelColor,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
         }
         Text(
             text = displayText,
