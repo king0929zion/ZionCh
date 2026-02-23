@@ -21,6 +21,7 @@
     <string name="settings_item_model_services">Model services</string>
     <string name="settings_item_search">Search</string>
     <string name="settings_item_mcp_tools">MCP Tools</string>
+    <string name="settings_item_autosoul">AutoSoul</string>
 
     <string name="language_title">Language</string>
     <string name="language_option_system">Follow system</string>
@@ -171,6 +172,47 @@
     <string name="search_settings_provider_active">Active</string>
     <string name="search_settings_provider_use">Use</string>
     <string name="search_settings_save">Save search config</string>
+
+    <string name="autosoul_accessibility_desc">AutoSoul accessibility service for UI automation.</string>
+    <string name="autosoul_section_status">Runtime status</string>
+    <string name="autosoul_section_permissions">Permissions</string>
+    <string name="autosoul_section_overlay">Floating overlay</string>
+    <string name="autosoul_section_script">Automation script</string>
+    <string name="autosoul_section_logs">Execution logs</string>
+    <string name="autosoul_runtime_state">State</string>
+    <string name="autosoul_runtime_running">Running</string>
+    <string name="autosoul_runtime_idle">Idle</string>
+    <string name="autosoul_runtime_progress">Progress</string>
+    <string name="autosoul_runtime_message">Message</string>
+    <string name="autosoul_permission_accessibility">Accessibility service</string>
+    <string name="autosoul_permission_accessibility_desc">Required for tap, swipe, and input actions</string>
+    <string name="autosoul_permission_shizuku">Shizuku service</string>
+    <string name="autosoul_permission_shizuku_desc">Used for command execution and screenshot capture</string>
+    <string name="autosoul_permission_shizuku_not_running">Shizuku is not running (tap to open)</string>
+    <string name="autosoul_permission_overlay">Overlay permission</string>
+    <string name="autosoul_permission_overlay_desc">Required for AutoSoul floating control bar</string>
+    <string name="autosoul_permission_notification">Notification permission (optional)</string>
+    <string name="autosoul_permission_notification_desc">Optional: keep foreground status visible</string>
+    <string name="autosoul_action_open_settings">Open settings</string>
+    <string name="autosoul_action_authorize">Authorize</string>
+    <string name="autosoul_action_optional">Optional</string>
+    <string name="autosoul_opened_settings">Opened system settings</string>
+    <string name="autosoul_shizuku_open_hint">Please start Shizuku service first</string>
+    <string name="autosoul_status_enabled">Enabled</string>
+    <string name="autosoul_status_enable">Enable</string>
+    <string name="autosoul_overlay_desc">Overlay UI follows ai-control-float-clean design and supports stop/retry interaction.</string>
+    <string name="autosoul_overlay_show">Show overlay</string>
+    <string name="autosoul_overlay_hide">Hide overlay</string>
+    <string name="autosoul_overlay_capture_test">Test Shizuku screenshot</string>
+    <string name="autosoul_need_overlay_permission">Overlay permission is required first</string>
+    <string name="autosoul_capture_success">Screenshot saved: %1$s</string>
+    <string name="autosoul_capture_failed">Screenshot failed: %1$s</string>
+    <string name="autosoul_script_desc">Script format follows Pikaso action style (Launch/Tap/Swipe/Type/Wait/Back/Home).</string>
+    <string name="autosoul_run_script">Run script</string>
+    <string name="autosoul_stop_script">Stop</string>
+    <string name="autosoul_fill_example">Fill example</string>
+    <string name="autosoul_logs_empty">No logs yet. Run a script to start.</string>
+
     <string name="app_dev_preview_title">Preview</string>
     <string name="app_dev_preview_unavailable">Preview is unavailable until HTML is generated.</string>
     <string name="app_dev_input_placeholder">Describe the changes you want...</string>

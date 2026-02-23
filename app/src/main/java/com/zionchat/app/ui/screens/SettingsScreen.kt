@@ -220,7 +220,7 @@ fun SettingsScreen(navController: NavController) {
                 }
 
                 // AI Model 分组
-                SettingsGroup(title = stringResource(R.string.settings_group_ai_model), itemCount = 5) {
+                SettingsGroup(title = stringResource(R.string.settings_group_ai_model), itemCount = 6) {
                     SettingsItem(
                         icon = {
                             Icon(
@@ -269,7 +269,14 @@ fun SettingsScreen(navController: NavController) {
                         icon = { Icon(AppIcons.MCPTools, null, Modifier.size(22.dp), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_mcp_tools),
                         showChevron = true,
+                        showDivider = true,
                         onClick = { navController.navigate("mcp") }
+                    )
+                    SettingsItem(
+                        icon = { Icon(AppIcons.MCPTools, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        label = stringResource(R.string.settings_item_autosoul),
+                        showChevron = true,
+                        onClick = { navController.navigate("autosoul") }
                     )
                 }
 

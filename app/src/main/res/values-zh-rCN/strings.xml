@@ -21,6 +21,7 @@
     <string name="settings_item_model_services">模型服务</string>
     <string name="settings_item_search">搜索</string>
     <string name="settings_item_mcp_tools">MCP 工具</string>
+    <string name="settings_item_autosoul">AutoSoul</string>
 
     <string name="language_title">Language</string>
     <string name="language_option_system">跟随系统</string>
@@ -162,6 +163,47 @@
     <string name="search_settings_provider_active">当前使用</string>
     <string name="search_settings_provider_use">设为默认</string>
     <string name="search_settings_save">保存搜索配置</string>
+
+    <string name="autosoul_accessibility_desc">AutoSoul 无障碍服务，用于界面自动化控制。</string>
+    <string name="autosoul_section_status">运行状态</string>
+    <string name="autosoul_section_permissions">权限配置</string>
+    <string name="autosoul_section_overlay">悬浮窗</string>
+    <string name="autosoul_section_script">自动化脚本</string>
+    <string name="autosoul_section_logs">执行日志</string>
+    <string name="autosoul_runtime_state">状态</string>
+    <string name="autosoul_runtime_running">运行中</string>
+    <string name="autosoul_runtime_idle">空闲</string>
+    <string name="autosoul_runtime_progress">进度</string>
+    <string name="autosoul_runtime_message">信息</string>
+    <string name="autosoul_permission_accessibility">无障碍服务</string>
+    <string name="autosoul_permission_accessibility_desc">用于点击、滑动、输入等自动化操作</string>
+    <string name="autosoul_permission_shizuku">Shizuku 服务</string>
+    <string name="autosoul_permission_shizuku_desc">用于命令执行和截图能力</string>
+    <string name="autosoul_permission_shizuku_not_running">Shizuku 未启动（点击前往）</string>
+    <string name="autosoul_permission_overlay">悬浮窗权限</string>
+    <string name="autosoul_permission_overlay_desc">用于显示 AutoSoul 控制悬浮窗</string>
+    <string name="autosoul_permission_notification">通知权限（可选）</string>
+    <string name="autosoul_permission_notification_desc">可选：展示前台任务状态通知</string>
+    <string name="autosoul_action_open_settings">打开设置</string>
+    <string name="autosoul_action_authorize">去授权</string>
+    <string name="autosoul_action_optional">可选</string>
+    <string name="autosoul_opened_settings">已打开系统设置</string>
+    <string name="autosoul_shizuku_open_hint">请先在 Shizuku 内启动服务</string>
+    <string name="autosoul_status_enabled">已开启</string>
+    <string name="autosoul_status_enable">开启</string>
+    <string name="autosoul_overlay_desc">悬浮窗 UI 参考 ai-control-float-clean，支持终止/重试交互。</string>
+    <string name="autosoul_overlay_show">显示悬浮窗</string>
+    <string name="autosoul_overlay_hide">隐藏悬浮窗</string>
+    <string name="autosoul_overlay_capture_test">测试 Shizuku 截图</string>
+    <string name="autosoul_need_overlay_permission">请先授予悬浮窗权限</string>
+    <string name="autosoul_capture_success">截图已保存：%1$s</string>
+    <string name="autosoul_capture_failed">截图失败：%1$s</string>
+    <string name="autosoul_script_desc">脚本格式兼容 Pikaso 动作风格（Launch/Tap/Swipe/Type/Wait/Back/Home）。</string>
+    <string name="autosoul_run_script">运行脚本</string>
+    <string name="autosoul_stop_script">终止</string>
+    <string name="autosoul_fill_example">填充示例</string>
+    <string name="autosoul_logs_empty">暂无日志，运行脚本后会显示执行过程。</string>
+
     <string name="app_dev_preview_title">预览</string>
     <string name="app_dev_preview_unavailable">尚未生成 HTML，暂不可预览。</string>
     <string name="app_dev_input_placeholder">告诉我你要修改什么...</string>

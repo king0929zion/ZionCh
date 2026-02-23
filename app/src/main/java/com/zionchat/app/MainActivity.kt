@@ -205,6 +205,7 @@ class MainActivity : AppCompatActivity() {
                                 val provider = backStackEntry.arguments?.getString("provider")
                                 SearchProviderConfigScreen(navController, provider)
                             }
+                            composable("autosoul") { AutoSoulScreen(navController) }
                             composable("about") { AboutScreen(navController) }
                             composable("web_hosting") { WebHostingScreen(navController) }
                         }
