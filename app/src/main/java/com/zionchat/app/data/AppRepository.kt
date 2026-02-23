@@ -185,13 +185,20 @@ class AppRepository(context: Context) {
         if (id.isBlank()) return null
 
         val displayName = safeTrim(model.displayName).ifBlank { id }
+        val normalizedModality =
+            when (safeTrim(model.inputModality).lowercase()) {
+                "text", "text-only", "text_only" -> "text"
+                "text-image", "text_image", "image", "vision", "multimodal" -> "text-image"
+                else -> "text-image"
+            }
         return ModelConfig(
             id = id,
             displayName = displayName,
             enabled = model.enabled,
             providerId = safeTrimOrNull(model.providerId),
             headers = sanitizeHeaders(model.headers),
-            reasoningEffort = safeTrimOrNull(model.reasoningEffort)
+            reasoningEffort = safeTrimOrNull(model.reasoningEffort),
+            inputModality = normalizedModality
         )
     }
 

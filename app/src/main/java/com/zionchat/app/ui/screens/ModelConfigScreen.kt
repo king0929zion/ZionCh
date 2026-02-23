@@ -49,6 +49,8 @@ import com.zionchat.app.data.HttpHeader
 import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.isCodexProvider
 import com.zionchat.app.data.isGrok2ApiProvider
+import com.zionchat.app.data.isLikelyVisionModel
+import com.zionchat.app.data.normalizeInputModality
 import com.zionchat.app.ui.components.BottomFadeScrim
 import com.zionchat.app.ui.components.EditableHeader
 import com.zionchat.app.ui.components.HeadersEditorCard
@@ -84,7 +86,15 @@ fun ModelConfigScreen(
     }
 
     var modelName by remember(existingModel?.id) { mutableStateOf(existingModel?.displayName.orEmpty()) }
-    var selectedModality by remember(existingModel?.id) { mutableStateOf("text-image") }
+    var selectedModality by remember(existingModel?.id) {
+        mutableStateOf(
+            when (normalizeInputModality(existingModel?.inputModality)) {
+                "text" -> "text"
+                "text-image" -> "text-image"
+                else -> if (existingModel?.let { isLikelyVisionModel(it) } == true) "text-image" else "text"
+            }
+        )
+    }
     var reasoningEffort by remember(existingModel?.id) {
         mutableStateOf(existingModel?.reasoningEffort?.trim()?.lowercase()?.takeIf { it.isNotBlank() })
     }
@@ -111,7 +121,8 @@ fun ModelConfigScreen(
                     headers = headers
                         .filter { it.key.isNotBlank() }
                         .map { HttpHeader(it.key.trim(), it.value.trim()) },
-                    reasoningEffort = reasoningEffort.takeIf { supportsThinkingDepth }
+                    reasoningEffort = reasoningEffort.takeIf { supportsThinkingDepth },
+                    inputModality = if (selectedModality == "text") "text" else "text-image"
                 )
             )
             navController.popBackStack()

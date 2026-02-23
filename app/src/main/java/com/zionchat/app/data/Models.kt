@@ -29,7 +29,8 @@ data class ModelConfig(
     val enabled: Boolean = true,
     val providerId: String? = null,
     val headers: List<HttpHeader> = emptyList(),
-    val reasoningEffort: String? = null
+    val reasoningEffort: String? = null,
+    val inputModality: String = "text-image"
 )
 
 private const val MODEL_ID_SEPARATOR = "::"
