@@ -943,35 +943,20 @@ private fun ModelConnectionTestModal(
                                                 fontWeight = FontWeight.Medium,
                                                 modifier = Modifier.weight(1f)
                                             )
-                                            if (selected) {
-                                                Text(
-                                                    text = "✓",
-                                                    fontSize = 14.sp,
-                                                    color = TextPrimary,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
+                                            val statusColor =
+                                                when {
+                                                    isRunning -> Color(0xFF3B82F6)
+                                                    result == null -> Color(0xFFD1D5DB)
+                                                    result.success -> Color(0xFF0B8F5A)
+                                                    else -> Color(0xFFD63B2F)
+                                                }
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(10.dp)
+                                                    .clip(CircleShape)
+                                                    .background(statusColor)
+                                            )
                                         }
-                                        val statusText =
-                                            when {
-                                                isRunning -> stringResource(R.string.models_test_status_testing)
-                                                result == null -> stringResource(R.string.models_test_status_idle)
-                                                result.success -> stringResource(R.string.models_test_status_success)
-                                                else -> stringResource(R.string.models_test_status_failed)
-                                            }
-                                        val statusColor =
-                                            when {
-                                                isRunning -> TextSecondary
-                                                result == null -> TextSecondary
-                                                result.success -> Color(0xFF0B8F5A)
-                                                else -> Color(0xFFD63B2F)
-                                            }
-                                        Text(
-                                            text = statusText,
-                                            fontSize = 12.sp,
-                                            fontFamily = SourceSans3,
-                                            color = statusColor
-                                        )
                                         if (result != null) {
                                             Text(
                                                 text = result.detail,
