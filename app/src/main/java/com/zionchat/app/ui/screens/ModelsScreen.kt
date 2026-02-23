@@ -455,17 +455,14 @@ private suspend fun runModelConnectionTest(
     return runCatching {
         val resolvedProvider = providerAuthManager.ensureValidProvider(provider)
         val remoteModelId = extractRemoteModelId(model.id).ifBlank { model.id.trim() }
-        val response =
-            chatApiClient.chatCompletions(
-                provider = resolvedProvider,
-                modelId = remoteModelId,
-                messages = listOf(Message(role = "user", content = testPrompt))
-            ).getOrThrow()
-        val normalized = response.trim().replace('\n', ' ')
-        val preview = normalized.take(120)
+        chatApiClient.chatCompletions(
+            provider = resolvedProvider,
+            modelId = remoteModelId,
+            messages = listOf(Message(role = "user", content = testPrompt))
+        ).getOrThrow()
         ModelConnectionTestResult(
             success = true,
-            detail = preview.ifBlank { "OK" }
+            detail = ""
         )
     }.getOrElse { throwable ->
         val detail =
@@ -957,7 +954,7 @@ private fun ModelConnectionTestModal(
                                                     .background(statusColor)
                                             )
                                         }
-                                        if (result != null) {
+                                        if (result?.detail?.isNotBlank() == true) {
                                             Text(
                                                 text = result.detail,
                                                 fontSize = 12.sp,

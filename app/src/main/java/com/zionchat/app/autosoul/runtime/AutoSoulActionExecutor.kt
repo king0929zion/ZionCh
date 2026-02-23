@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import com.zionchat.app.autosoul.AutoSoulAccessibilityService
@@ -20,7 +21,8 @@ class AutoSoulActionExecutor(
                 onLog("操作结果(${step.action})：失败（无障碍服务不可用）")
                 return false
             }
-        val action = step.action.trim().lowercase()
+        val rawAction = step.action.trim().lowercase().replace("-", "_").replace(" ", "_")
+        val action = normalizeAction(rawAction)
         return when (action) {
             "home" -> {
                 val ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
@@ -45,27 +47,81 @@ class AutoSoulActionExecutor(
             }
 
             "tap" -> {
-                val point = parsePoint(step.args["point"] ?: "${step.args["x"]},${step.args["y"]}") ?: return false
-                val (x, y) = toAbsolutePoint(point.first, point.second)
+                val pointRaw =
+                    firstNonBlank(
+                        step.args["point"],
+                        step.args["value"],
+                        step.args["coord"],
+                        step.args["coords"],
+                        step.args["position"],
+                        coordinatePairString(step.args, "x", "y")
+                    )
+                val point = parsePoint(pointRaw.orEmpty())
+                if (point == null) {
+                    onLog("操作结果(Tap)：失败（坐标解析失败：${pointRaw.orEmpty()}）")
+                    return false
+                }
+                val (x, y) = toAbsolutePoint(service, point.first, point.second)
                 val ok = awaitGesture { cb -> service.performTap(x, y, cb) }
                 onLog("操作结果(Tap)：${if (ok) "成功" else "失败"} @(${x.toInt()}, ${y.toInt()})")
                 ok
             }
 
             "long_press", "longpress" -> {
-                val point = parsePoint(step.args["point"] ?: "${step.args["x"]},${step.args["y"]}") ?: return false
-                val (x, y) = toAbsolutePoint(point.first, point.second)
+                val pointRaw =
+                    firstNonBlank(
+                        step.args["point"],
+                        step.args["value"],
+                        step.args["coord"],
+                        step.args["coords"],
+                        step.args["position"],
+                        coordinatePairString(step.args, "x", "y")
+                    )
+                val point = parsePoint(pointRaw.orEmpty())
+                if (point == null) {
+                    onLog("操作结果(LongPress)：失败（坐标解析失败：${pointRaw.orEmpty()}）")
+                    return false
+                }
+                val (x, y) = toAbsolutePoint(service, point.first, point.second)
                 val ok = awaitGesture { cb -> service.performLongPress(x, y, cb) }
                 onLog("操作结果(LongPress)：${if (ok) "成功" else "失败"} @(${x.toInt()}, ${y.toInt()})")
                 ok
             }
 
             "swipe" -> {
-                val start = parsePoint(step.args["start"] ?: "${step.args["start_x"]},${step.args["start_y"]}") ?: return false
-                val end = parsePoint(step.args["end"] ?: "${step.args["end_x"]},${step.args["end_y"]}") ?: return false
-                val (sx, sy) = toAbsolutePoint(start.first, start.second)
-                val (ex, ey) = toAbsolutePoint(end.first, end.second)
-                val duration = step.args["duration_ms"]?.toLongOrNull()?.coerceIn(80L, 5000L) ?: 360L
+                val direction = resolveSwipeDirection(rawAction, step.args)
+                val defaultSwipe = defaultSwipePoints(direction)
+                val startRaw =
+                    firstNonBlank(
+                        step.args["start"],
+                        step.args["from"],
+                        step.args["start_point"],
+                        step.args["from_point"],
+                        coordinatePairString(step.args, "start_x", "start_y"),
+                        coordinatePairString(step.args, "x1", "y1"),
+                        defaultSwipe?.first?.let { "${it.first},${it.second}" }
+                    )
+                val endRaw =
+                    firstNonBlank(
+                        step.args["end"],
+                        step.args["to"],
+                        step.args["end_point"],
+                        step.args["to_point"],
+                        coordinatePairString(step.args, "end_x", "end_y"),
+                        coordinatePairString(step.args, "x2", "y2"),
+                        defaultSwipe?.second?.let { "${it.first},${it.second}" }
+                    )
+                val start = parsePoint(startRaw.orEmpty())
+                val end = parsePoint(endRaw.orEmpty())
+                if (start == null || end == null) {
+                    onLog(
+                        "操作结果(Swipe)：失败（坐标解析失败 start=${startRaw.orEmpty()} end=${endRaw.orEmpty()}）"
+                    )
+                    return false
+                }
+                val (sx, sy) = toAbsolutePoint(service, start.first, start.second)
+                val (ex, ey) = toAbsolutePoint(service, end.first, end.second)
+                val duration = parseSwipeDurationMs(step.args)
                 val ok = awaitGesture { cb ->
                     service.performSwipe(
                         startX = sx,
@@ -101,6 +157,82 @@ class AutoSoulActionExecutor(
                 onLog("操作结果(${step.action})：失败（未知动作）")
                 false
             }
+        }
+    }
+
+    private fun normalizeAction(rawAction: String): String {
+        return when (rawAction.trim().lowercase()) {
+            "click", "touch", "press", "tap_screen" -> "tap"
+            "longpress", "long_press", "long_tap", "longtap", "hold", "press_hold" -> "long_press"
+            "input", "type_text", "enter_text", "text" -> "type"
+            "taptext", "tap_text", "clicktext", "click_text" -> "tap_text"
+            "scroll", "scrollup", "scroll_up", "scroll_down", "scrollleft", "scroll_left", "scrollright", "scroll_right",
+            "swipe_up", "swipe_down", "swipe_left", "swipe_right" -> "swipe"
+            else -> rawAction
+        }
+    }
+
+    private fun firstNonBlank(vararg values: String?): String? {
+        return values.firstOrNull { !it.isNullOrBlank() }?.trim()
+    }
+
+    private fun coordinatePairString(
+        args: Map<String, String>,
+        xKey: String,
+        yKey: String
+    ): String? {
+        val x = args[xKey]?.trim().orEmpty()
+        val y = args[yKey]?.trim().orEmpty()
+        if (x.isBlank() || y.isBlank()) return null
+        return "$x,$y"
+    }
+
+    private fun parseSwipeDurationMs(args: Map<String, String>): Long {
+        args["duration_ms"]?.trim()?.toLongOrNull()?.let { return it.coerceIn(80L, 5000L) }
+        val raw = args["duration"]?.trim().orEmpty()
+        if (raw.isBlank()) return 360L
+        val normalized = raw.lowercase()
+        val millis =
+            when {
+                normalized.endsWith("ms") ->
+                    normalized.removeSuffix("ms").trim().toDoubleOrNull()
+
+                normalized.endsWith("s") ->
+                    normalized.removeSuffix("s").trim().toDoubleOrNull()?.times(1000.0)
+
+                else -> {
+                    val parsed = normalized.toDoubleOrNull()
+                    if (parsed == null) null else if (parsed > 12.0) parsed else parsed * 1000.0
+                }
+            } ?: 360.0
+        return millis.toLong().coerceIn(80L, 5000L)
+    }
+
+    private fun resolveSwipeDirection(
+        rawAction: String,
+        args: Map<String, String>
+    ): String? {
+        val signal =
+            listOf(rawAction, args["direction"], args["dir"], args["swipe_direction"])
+                .joinToString(" ")
+                .trim()
+                .lowercase()
+        return when {
+            signal.contains("up") || signal.contains("上") -> "up"
+            signal.contains("down") || signal.contains("下") -> "down"
+            signal.contains("left") || signal.contains("左") -> "left"
+            signal.contains("right") || signal.contains("右") -> "right"
+            else -> null
+        }
+    }
+
+    private fun defaultSwipePoints(direction: String?): Pair<Pair<Double, Double>, Pair<Double, Double>>? {
+        return when (direction) {
+            "up" -> (0.50 to 0.80) to (0.50 to 0.24)
+            "down" -> (0.50 to 0.28) to (0.50 to 0.82)
+            "left" -> (0.82 to 0.52) to (0.18 to 0.52)
+            "right" -> (0.18 to 0.52) to (0.82 to 0.52)
+            else -> null
         }
     }
 
@@ -277,24 +409,72 @@ class AutoSoulActionExecutor(
     }
 
     private fun parsePoint(raw: String): Pair<Double, Double>? {
-        val cleaned = raw.trim().removePrefix("[").removeSuffix("]")
-        val parts = cleaned.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        val cleaned =
+            raw.trim()
+                .removePrefix("[")
+                .removeSuffix("]")
+                .removePrefix("(")
+                .removeSuffix(")")
+                .replace("，", ",")
+                .replace("；", ",")
+                .replace(";", ",")
+                .replace("、", ",")
+                .trim()
+        val parts = cleaned.split(Regex("[,\\s]+")).map { it.trim() }.filter { it.isNotBlank() }
         if (parts.size < 2) return null
-        val x = parts[0].toDoubleOrNull() ?: return null
-        val y = parts[1].toDoubleOrNull() ?: return null
-
-        return if (x in 0.0..1.0 && y in 0.0..1.0) {
-            x to y
-        } else {
-            (x.coerceIn(0.0, 1000.0) / 1000.0) to (y.coerceIn(0.0, 1000.0) / 1000.0)
-        }
+        val x = parseCoordinateValue(parts[0]) ?: return null
+        val y = parseCoordinateValue(parts[1]) ?: return null
+        return x to y
     }
 
-    private fun toAbsolutePoint(normX: Double, normY: Double): Pair<Float, Float> {
+    private fun parseCoordinateValue(raw: String): Double? {
+        val token =
+            raw.trim()
+                .replace(Regex("^[xyXY]\\s*[:=]\\s*"), "")
+                .trim()
+        if (token.isBlank()) return null
+        if (token.endsWith("%")) {
+            return token.removeSuffix("%").trim().toDoubleOrNull()?.div(100.0)
+        }
+        return token.toDoubleOrNull()
+    }
+
+    private fun toAbsolutePoint(
+        service: AutoSoulAccessibilityService,
+        rawX: Double,
+        rawY: Double
+    ): Pair<Float, Float> {
+        val windowBounds = Rect()
+        val hasWindowBounds =
+            service.rootInActiveWindow?.let { root ->
+                root.getBoundsInScreen(windowBounds)
+                windowBounds.width() > 0 && windowBounds.height() > 0
+            } == true
         val dm = context.resources.displayMetrics
-        val x = (normX.coerceIn(0.0, 1.0) * dm.widthPixels).toFloat()
-        val y = (normY.coerceIn(0.0, 1.0) * dm.heightPixels).toFloat()
-        return x to y
+        val left = if (hasWindowBounds) windowBounds.left.toFloat() else 0f
+        val top = if (hasWindowBounds) windowBounds.top.toFloat() else 0f
+        val width = if (hasWindowBounds) windowBounds.width().toFloat() else dm.widthPixels.toFloat()
+        val height = if (hasWindowBounds) windowBounds.height().toFloat() else dm.heightPixels.toFloat()
+        val percentMode = rawX in 1.0..100.0 && rawY in 1.0..100.0
+
+        val absX =
+            when {
+                rawX in 0.0..1.0 -> left + (rawX * width).toFloat()
+                percentMode -> left + ((rawX / 100.0) * width).toFloat()
+                else -> rawX.toFloat()
+            }
+        val absY =
+            when {
+                rawY in 0.0..1.0 -> top + (rawY * height).toFloat()
+                percentMode -> top + ((rawY / 100.0) * height).toFloat()
+                else -> rawY.toFloat()
+            }
+
+        val minX = if (hasWindowBounds) left else 0f
+        val maxX = if (hasWindowBounds) left + width - 1f else dm.widthPixels.toFloat() - 1f
+        val minY = if (hasWindowBounds) top else 0f
+        val maxY = if (hasWindowBounds) top + height - 1f else dm.heightPixels.toFloat() - 1f
+        return absX.coerceIn(minX, maxX) to absY.coerceIn(minY, maxY)
     }
 
     private fun awaitGesture(start: ((Boolean) -> Unit) -> Unit): Boolean {

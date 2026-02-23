@@ -109,7 +109,15 @@ fun AutoSoulScreen(navController: NavController) {
     val needOverlayPermissionText = stringResource(R.string.autosoul_need_overlay_permission)
     val copiedLogsText = stringResource(R.string.autosoul_logs_copied)
 
-    val visionModels = remember(models) { models.filter { isLikelyVisionModel(it) } }
+    val visionModels =
+        remember(models, providers) {
+            val providerIds = providers.map { it.id }.toSet()
+            models.filter { model ->
+                model.enabled &&
+                    isLikelyVisionModel(model) &&
+                    (model.providerId.isNullOrBlank() || model.providerId in providerIds)
+            }
+        }
     val selectedAutoSoulModelName =
         remember(visionModels, autoSoulModelId) {
             val key = autoSoulModelId?.trim().orEmpty()

@@ -113,6 +113,7 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.stream.JsonReader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -136,6 +137,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
 import java.io.ByteArrayOutputStream
+import java.io.StringReader
 import kotlin.math.roundToInt
 
 // 颜色常量 - 完全匹配HTML原型
@@ -5523,6 +5525,10 @@ private suspend fun executeAutoSoulTask(
                 ?: allModels.firstOrNull { extractRemoteModelId(it.id) == modelKey }
                 ?: throw IllegalStateException("AutoSoul 模型不存在：$modelKey。请在 Settings → AutoSoul 重新选择。")
 
+        if (!selectedModel.enabled) {
+            throw IllegalStateException("当前 AutoSoul 模型已被禁用，请在 Settings → AutoSoul 选择已启用模型。")
+        }
+
         if (!isLikelyVisionModel(selectedModel)) {
             throw IllegalStateException("当前 AutoSoul 模型不符合视觉模型要求，请在 Settings → AutoSoul 重新选择视觉模型。")
         }
@@ -5828,8 +5834,9 @@ private fun parseAutoSoulPlannerDecision(raw: String): Result<AutoSoulPlannerDec
     }
 
     objectCandidates.forEach { candidate ->
-        val obj = runCatching { JsonParser.parseString(candidate).asJsonObject }.getOrNull() ?: return@forEach
-        parseAutoSoulPlannerDecisionFromObject(obj)?.let { return Result.success(it) }
+        parseJsonObjectLenient(candidate)?.let { obj ->
+            parseAutoSoulPlannerDecisionFromObject(obj)?.let { return Result.success(it) }
+        }
     }
 
     val fallbackScript = normalizeAutoSoulScriptCandidate(trimmed).getOrNull()
@@ -5848,6 +5855,8 @@ private fun parseAutoSoulPlannerDecision(raw: String): Result<AutoSoulPlannerDec
             )
         }
     }
+
+    parseAutoSoulLooseDecision(trimmed)?.let { return Result.success(it) }
 
     return Result.failure(IllegalStateException("invalid decision json"))
 }
@@ -5874,22 +5883,80 @@ private fun parseAutoSoulPlannerDecisionFromObject(obj: JsonObject): AutoSoulPla
     val stepObj =
         when {
             obj.get("step")?.isJsonObject == true -> obj.getAsJsonObject("step")
+            obj.get("next_step")?.isJsonObject == true -> obj.getAsJsonObject("next_step")
+            obj.get("next")?.isJsonObject == true -> obj.getAsJsonObject("next")
             else -> obj
         }
-    val action =
-        stepObj.readString("action")
-            ?: obj.readString("action")
-            ?: return null
     val args = linkedMapOf<String, String>()
 
-    if (stepObj.get("args")?.isJsonObject == true) {
-        stepObj.getAsJsonObject("args").entrySet().forEach { (key, value) ->
-            value.toAutoSoulValueString()?.let { args[key] = it }
-        }
-    }
+    appendAutoSoulArgsFromObject(args, stepObj.readObject("args"))
+    appendAutoSoulArgsFromObject(args, stepObj.readObject("parameters"))
+    appendAutoSoulArgsFromObject(args, stepObj.readObject("params"))
+    appendAutoSoulArgsFromObject(args, obj.readObject("args"))
+    appendAutoSoulArgsFromObject(args, obj.readObject("parameters"))
+    appendAutoSoulArgsFromObject(args, obj.readObject("params"))
+
+    appendAutoSoulArgsFromText(args, stepObj.readString("args"))
+    appendAutoSoulArgsFromText(args, stepObj.readString("parameters"))
+    appendAutoSoulArgsFromText(args, stepObj.readString("params"))
+    appendAutoSoulArgsFromText(args, obj.readString("args"))
+    appendAutoSoulArgsFromText(args, obj.readString("parameters"))
+    appendAutoSoulArgsFromText(args, obj.readString("params"))
+
     stepObj.entrySet().forEach { (key, value) ->
-        if (key == "action" || key == "args" || key == "status" || key == "done" || key == "message" || key == "reason") return@forEach
+        if (
+            key == "action" ||
+            key == "tool" ||
+            key == "name" ||
+            key == "type" ||
+            key == "args" ||
+            key == "params" ||
+            key == "parameters" ||
+            key == "status" ||
+            key == "done" ||
+            key == "message" ||
+            key == "reason"
+        ) return@forEach
         value.toAutoSoulValueString()?.let { args.putIfAbsent(key, it) }
+    }
+    obj.entrySet().forEach { (key, value) ->
+        if (
+            key == "step" ||
+            key == "next" ||
+            key == "next_step" ||
+            key == "action" ||
+            key == "tool" ||
+            key == "name" ||
+            key == "type" ||
+            key == "args" ||
+            key == "params" ||
+            key == "parameters" ||
+            key == "status" ||
+            key == "done" ||
+            key == "message" ||
+            key == "reason"
+        ) return@forEach
+        value.toAutoSoulValueString()?.let { args.putIfAbsent(key, it) }
+    }
+
+    val action =
+        canonicalizeAutoSoulAction(
+            stepObj.readString("action")
+                ?: stepObj.readString("tool")
+                ?: stepObj.readString("name")
+                ?: stepObj.readString("type")
+                ?: obj.readString("action")
+                ?: obj.readString("tool")
+                ?: obj.readString("name")
+                ?: obj.readString("type")
+        )
+    if (action.isNullOrBlank()) {
+        val looseStepText = stepObj.readString("step") ?: obj.readString("step")
+        val loose = parseAutoSoulLooseDecision(looseStepText.orEmpty())
+        if (loose != null && !loose.done) {
+            return loose.copy(reason = obj.readString("reason") ?: stepObj.readString("reason") ?: loose.reason)
+        }
+        return null
     }
 
     return AutoSoulPlannerDecision(
@@ -6002,6 +6069,139 @@ private fun JsonObject.readBoolean(key: String): Boolean? {
         primitive.isNumber -> primitive.asInt != 0
         else -> null
     }
+}
+
+private fun JsonObject.readObject(key: String): JsonObject? {
+    val element = get(key) ?: return null
+    return if (element.isJsonObject) element.asJsonObject else null
+}
+
+private fun parseJsonObjectLenient(candidate: String): JsonObject? {
+    val trimmed = candidate.trim()
+    if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null
+
+    runCatching { JsonParser.parseString(trimmed).asJsonObject }.getOrNull()?.let { return it }
+    runCatching {
+        val reader = JsonReader(StringReader(trimmed)).apply { isLenient = true }
+        val element = JsonParser.parseReader(reader)
+        if (element.isJsonObject) element.asJsonObject else null
+    }.getOrNull()?.let { return it }
+    if ('\'' in trimmed && '"' !in trimmed) {
+        runCatching { JsonParser.parseString(trimmed.replace('\'', '"')).asJsonObject }.getOrNull()?.let { return it }
+    }
+    return null
+}
+
+private fun canonicalizeAutoSoulAction(raw: String?): String? {
+    val normalized = raw?.trim()?.lowercase()?.replace("-", "_")?.replace(" ", "_").orEmpty()
+    if (normalized.isBlank()) return null
+    return when (normalized) {
+        "launch", "open", "start", "app_launch" -> "Launch"
+        "tap", "click", "touch", "press", "tap_screen" -> "Tap"
+        "swipe", "scroll", "scrollup", "scroll_up", "scroll_down", "scrollleft", "scroll_left", "scrollright", "scroll_right",
+        "swipe_up", "swipe_down", "swipe_left", "swipe_right" -> "Swipe"
+        "longpress", "long_press", "long_tap", "longtap", "hold", "press_hold" -> "LongPress"
+        "type", "input", "type_text", "enter_text", "text" -> "Type"
+        "wait", "sleep", "delay", "pause" -> "Wait"
+        "back", "return" -> "Back"
+        "home", "homepage" -> "Home"
+        "taptext", "tap_text", "clicktext", "click_text", "tap_label" -> "TapText"
+        else -> raw?.trim()?.takeIf { it.isNotBlank() }
+    }
+}
+
+private fun appendAutoSoulArgsFromObject(
+    target: MutableMap<String, String>,
+    source: JsonObject?
+) {
+    source?.entrySet()?.forEach { (key, value) ->
+        value.toAutoSoulValueString()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { target.putIfAbsent(key, it) }
+    }
+}
+
+private fun appendAutoSoulArgsFromText(
+    target: MutableMap<String, String>,
+    raw: String?
+) {
+    val text = raw?.trim().orEmpty()
+    if (text.isBlank()) return
+    val matcher =
+        Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*("[^"]*"|'[^']*'|\[[^\]]*]|[^\n,;]+)""")
+    matcher.findAll(text).forEach { match ->
+        val key = match.groupValues.getOrNull(1)?.trim().orEmpty()
+        if (key.isBlank()) return@forEach
+        val normalizedKey =
+            when (key.lowercase()) {
+                "durationms", "duration-millis", "duration_millis" -> "duration_ms"
+                "taptext", "tap_text", "clicktext", "click_text" -> "text"
+                else -> key
+            }
+        if (
+            normalizedKey.equals("status", ignoreCase = true) ||
+            normalizedKey.equals("done", ignoreCase = true) ||
+            normalizedKey.equals("message", ignoreCase = true) ||
+            normalizedKey.equals("reason", ignoreCase = true) ||
+            normalizedKey.equals("action", ignoreCase = true) ||
+            normalizedKey.equals("step", ignoreCase = true)
+        ) {
+            return@forEach
+        }
+        val rawValue = match.groupValues.getOrNull(2)?.trim().orEmpty()
+        val value = rawValue.removeSurrounding("\"").removeSurrounding("'").trim()
+        if (value.isNotBlank()) {
+            target.putIfAbsent(normalizedKey, value)
+        }
+    }
+    if (!target.containsKey("point")) {
+        val coordMatch = Regex("""([-+]?\d*\.?\d+%?)\s*[,，\s]\s*([-+]?\d*\.?\d+%?)""").find(text)
+        if (coordMatch != null) {
+            val x = coordMatch.groupValues.getOrNull(1)?.trim().orEmpty()
+            val y = coordMatch.groupValues.getOrNull(2)?.trim().orEmpty()
+            if (x.isNotBlank() && y.isNotBlank()) {
+                target["point"] = "$x,$y"
+            }
+        }
+    }
+}
+
+private fun parseAutoSoulLooseDecision(raw: String): AutoSoulPlannerDecision? {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return null
+
+    val doneSignal =
+        Regex("(?i)\\b(done|finish(?:ed)?|complete(?:d)?|stop)\\b|完成|结束|停止")
+            .containsMatchIn(trimmed)
+    val actionMatch =
+        Regex(
+            "(?i)\\b(launch|open|start|tap|click|touch|press|swipe|scroll(?:_[a-z]+)?|scrollup|scrollleft|scrollright|scroll_down|long[_ ]?press|longtap|type|input|wait|sleep|delay|back|home|tap[_ ]?text|click[_ ]?text)\\b"
+        ).find(trimmed)
+    if (actionMatch == null) {
+        return if (doneSignal) {
+            AutoSoulPlannerDecision(
+                done = true,
+                message = trimmed.take(180),
+                action = null,
+                args = emptyMap(),
+                reason = null
+            )
+        } else {
+            null
+        }
+    }
+
+    val action = canonicalizeAutoSoulAction(actionMatch.value) ?: return null
+    val args = linkedMapOf<String, String>()
+    appendAutoSoulArgsFromText(args, trimmed)
+    return AutoSoulPlannerDecision(
+        done = false,
+        message = null,
+        action = action,
+        args = args,
+        reason = null
+    )
 }
 
 private fun JsonElement.toAutoSoulValueString(): String? {
