@@ -88,6 +88,9 @@ fun AutoSoulScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
     var permissionSnapshot by remember { mutableStateOf(AutoSoulPermissions.snapshot(context)) }
     var script by rememberSaveable { mutableStateOf(DEFAULT_AUTOSOUL_SCRIPT.trimIndent()) }
+    val openedSettingsText = stringResource(R.string.autosoul_opened_settings)
+    val shizukuOpenHintText = stringResource(R.string.autosoul_shizuku_open_hint)
+    val needOverlayPermissionText = stringResource(R.string.autosoul_need_overlay_permission)
 
     val notificationLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -184,7 +187,7 @@ fun AutoSoulScreen(navController: NavController) {
                     actionLabel = stringResource(R.string.autosoul_action_open_settings),
                     onClick = {
                         AutoSoulPermissions.openAccessibilitySettings(context)
-                        showToast(stringResource(R.string.autosoul_opened_settings))
+                        showToast(openedSettingsText)
                     }
                 )
                 Divider(color = GrayLight)
@@ -201,7 +204,7 @@ fun AutoSoulScreen(navController: NavController) {
                     onClick = {
                         if (!permissionSnapshot.shizukuRunning) {
                             AutoSoulShizukuBridge.openShizukuAppOrWebsite(context)
-                            showToast(stringResource(R.string.autosoul_shizuku_open_hint))
+                            showToast(shizukuOpenHintText)
                         } else {
                             AutoSoulShizukuBridge.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
                         }
@@ -215,7 +218,7 @@ fun AutoSoulScreen(navController: NavController) {
                     actionLabel = stringResource(R.string.autosoul_action_open_settings),
                     onClick = {
                         AutoSoulPermissions.openOverlaySettings(context)
-                        showToast(stringResource(R.string.autosoul_opened_settings))
+                        showToast(openedSettingsText)
                     }
                 )
                 Divider(color = GrayLight)
@@ -249,7 +252,7 @@ fun AutoSoulScreen(navController: NavController) {
                         modifier = Modifier.weight(1f),
                         onClick = {
                             if (!permissionSnapshot.overlayEnabled) {
-                                showToast(stringResource(R.string.autosoul_need_overlay_permission))
+                                showToast(needOverlayPermissionText)
                                 return@AutoSoulActionButton
                             }
                             AutoSoulFloatingOverlay.show(context.applicationContext)
