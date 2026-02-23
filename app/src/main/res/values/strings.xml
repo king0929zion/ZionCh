@@ -157,7 +157,7 @@
     <string name="chat_model_switched_toast">Default chat model switched to %1$s</string>
     <string name="search_settings_engine">Search engine</string>
     <string name="search_settings_auto_title">AI proactive search</string>
-    <string name="search_settings_auto_subtitle">Auto search real-time questions</string>
+    <string name="search_settings_auto_subtitle">Search when real-time info is needed</string>
     <string name="search_settings_result_count">Result count</string>
     <string name="search_settings_result_count_subtitle">Sources injected into context</string>
     <string name="search_settings_exa_key">Exa API key</string>
@@ -168,7 +168,8 @@
     <string name="search_settings_depth_advanced">Advanced</string>
     <string name="search_settings_depth_standard">Standard</string>
     <string name="search_settings_depth_deep">Deep</string>
-    <string name="search_settings_bing_note">Bing mode uses crawler search and may occasionally be rate-limited.</string>
+    <string name="search_settings_bing_note">Bing does not require an API key.</string>
+    <string name="search_settings_api_key">API Key</string>
     <string name="search_settings_providers_title">Search providers</string>
     <string name="search_settings_provider_active">Active</string>
     <string name="search_settings_provider_use">Use</string>
