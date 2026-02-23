@@ -4,6 +4,7 @@
     <string name="new_chat">新对话</string>
     <string name="search">搜索</string>
     <string name="images">图片</string>
+    <string name="group_chat">群聊</string>
     <string name="apps">应用</string>
     <string name="settings">设置</string>
     <string name="model_services">模型服务</string>

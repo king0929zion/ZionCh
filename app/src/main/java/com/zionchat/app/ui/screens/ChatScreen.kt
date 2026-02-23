@@ -4428,6 +4428,18 @@ fun SidebarContent(
             SidebarMenuItem(
                 icon = {
                     Icon(
+                        painter = rememberResourceDrawablePainter(R.drawable.ic_group_chat),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = TextPrimary
+                    )
+                },
+                label = stringResource(R.string.group_chat),
+                onClick = { }
+            )
+            SidebarMenuItem(
+                icon = {
+                    Icon(
                         painter = rememberResourceDrawablePainter(R.drawable.ic_apps),
                         contentDescription = null,
                         modifier = Modifier.size(22.dp),
