@@ -1,8 +1,6 @@
 package com.zionchat.app.autosoul.runtime
 
 import android.accessibilityservice.AccessibilityService
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -17,14 +15,27 @@ class AutoSoulActionExecutor(
     private val serviceProvider: () -> AutoSoulAccessibilityService?
 ) {
     fun execute(step: AutoSoulScriptStep, onLog: (String) -> Unit): Boolean {
-        val service = serviceProvider() ?: return false
+        val service =
+            serviceProvider() ?: run {
+                onLog("操作结果(${step.action})：失败（无障碍服务不可用）")
+                return false
+            }
         val action = step.action.trim().lowercase()
         return when (action) {
-            "home" -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-            "back" -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            "home" -> {
+                val ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+                onLog("操作结果(Home)：${if (ok) "成功" else "失败"}")
+                ok
+            }
+            "back" -> {
+                val ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                onLog("操作结果(Back)：${if (ok) "成功" else "失败"}")
+                ok
+            }
             "wait" -> {
                 val durationMs = parseDuration(step.args).coerceIn(0L, 30_000L)
                 Thread.sleep(durationMs)
+                onLog("操作结果(Wait)：成功（${durationMs}ms）")
                 true
             }
 
@@ -36,13 +47,17 @@ class AutoSoulActionExecutor(
             "tap" -> {
                 val point = parsePoint(step.args["point"] ?: "${step.args["x"]},${step.args["y"]}") ?: return false
                 val (x, y) = toAbsolutePoint(point.first, point.second)
-                awaitGesture { cb -> service.performTap(x, y, cb) }
+                val ok = awaitGesture { cb -> service.performTap(x, y, cb) }
+                onLog("操作结果(Tap)：${if (ok) "成功" else "失败"} @(${x.toInt()}, ${y.toInt()})")
+                ok
             }
 
             "long_press", "longpress" -> {
                 val point = parsePoint(step.args["point"] ?: "${step.args["x"]},${step.args["y"]}") ?: return false
                 val (x, y) = toAbsolutePoint(point.first, point.second)
-                awaitGesture { cb -> service.performLongPress(x, y, cb) }
+                val ok = awaitGesture { cb -> service.performLongPress(x, y, cb) }
+                onLog("操作结果(LongPress)：${if (ok) "成功" else "失败"} @(${x.toInt()}, ${y.toInt()})")
+                ok
             }
 
             "swipe" -> {
@@ -51,7 +66,7 @@ class AutoSoulActionExecutor(
                 val (sx, sy) = toAbsolutePoint(start.first, start.second)
                 val (ex, ey) = toAbsolutePoint(end.first, end.second)
                 val duration = step.args["duration_ms"]?.toLongOrNull()?.coerceIn(80L, 5000L) ?: 360L
-                awaitGesture { cb ->
+                val ok = awaitGesture { cb ->
                     service.performSwipe(
                         startX = sx,
                         startY = sy,
@@ -61,6 +76,11 @@ class AutoSoulActionExecutor(
                         onDone = cb
                     )
                 }
+                onLog(
+                    "操作结果(Swipe)：${if (ok) "成功" else "失败"} " +
+                        "(${sx.toInt()},${sy.toInt()}) -> (${ex.toInt()},${ey.toInt()}) ${duration}ms"
+                )
+                ok
             }
 
             "type", "input" -> {
@@ -72,10 +92,15 @@ class AutoSoulActionExecutor(
                 val text = step.args["text"].orEmpty().trim()
                 if (text.isBlank()) return false
                 val node = service.findNodeByText(text)
-                service.clickNode(node)
+                val ok = service.clickNode(node)
+                onLog("操作结果(TapText)：${if (ok) "成功" else "失败"}（$text）")
+                ok
             }
 
-            else -> false
+            else -> {
+                onLog("操作结果(${step.action})：失败（未知动作）")
+                false
+            }
         }
     }
 
@@ -198,11 +223,17 @@ class AutoSoulActionExecutor(
         text: String,
         onLog: (String) -> Unit
     ): Boolean {
-        if (text.isBlank()) return false
-        val root = service.rootInActiveWindow ?: return false
+        if (text.isBlank()) {
+            onLog("操作结果(Input)：失败（输入内容为空）")
+            return false
+        }
+        val root = service.rootInActiveWindow ?: run {
+            onLog("操作结果(Input)：失败（未获取到当前窗口）")
+            return false
+        }
         val target = findEditableNode(root)
         if (target == null) {
-            onLog("未找到可输入控件")
+            onLog("操作结果(Input)：失败（未找到可输入控件）")
             return false
         }
 
@@ -211,11 +242,13 @@ class AutoSoulActionExecutor(
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         val setTextOk = runCatching { target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args) }.getOrDefault(false)
-        if (setTextOk) return true
-
-        val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return false
-        runCatching { clipboard.setPrimaryClip(ClipData.newPlainText("AutoSoul", text)) }
-        return runCatching { target.performAction(AccessibilityNodeInfo.ACTION_PASTE) }.getOrDefault(false)
+        if (setTextOk) {
+            onLog("操作结果(Input)：成功（无障碍输入）")
+            return true
+        }
+        val fallbackSetOk = runCatching { service.setText(target, text) }.getOrDefault(false)
+        onLog("操作结果(Input)：${if (fallbackSetOk) "成功" else "失败"}（无障碍输入）")
+        return fallbackSetOk
     }
 
     private fun findEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {

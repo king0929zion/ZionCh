@@ -69,31 +69,66 @@ object AutoSoulAutomationManager {
                         if (!isActiveRun()) break
                         val stepNo = index + 1
                         val actionName = step.action
-                        val statusText = "正在执行 ${actionName} (${stepNo}/${steps.size})"
-                        AutoSoulUiStatus.setRecognizing(statusText)
-                        AutoSoulFloatingOverlay.updateState(AutoSoulUiStatus.state.value)
-                        _state.value =
-                            _state.value.copy(
-                                running = true,
-                                totalSteps = steps.size,
-                                currentStep = stepNo,
-                                statusText = statusText,
-                                lastError = null
-                            )
-                        appendLog("Step $stepNo/${steps.size}: ${step.action} ${step.args}")
-                        delay(180L)
+                        val maxRetry = resolveStepRetryLimit(step.args)
+                        val totalAttempt = maxRetry + 1
+                        var attempt = 1
+                        var stepSucceeded = false
 
-                        val ok =
-                            runCatching {
-                                executor.execute(step) { line -> appendLog(line) }
-                            }.getOrDefault(false)
-                        if (!ok) {
-                            failedError = "步骤执行失败：${step.action}"
+                        while (attempt <= totalAttempt && isActiveRun()) {
+                            val statusText =
+                                if (attempt == 1) {
+                                    "正在执行 ${actionName} (${stepNo}/${steps.size})"
+                                } else {
+                                    "AI重试 ${actionName}（${attempt}/${totalAttempt}）"
+                                }
+                            AutoSoulUiStatus.setRecognizing(statusText)
+                            AutoSoulFloatingOverlay.updateState(AutoSoulUiStatus.state.value)
+                            _state.value =
+                                _state.value.copy(
+                                    running = true,
+                                    totalSteps = steps.size,
+                                    currentStep = stepNo,
+                                    statusText = statusText,
+                                    lastError = null
+                                )
+                            appendLog(
+                                if (attempt == 1) {
+                                    "Step $stepNo/${steps.size}: ${step.action} ${step.args}"
+                                } else {
+                                    "Step $stepNo/${steps.size}: AI重试第 ${attempt - 1}/$maxRetry 次 -> ${step.action} ${step.args}"
+                                }
+                            )
+                            delay(180L)
+
+                            val ok =
+                                runCatching {
+                                    executor.execute(step) { line -> appendLog(line) }
+                                }.getOrDefault(false)
+                            appendLog(
+                                "Step $stepNo/${steps.size} 尝试 $attempt/$totalAttempt 执行结果：${if (ok) "成功" else "失败"}"
+                            )
+                            if (ok) {
+                                stepSucceeded = true
+                                break
+                            }
+                            if (attempt < totalAttempt && isActiveRun()) {
+                                val retryDelay = (360L + (attempt - 1) * 240L).coerceAtMost(1200L)
+                                AutoSoulUiStatus.setThinking("准备 AI 重试 ${actionName}（${attempt}/${maxRetry}）")
+                                AutoSoulFloatingOverlay.updateState(AutoSoulUiStatus.state.value)
+                                appendLog("AI重试准备中：${retryDelay}ms 后继续")
+                                delay(retryDelay)
+                            }
+                            attempt++
+                        }
+
+                        if (!stepSucceeded) {
+                            failedError = "步骤执行失败：${step.action}（已重试 ${maxRetry} 次）"
                             appendLog(failedError)
                             break
                         }
                         AutoSoulUiStatus.setRunning("已完成 $stepNo/${steps.size}")
                         AutoSoulFloatingOverlay.updateState(AutoSoulUiStatus.state.value)
+                        appendLog("Step $stepNo/${steps.size}：完成")
                         delay(320L)
                     }
 
@@ -109,6 +144,7 @@ object AutoSoulAutomationManager {
                             )
                     } else if (failedError != null) {
                         AutoSoulUiStatus.setStopped("执行失败")
+                        appendLog("执行失败")
                         _state.value =
                             _state.value.copy(
                                 running = false,
@@ -117,6 +153,7 @@ object AutoSoulAutomationManager {
                             )
                     } else {
                         AutoSoulUiStatus.setStopped("已停止")
+                        appendLog("执行已停止")
                         _state.value =
                             _state.value.copy(
                                 running = false,
@@ -125,6 +162,8 @@ object AutoSoulAutomationManager {
                     }
                     AutoSoulFloatingOverlay.updateState(AutoSoulUiStatus.state.value)
                     AutoSoulForegroundService.setRunning(ctx, false)
+                    delay(240L)
+                    AutoSoulFloatingOverlay.hide()
                 }
             }
         }
@@ -141,6 +180,7 @@ object AutoSoulAutomationManager {
             }
             AutoSoulUiStatus.setStopped("已停止")
             AutoSoulFloatingOverlay.updateState(AutoSoulUiStatus.state.value)
+            AutoSoulFloatingOverlay.hide()
             _state.value =
                 _state.value.copy(
                     running = false,
@@ -173,6 +213,16 @@ object AutoSoulAutomationManager {
         return runJob?.isActive == true
     }
 
+    private fun resolveStepRetryLimit(args: Map<String, String>): Int {
+        val raw =
+            args["ai_retry"]
+                ?: args["retries"]
+                ?: args["retry"]
+                ?: args["max_retry"]
+                ?: args["max_retries"]
+        return raw?.trim()?.toIntOrNull()?.coerceIn(0, 4) ?: 2
+    }
+
     private fun appendLog(line: String) {
         val trimmed = line.trim()
         if (trimmed.isBlank()) return
@@ -180,4 +230,3 @@ object AutoSoulAutomationManager {
         _logs.value = (old + "${System.currentTimeMillis()} | $trimmed").takeLast(180)
     }
 }
-
