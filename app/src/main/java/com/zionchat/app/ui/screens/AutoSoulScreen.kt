@@ -23,6 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -39,8 +41,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,7 +52,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
+import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.R
+import com.zionchat.app.data.ModelConfig
+import com.zionchat.app.data.ProviderConfig
+import com.zionchat.app.data.extractRemoteModelId
+import com.zionchat.app.data.isLikelyVisionModel
 import com.zionchat.app.autosoul.AutoSoulPermissions
 import com.zionchat.app.autosoul.AutoSoulShizukuBridge
 import com.zionchat.app.autosoul.overlay.AutoSoulFloatingOverlay
@@ -80,17 +89,35 @@ private const val DEFAULT_AUTOSOUL_SCRIPT = """
 """
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun AutoSoulScreen(navController: NavController) {
+    val repository = LocalAppRepository.current
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val runtimeState by AutoSoulAutomationManager.state.collectAsState()
+    val providers by repository.providersFlow.collectAsState(initial = emptyList())
+    val models by repository.modelsFlow.collectAsState(initial = emptyList())
+    val autoSoulModelId by repository.defaultAutoSoulModelIdFlow.collectAsState(initial = null)
     val logs by AutoSoulAutomationManager.logs.collectAsState()
     val scope = rememberCoroutineScope()
     var permissionSnapshot by remember { mutableStateOf(AutoSoulPermissions.snapshot(context)) }
     var script by rememberSaveable { mutableStateOf(DEFAULT_AUTOSOUL_SCRIPT.trimIndent()) }
+    var showModelPicker by remember { mutableStateOf(false) }
     val openedSettingsText = stringResource(R.string.autosoul_opened_settings)
     val shizukuOpenHintText = stringResource(R.string.autosoul_shizuku_open_hint)
     val needOverlayPermissionText = stringResource(R.string.autosoul_need_overlay_permission)
+    val copiedLogsText = stringResource(R.string.autosoul_logs_copied)
+
+    val visionModels = remember(models) { models.filter { it.enabled && isLikelyVisionModel(it) } }
+    val selectedAutoSoulModelName =
+        remember(visionModels, autoSoulModelId) {
+            val key = autoSoulModelId?.trim().orEmpty()
+            if (key.isBlank()) null
+            else visionModels.firstOrNull { it.id == key }?.displayName
+                ?: visionModels.firstOrNull { extractRemoteModelId(it.id) == key }?.displayName
+        }
+    val displayLogs = remember(logs) { logs.takeLast(60) }
+    val logsText = remember(displayLogs) { displayLogs.joinToString(separator = "\n") }
 
     val notificationLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -155,26 +182,17 @@ fun AutoSoulScreen(navController: NavController) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            AutoSoulSectionTitle(stringResource(R.string.autosoul_section_status))
+            AutoSoulSectionTitle(stringResource(R.string.autosoul_section_model))
             AutoSoulCard {
-                AutoSoulStatusRow(
-                    title = stringResource(R.string.autosoul_runtime_state),
-                    value =
-                        if (runtimeState.running) {
-                            stringResource(R.string.autosoul_runtime_running)
-                        } else {
-                            stringResource(R.string.autosoul_runtime_idle)
-                        }
+                Text(
+                    text = stringResource(R.string.autosoul_model_desc),
+                    color = TextSecondary,
+                    fontFamily = SourceSans3,
+                    fontSize = 13.sp
                 )
-                Divider(color = GrayLight)
-                AutoSoulStatusRow(
-                    title = stringResource(R.string.autosoul_runtime_progress),
-                    value = "${runtimeState.currentStep}/${runtimeState.totalSteps}"
-                )
-                Divider(color = GrayLight)
-                AutoSoulStatusRow(
-                    title = stringResource(R.string.autosoul_runtime_message),
-                    value = runtimeState.lastError ?: runtimeState.statusText
+                AutoSoulModelPickerRow(
+                    modelName = selectedAutoSoulModelName,
+                    onClick = { showModelPicker = true }
                 )
             }
 
@@ -343,6 +361,45 @@ fun AutoSoulScreen(navController: NavController) {
 
             AutoSoulSectionTitle(stringResource(R.string.autosoul_section_logs))
             AutoSoulCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = stringResource(R.string.autosoul_section_logs),
+                        color = TextPrimary,
+                        fontFamily = SourceSans3,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Box(
+                        modifier =
+                            Modifier
+                                .height(30.dp)
+                                .background(GrayLighter, RoundedCornerShape(12.dp))
+                                .pressableScale(
+                                    pressedScale = 0.96f,
+                                    onClick = {
+                                        if (logsText.isNotBlank()) {
+                                            clipboardManager.setText(AnnotatedString(logsText))
+                                            showToast(copiedLogsText)
+                                        }
+                                    }
+                                )
+                                .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.autosoul_logs_copy),
+                            color = TextPrimary,
+                            fontFamily = SourceSans3,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                Divider(color = GrayLight)
                 if (logs.isEmpty()) {
                     Text(
                         text = stringResource(R.string.autosoul_logs_empty),
@@ -351,9 +408,8 @@ fun AutoSoulScreen(navController: NavController) {
                         fontSize = 13.sp
                     )
                 } else {
-                    val displayLogs = logs.takeLast(30)
                     Text(
-                        text = displayLogs.joinToString(separator = "\n"),
+                        text = logsText,
                         color = TextPrimary,
                         fontFamily = SourceSans3,
                         fontSize = 12.sp,
@@ -363,6 +419,28 @@ fun AutoSoulScreen(navController: NavController) {
             }
 
             Spacer(modifier = Modifier.height(22.dp))
+        }
+    }
+
+    if (showModelPicker) {
+        ModalBottomSheet(
+            onDismissRequest = { showModelPicker = false },
+            containerColor = Surface,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            AutoSoulVisionModelPickerContent(
+                providers = providers,
+                visionModels = visionModels,
+                selectedModelId = autoSoulModelId,
+                onSelect = { selectedId ->
+                    scope.launch { repository.setDefaultAutoSoulModelId(selectedId) }
+                    showModelPicker = false
+                },
+                onClear = {
+                    scope.launch { repository.setDefaultAutoSoulModelId(null) }
+                    showModelPicker = false
+                }
+            )
         }
     }
 }
@@ -392,32 +470,6 @@ private fun AutoSoulCard(content: @Composable ColumnScope.() -> Unit) {
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             content = content
-        )
-    }
-}
-
-@Composable
-private fun AutoSoulStatusRow(
-    title: String,
-    value: String
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            color = TextSecondary,
-            fontFamily = SourceSans3,
-            fontSize = 13.sp
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = value,
-            color = TextPrimary,
-            fontFamily = SourceSans3,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -505,4 +557,197 @@ private fun AutoSoulActionButton(
             fontWeight = FontWeight.SemiBold
         )
     }
+}
+
+@Composable
+private fun AutoSoulModelPickerRow(
+    modelName: String?,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(GrayLighter, RoundedCornerShape(12.dp))
+                .pressableScale(pressedScale = 0.97f, onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = modelName ?: stringResource(R.string.autosoul_model_not_set),
+            color = if (modelName.isNullOrBlank()) TextSecondary else TextPrimary,
+            fontFamily = SourceSans3,
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = stringResource(R.string.autosoul_action_choose_model),
+            color = TextPrimary,
+            fontFamily = SourceSans3,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun AutoSoulVisionModelPickerContent(
+    providers: List<ProviderConfig>,
+    visionModels: List<ModelConfig>,
+    selectedModelId: String?,
+    onSelect: (String) -> Unit,
+    onClear: () -> Unit
+) {
+    val grouped = remember(providers, visionModels) { groupAutoSoulModelsByProvider(providers, visionModels) }
+    val selectedKey = selectedModelId?.trim().orEmpty()
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .heightIn(max = 620.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.autosoul_model_picker_title),
+            color = TextPrimary,
+            fontFamily = SourceSans3,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        Text(
+            text = stringResource(R.string.autosoul_model_only_vision_hint),
+            color = TextSecondary,
+            fontFamily = SourceSans3,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+
+        Column(
+            modifier =
+                Modifier
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = GrayLighter)
+            ) {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .pressableScale(pressedScale = 0.97f, onClick = onClear)
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.autosoul_model_not_set),
+                        color = TextPrimary,
+                        fontFamily = SourceSans3,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = if (selectedKey.isBlank()) "✓" else "",
+                        color = TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            if (grouped.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.autosoul_model_empty_vision),
+                    color = TextSecondary,
+                    fontFamily = SourceSans3,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                )
+            } else {
+                grouped.forEach { (providerName, providerModels) ->
+                    Column {
+                        Text(
+                            text = providerName.uppercase(),
+                            color = TextSecondary,
+                            fontFamily = SourceSans3,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                        )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = GrayLighter)
+                        ) {
+                            providerModels.forEachIndexed { index, model ->
+                                Row(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .pressableScale(pressedScale = 0.97f, onClick = { onSelect(model.id) })
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = model.displayName,
+                                        color = TextPrimary,
+                                        fontFamily = SourceSans3,
+                                        fontSize = 14.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    val selected =
+                                        selectedKey.isNotBlank() &&
+                                            (model.id == selectedKey || extractRemoteModelId(model.id) == selectedKey)
+                                    Text(
+                                        text = if (selected) "✓" else "",
+                                        color = TextPrimary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                if (index != providerModels.lastIndex) {
+                                    Divider(color = GrayLight)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+    }
+}
+
+private fun groupAutoSoulModelsByProvider(
+    providers: List<ProviderConfig>,
+    models: List<ModelConfig>
+): List<Pair<String, List<ModelConfig>>> {
+    val providerById = providers.associateBy { it.id }
+    val grouped = linkedMapOf<String, MutableList<ModelConfig>>()
+
+    providers.forEach { provider ->
+        val providerModels =
+            models
+                .filter { it.providerId == provider.id }
+                .sortedBy { it.displayName.lowercase() }
+        if (providerModels.isNotEmpty()) {
+            grouped[provider.name] = providerModels.toMutableList()
+        }
+    }
+
+    val others =
+        models
+            .filter { it.providerId.isNullOrBlank() || providerById[it.providerId] == null }
+            .sortedBy { it.displayName.lowercase() }
+    if (others.isNotEmpty()) {
+        grouped["Other"] = others.toMutableList()
+    }
+
+    return grouped.map { it.key to it.value.toList() }
 }

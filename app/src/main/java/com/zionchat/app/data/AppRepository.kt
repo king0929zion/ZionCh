@@ -52,6 +52,7 @@ class AppRepository(context: Context) {
     private val defaultImageModelIdKey = stringPreferencesKey("default_image_model_id")
     private val defaultTitleModelIdKey = stringPreferencesKey("default_title_model_id")
     private val defaultAppBuilderModelIdKey = stringPreferencesKey("default_app_builder_model_id")
+    private val defaultAutoSoulModelIdKey = stringPreferencesKey("default_autosoul_model_id")
     private val webHostingProviderKey = stringPreferencesKey("web_hosting_provider")
     private val vercelTokenKey = stringPreferencesKey("vercel_token")
     private val vercelProjectIdKey = stringPreferencesKey("vercel_project_id")
@@ -528,6 +529,10 @@ class AppRepository(context: Context) {
         prefs[defaultAppBuilderModelIdKey]
     }
 
+    val defaultAutoSoulModelIdFlow: Flow<String?> = prefsFlow.map { prefs ->
+        prefs[defaultAutoSoulModelIdKey]
+    }
+
     suspend fun setCurrentConversationId(conversationId: String?) {
         dataStore.edit { prefs ->
             if (conversationId.isNullOrBlank()) {
@@ -631,6 +636,12 @@ class AppRepository(context: Context) {
     suspend fun setDefaultAppBuilderModelId(modelId: String?) {
         dataStore.edit { prefs ->
             if (modelId.isNullOrBlank()) prefs.remove(defaultAppBuilderModelIdKey) else prefs[defaultAppBuilderModelIdKey] = modelId
+        }
+    }
+
+    suspend fun setDefaultAutoSoulModelId(modelId: String?) {
+        dataStore.edit { prefs ->
+            if (modelId.isNullOrBlank()) prefs.remove(defaultAutoSoulModelIdKey) else prefs[defaultAutoSoulModelIdKey] = modelId
         }
     }
 
@@ -763,6 +774,7 @@ class AppRepository(context: Context) {
             maybeClearDefaultModel(defaultImageModelIdKey)
             maybeClearDefaultModel(defaultTitleModelIdKey)
             maybeClearDefaultModel(defaultAppBuilderModelIdKey)
+            maybeClearDefaultModel(defaultAutoSoulModelIdKey)
         }
     }
 
@@ -821,9 +833,30 @@ class AppRepository(context: Context) {
     }
 
     suspend fun deleteModel(modelId: String) {
-        val models = modelsFlow.first().filterNot { it.id == modelId }
+        val existing = modelsFlow.first()
+        val removed = existing.firstOrNull { it.id == modelId } ?: return
+        val models = existing.filterNot { it.id == modelId }
+        val removedStorageId = removed.id
+        val removedRemoteId = extractRemoteModelId(removed.id)
+        val remainingRemoteIds = models.map { extractRemoteModelId(it.id) }.toSet()
         dataStore.edit { prefs ->
             prefs[modelsKey] = gson.toJson(models)
+
+            fun maybeClearDefaultModel(key: androidx.datastore.preferences.core.Preferences.Key<String>) {
+                val value = prefs[key]?.trim().orEmpty()
+                if (value.isBlank()) return
+                val shouldClear =
+                    value == removedStorageId ||
+                        (value == removedRemoteId && !remainingRemoteIds.contains(value))
+                if (shouldClear) prefs.remove(key)
+            }
+
+            maybeClearDefaultModel(defaultChatModelIdKey)
+            maybeClearDefaultModel(defaultVisionModelIdKey)
+            maybeClearDefaultModel(defaultImageModelIdKey)
+            maybeClearDefaultModel(defaultTitleModelIdKey)
+            maybeClearDefaultModel(defaultAppBuilderModelIdKey)
+            maybeClearDefaultModel(defaultAutoSoulModelIdKey)
         }
     }
 

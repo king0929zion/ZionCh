@@ -151,6 +151,7 @@
     <string name="chat_tool_photos">Photos</string>
     <string name="chat_tool_files">Files</string>
     <string name="chat_tool_mcp_choose_providers">Choose MCP providers</string>
+    <string name="chat_tool_autosoul_subtitle">Plan and run phone automation</string>
     <string name="chat_model_picker_title">Select default chat model</string>
     <string name="chat_model_picker_empty">No models available</string>
     <string name="chat_model_switched_toast">Default chat model switched to %1$s</string>
@@ -174,6 +175,7 @@
     <string name="search_settings_save">Save search config</string>
 
     <string name="autosoul_accessibility_desc">AutoSoul accessibility service for UI automation.</string>
+    <string name="autosoul_section_model">Model</string>
     <string name="autosoul_section_status">Runtime status</string>
     <string name="autosoul_section_permissions">Permissions</string>
     <string name="autosoul_section_overlay">Floating overlay</string>
@@ -200,6 +202,12 @@
     <string name="autosoul_shizuku_open_hint">Please start Shizuku service first</string>
     <string name="autosoul_status_enabled">Enabled</string>
     <string name="autosoul_status_enable">Enable</string>
+    <string name="autosoul_model_desc">Choose a dedicated vision-capable model used by AutoSoul planner.</string>
+    <string name="autosoul_model_not_set">Not set</string>
+    <string name="autosoul_action_choose_model">Choose model</string>
+    <string name="autosoul_model_picker_title">Select AutoSoul model</string>
+    <string name="autosoul_model_only_vision_hint">Only enabled vision models are listed.</string>
+    <string name="autosoul_model_empty_vision">No enabled vision model found. Configure one in Models first.</string>
     <string name="autosoul_overlay_desc">Overlay UI follows ai-control-float-clean design and supports stop/retry interaction.</string>
     <string name="autosoul_overlay_show">Show overlay</string>
     <string name="autosoul_overlay_hide">Hide overlay</string>
@@ -212,6 +220,8 @@
     <string name="autosoul_stop_script">Stop</string>
     <string name="autosoul_fill_example">Fill example</string>
     <string name="autosoul_logs_empty">No logs yet. Run a script to start.</string>
+    <string name="autosoul_logs_copy">Copy logs</string>
+    <string name="autosoul_logs_copied">Logs copied</string>
 
     <string name="app_dev_preview_title">Preview</string>
     <string name="app_dev_preview_unavailable">Preview is unavailable until HTML is generated.</string>

@@ -80,6 +80,8 @@ import com.zionchat.app.LocalChatApiClient
 import com.zionchat.app.LocalProviderAuthManager
 import com.zionchat.app.LocalRuntimePackagingService
 import com.zionchat.app.LocalWebHostingService
+import com.zionchat.app.autosoul.runtime.AutoSoulAutomationManager
+import com.zionchat.app.autosoul.runtime.AutoSoulScriptParser
 import com.zionchat.app.data.AppRepository
 import com.zionchat.app.data.AppAutomationTask
 import com.zionchat.app.data.ChatApiClient
@@ -97,6 +99,7 @@ import com.zionchat.app.data.RuntimeShellPlugin
 import com.zionchat.app.data.SavedApp
 import com.zionchat.app.data.WebSearchConfig
 import com.zionchat.app.data.extractRemoteModelId
+import com.zionchat.app.data.isLikelyVisionModel
 import com.zionchat.app.ui.components.TopFadeScrim
 import com.zionchat.app.ui.components.AppSheetDragHandle
 import com.zionchat.app.ui.components.AppHtmlWebView
@@ -872,10 +875,12 @@ fun ChatScreen(navController: NavController) {
         val webSearchConfigSnapshot = webSearchConfig
         val explicitWebSearchRequest = selectedToolSnapshot == "web"
         val explicitAppBuilderRequest = selectedToolSnapshot == "app_builder"
+        val explicitAutoSoulRequest = selectedToolSnapshot == "autosoul"
         val confirmationMatched = pendingAppBuilderConfirmation && isAppBuilderConfirmationReply(trimmed)
         val weakAutoWebSearchIntent =
             selectedToolSnapshot == null &&
                 !explicitAppBuilderRequest &&
+                !explicitAutoSoulRequest &&
                 !confirmationMatched &&
                 attachmentsSnapshot.isEmpty() &&
                 webSearchConfigSnapshot.autoSearchEnabled &&
@@ -885,6 +890,7 @@ fun ChatScreen(navController: NavController) {
                 !explicitWebSearchRequest &&
                 !weakAutoWebSearchIntent &&
                 !explicitAppBuilderRequest &&
+                !explicitAutoSoulRequest &&
                 !confirmationMatched &&
                 shouldEnableAppBuilderForPrompt(trimmed)
 
@@ -972,6 +978,22 @@ fun ChatScreen(navController: NavController) {
                 if (provisionalTitle.isNotBlank()) {
                     repository.updateConversation(latestConversationForTitle.copy(title = provisionalTitle))
                 }
+            }
+
+            if (explicitAutoSoulRequest) {
+                val autoSoulResult =
+                    handleAutoSoulInvocation(
+                        repository = repository,
+                        chatApiClient = chatApiClient,
+                        context = context,
+                        userMessage = userMessage
+                    )
+                repository.appendMessage(
+                    safeConversationId,
+                    Message(role = "assistant", content = autoSoulResult)
+                )
+                selectedTool = null
+                return@launch
             }
 
             val latestDefaultChatModelId = repository.defaultChatModelIdFlow.first()
@@ -2613,7 +2635,7 @@ fun ChatScreen(navController: NavController) {
                         onMessageChange = { messageText = it },
                         onSend = ::sendMessage,
                         onStopStreaming = ::stopStreaming,
-                        sendAllowed = !defaultChatModelId.isNullOrBlank(),
+                        sendAllowed = selectedTool == "autosoul" || !defaultChatModelId.isNullOrBlank(),
                         isStreaming = isStreaming,
                         imeVisible = imeVisible,
                         onInputFocusChanged = { focused ->
@@ -4768,6 +4790,19 @@ private fun ToolMenuPanel(
                                         onClick = { onToolSelect("image") }
                                     )
                                     ToolListItem(
+                                        icon = {
+                                            Icon(
+                                                painter = rememberResourceDrawablePainter(R.drawable.ic_autosoul),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(24.dp),
+                                                tint = TextPrimary
+                                            )
+                                        },
+                                        title = stringResource(R.string.settings_item_autosoul),
+                                        subtitle = stringResource(R.string.chat_tool_autosoul_subtitle),
+                                        onClick = { onToolSelect("autosoul") }
+                                    )
+                                    ToolListItem(
                                         icon = { Icon(AppIcons.MCPTools, null, Modifier.size(24.dp), TextPrimary) },
                                         title = stringResource(R.string.settings_item_mcp_tools),
                                         subtitle = stringResource(R.string.chat_tool_mcp_choose_providers),
@@ -5174,6 +5209,141 @@ private suspend fun handleImageGeneration(
     )
 }
 
+private suspend fun handleAutoSoulInvocation(
+    repository: AppRepository,
+    chatApiClient: ChatApiClient,
+    context: Context,
+    userMessage: Message
+): String {
+    val modelKey = repository.defaultAutoSoulModelIdFlow.first()?.trim().orEmpty()
+    if (modelKey.isBlank()) {
+        return "AutoSoul 模型未配置。请先在 Settings → AutoSoul 里选择支持视觉的模型。"
+    }
+
+    val allModels = repository.modelsFlow.first()
+    val providers = repository.providersFlow.first()
+    val selectedModel =
+        allModels.firstOrNull { it.id == modelKey }
+            ?: allModels.firstOrNull { extractRemoteModelId(it.id) == modelKey }
+            ?: return "AutoSoul 模型不存在：$modelKey。请在 Settings → AutoSoul 重新选择。"
+
+    if (!selectedModel.enabled) {
+        return "AutoSoul 模型已被禁用，请在 Models 里启用后重试。"
+    }
+    if (!isLikelyVisionModel(selectedModel)) {
+        return "当前 AutoSoul 模型不符合视觉模型要求，请在 Settings → AutoSoul 重新选择视觉模型。"
+    }
+
+    val provider =
+        selectedModel.providerId?.let { pid -> providers.firstOrNull { it.id == pid } }
+            ?: providers.firstOrNull()
+    if (provider == null || provider.apiUrl.isBlank() || provider.apiKey.isBlank()) {
+        return "AutoSoul 模型的提供方未正确配置 API URL / API Key。"
+    }
+
+    val plannerMessages =
+        buildList {
+            add(Message(role = "system", content = buildAutoSoulPlannerSystemPrompt()))
+            val prompt = userMessage.content.trim().ifBlank { "请根据当前目标生成 AutoSoul 自动化脚本。" }
+            add(
+                Message(
+                    role = "user",
+                    content = prompt,
+                    attachments = userMessage.attachments
+                )
+            )
+        }
+
+    val plannerResult =
+        chatApiClient.chatCompletions(
+            provider = provider,
+            modelId = extractRemoteModelId(selectedModel.id),
+            messages = plannerMessages,
+            extraHeaders = selectedModel.headers
+        )
+
+    val plannerText =
+        plannerResult.getOrElse { error ->
+            return "AutoSoul 规划失败：${error.message ?: error.toString()}"
+        }.trim()
+    if (plannerText.isBlank()) {
+        return "AutoSoul 规划失败：模型没有返回可执行脚本。"
+    }
+
+    val script =
+        normalizeAutoSoulScriptCandidate(plannerText).getOrElse { error ->
+            val preview = plannerText.take(1500)
+            return "AutoSoul 脚本解析失败：${error.message ?: "unknown"}\n\n$preview"
+        }
+    val steps =
+        AutoSoulScriptParser.parse(script).getOrElse { error ->
+            return "AutoSoul 脚本校验失败：${error.message ?: "unknown"}"
+        }
+
+    AutoSoulAutomationManager.bindOverlayActions(context.applicationContext)
+    val startResult = AutoSoulAutomationManager.start(context.applicationContext, script)
+    startResult.exceptionOrNull()?.let { error ->
+        return "AutoSoul 脚本已生成，但启动失败：${error.message ?: error.toString()}\n\n```json\n$script\n```"
+    }
+
+    return "✅ AutoSoul 已启动（${steps.size} 步）\n\n```json\n$script\n```"
+}
+
+private fun normalizeAutoSoulScriptCandidate(raw: String): Result<String> {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) {
+        return Result.failure(IllegalStateException("empty response"))
+    }
+
+    val candidates = linkedSetOf<String>()
+    candidates += trimmed
+
+    Regex("```(?:json)?\\s*([\\s\\S]*?)```", setOf(RegexOption.IGNORE_CASE))
+        .findAll(trimmed)
+        .forEach { match ->
+            val code = match.groupValues.getOrNull(1)?.trim().orEmpty()
+            if (code.isNotBlank()) candidates += code
+        }
+
+    val arrayStart = trimmed.indexOf('[')
+    val arrayEnd = trimmed.lastIndexOf(']')
+    if (arrayStart >= 0 && arrayEnd > arrayStart) {
+        candidates += trimmed.substring(arrayStart, arrayEnd + 1).trim()
+    }
+
+    val objectStart = trimmed.indexOf('{')
+    val objectEnd = trimmed.lastIndexOf('}')
+    if (objectStart >= 0 && objectEnd > objectStart) {
+        candidates += trimmed.substring(objectStart, objectEnd + 1).trim()
+    }
+
+    candidates.forEach { candidate ->
+        if (AutoSoulScriptParser.parse(candidate).isSuccess) {
+            return Result.success(candidate)
+        }
+    }
+    return Result.failure(IllegalStateException("no valid autosoul json script found"))
+}
+
+private fun buildAutoSoulPlannerSystemPrompt(): String {
+    return buildString {
+        appendLine("你是 AutoSoul 自动化规划器。")
+        appendLine("目标：把用户需求转换为可执行的 Android 自动化 JSON 脚本。")
+        appendLine("输出必须是 JSON，不要 Markdown，不要解释。")
+        appendLine("支持动作：Launch, Tap, Swipe, LongPress, Type, Wait, Back, Home, TapText。")
+        appendLine("每一步格式：{\"action\":\"Tap\",\"x\":\"0.50\",\"y\":\"0.72\"}")
+        appendLine("坐标用 0~1 的比例字符串。")
+        appendLine("Swipe 使用 start/end 与 duration_ms。")
+        appendLine("Type 使用 text。TapText 使用 text。Launch 使用 app 或 package。")
+        appendLine("返回格式只能是数组，示例：")
+        appendLine("[")
+        appendLine("  {\"action\":\"Launch\",\"app\":\"抖音\"},")
+        appendLine("  {\"action\":\"Wait\",\"duration\":\"1.0\"},")
+        appendLine("  {\"action\":\"Swipe\",\"start\":\"[0.50,0.80]\",\"end\":\"[0.50,0.20]\",\"duration_ms\":\"420\"}")
+        appendLine("]")
+    }.trim()
+}
+
 @Composable
 fun ToolListItem(
     icon: @Composable () -> Unit,
@@ -5260,6 +5430,7 @@ private fun BottomInputArea(
         "files" -> "Files"
         "web" -> "Search · ${displaySearchEngineName(webSearchEngine)}"
         "image" -> "Image"
+        "autosoul" -> stringResource(R.string.settings_item_autosoul)
         "mcp" ->
             if (mcpSelectedCount > 0) {
                 stringResource(R.string.chat_mcp_selected_count, mcpSelectedCount)
@@ -5271,12 +5442,14 @@ private fun BottomInputArea(
     }
     val toolIconRes: Int? = when (selectedTool) {
         "files" -> R.drawable.ic_files
+        "autosoul" -> R.drawable.ic_autosoul
         else -> null
     }
     val toolIconVector = when (selectedTool) {
         "files" -> null
         "web" -> AppIcons.Globe
         "image" -> AppIcons.CreateImage
+        "autosoul" -> null
         "mcp" -> AppIcons.MCPTools
         "app_builder" -> AppIcons.AppDeveloper
         else -> AppIcons.Globe
@@ -5787,15 +5960,6 @@ private fun ProviderConfig.isQwenCodeProvider(): Boolean {
         typeValue.equals("qwen", ignoreCase = true) ||
         apiUrl.contains("portal.qwen.ai", ignoreCase = true) ||
         apiUrl.contains("chat.qwen.ai", ignoreCase = true)
-}
-
-private fun isLikelyVisionModel(model: ModelConfig): Boolean {
-    val signal = "${model.id} ${model.displayName} ${extractRemoteModelId(model.id)}".lowercase()
-    return signal.contains("vision") ||
-        signal.contains("vl") ||
-        signal.contains("image") ||
-        signal.contains("multimodal") ||
-        signal.contains("omni")
 }
 
 private data class PlannedMcpToolCall(

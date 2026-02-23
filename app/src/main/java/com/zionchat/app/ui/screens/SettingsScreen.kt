@@ -273,7 +273,14 @@ fun SettingsScreen(navController: NavController) {
                         onClick = { navController.navigate("mcp") }
                     )
                     SettingsItem(
-                        icon = { Icon(AppIcons.MCPTools, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        icon = {
+                            Icon(
+                                painter = rememberResourceDrawablePainter(R.drawable.ic_autosoul),
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
+                                tint = TextPrimary
+                            )
+                        },
                         label = stringResource(R.string.settings_item_autosoul),
                         showChevron = true,
                         onClick = { navController.navigate("autosoul") }
