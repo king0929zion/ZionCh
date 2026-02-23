@@ -5528,6 +5528,11 @@ private data class AutoSoulPlannerDecision(
     val reason: String?
 )
 
+private data class AutoSoulNormalizedStep(
+    val action: String,
+    val args: Map<String, String>
+)
+
 private data class AutoSoulStepTrace(
     val stepNo: Int,
     val action: String,
@@ -5661,11 +5666,16 @@ private suspend fun executeAutoSoulTask(
                 break
             }
 
+            val normalizedStep =
+                normalizeAutoSoulPlannerStep(
+                    actionRaw = decision.action?.trim().orEmpty(),
+                    rawArgs = decision.args
+                )
             val actionName =
-                decision.action?.trim().orEmpty().ifBlank {
+                normalizedStep.action.trim().ifBlank {
                     throw IllegalStateException("AutoSoul 决策缺少 action。")
                 }
-            val currentFingerprint = buildAutoSoulActionFingerprint(actionName, decision.args)
+            val currentFingerprint = buildAutoSoulActionFingerprint(actionName, normalizedStep.args)
             val repeatedSuccessCount =
                 stepTraces
                     .asReversed()
@@ -5676,7 +5686,7 @@ private suspend fun executeAutoSoulTask(
             if (repeatedSuccessCount >= 2) {
                 throw IllegalStateException("AutoSoul 检测到重复动作循环（$actionName），已自动停止。请补充更具体任务目标后重试。")
             }
-            val singleStepScript = buildAutoSoulSingleStepScript(actionName, decision.args)
+            val singleStepScript = buildAutoSoulSingleStepScript(actionName, normalizedStep.args)
             val parsedStep =
                 AutoSoulScriptParser.parse(singleStepScript).getOrElse { error ->
                     throw IllegalStateException("AutoSoul 单步脚本校验失败：${error.message ?: "unknown"}")
@@ -5888,6 +5898,7 @@ private fun buildAutoSoulPlannerRoundPrompt(
         appendLine("请只输出一个 JSON 对象，不要 Markdown：")
         appendLine("完成任务时：{\"status\":\"done\",\"message\":\"...\"}")
         appendLine("继续执行时：{\"status\":\"continue\",\"step\":{\"action\":\"Tap\",\"x\":\"0.50\",\"y\":\"0.72\"},\"reason\":\"...\"}")
+        appendLine("注意：Swipe 的 start/end 必须是完整坐标对（例如 \"0.50,0.78\"），Launch 只能给 app/package。")
     }.trim()
 }
 
@@ -6113,14 +6124,151 @@ private fun buildAutoSoulActionFingerprint(
     }
 }
 
+private fun normalizeAutoSoulPlannerStep(
+    actionRaw: String,
+    rawArgs: Map<String, String>
+): AutoSoulNormalizedStep {
+    val normalizedAction = canonicalizeAutoSoulAction(actionRaw)?.trim().orEmpty().ifBlank { actionRaw.trim() }
+    val normalizedArgs = linkedMapOf<String, String>()
+    rawArgs.forEach { (key, value) ->
+        val canonicalKey = canonicalizeAutoSoulArgKey(key)
+        val canonicalValue = value.trim().removeSurrounding("\"").removeSurrounding("'").trim()
+        if (canonicalKey.isNotBlank() && canonicalValue.isNotBlank()) {
+            normalizedArgs[canonicalKey] = canonicalValue
+        }
+    }
+
+    normalizeAutoSoulCoordinateArg(normalizedArgs, targetKey = "point", xKey = "x", yKey = "y")
+    normalizeAutoSoulCoordinateArg(normalizedArgs, targetKey = "start", xKey = "start_x", yKey = "start_y")
+    normalizeAutoSoulCoordinateArg(normalizedArgs, targetKey = "end", xKey = "end_x", yKey = "end_y")
+
+    if (normalizedAction.equals("Launch", ignoreCase = true) && !hasLaunchTargetArg(normalizedArgs)) {
+        resolveLaunchTargetFromArgs(normalizedArgs, includeLoose = true)?.let { inferred ->
+            normalizedArgs["app"] = inferred
+        }
+    }
+
+    val inferredAction = inferAutoSoulActionFromArgs(normalizedArgs)
+    val correctedAction: String =
+        when {
+            normalizedAction.equals("Launch", ignoreCase = true) &&
+                !hasLaunchTargetArg(normalizedArgs) &&
+                !inferredAction.isNullOrBlank() &&
+                !inferredAction.equals("Launch", ignoreCase = true) -> inferredAction.orEmpty()
+
+            normalizedAction.equals("Tap", ignoreCase = true) &&
+                normalizedArgs["point"].isNullOrBlank() &&
+                (!normalizedArgs["start"].isNullOrBlank() || !normalizedArgs["end"].isNullOrBlank()) -> "Swipe"
+
+            normalizedAction.equals("Swipe", ignoreCase = true) &&
+                normalizedArgs["start"].isNullOrBlank() &&
+                normalizedArgs["end"].isNullOrBlank() &&
+                !normalizedArgs["point"].isNullOrBlank() -> "Tap"
+
+            else -> normalizedAction
+        }
+
+    return AutoSoulNormalizedStep(
+        action = correctedAction,
+        args = normalizedArgs
+    )
+}
+
+private fun canonicalizeAutoSoulArgKey(rawKey: String): String {
+    val normalized =
+        rawKey
+            .trim()
+            .lowercase()
+            .replace("-", "_")
+            .replace(" ", "_")
+    return when (normalized) {
+        "durationms", "duration_millis", "duration_milliseconds", "durationmillis", "durationmilliseconds" -> "duration_ms"
+        "pkg", "packagename", "package_name", "bundle", "bundle_id" -> "package"
+        "appname", "app_name", "application", "application_name" -> "app"
+        "startx", "fromx", "x1" -> "start_x"
+        "starty", "fromy", "y1" -> "start_y"
+        "endx", "tox", "x2" -> "end_x"
+        "endy", "toy", "y2" -> "end_y"
+        "taptext", "tap_text", "clicktext", "click_text", "tap_label" -> "text"
+        else -> normalized
+    }
+}
+
+private fun normalizeAutoSoulCoordinateArg(
+    args: MutableMap<String, String>,
+    targetKey: String,
+    xKey: String,
+    yKey: String
+) {
+    val existed = args[targetKey]?.trim().orEmpty()
+    if (existed.isNotBlank()) return
+    val x = args[xKey]?.trim().orEmpty()
+    val y = args[yKey]?.trim().orEmpty()
+    if (x.isBlank() || y.isBlank()) return
+    args[targetKey] = "$x,$y"
+}
+
+private fun inferAutoSoulActionFromArgs(args: Map<String, String>): String? {
+    if (hasLaunchTargetArg(args)) return "Launch"
+    val hasSwipeSignal =
+        !args["start"].isNullOrBlank() ||
+            !args["end"].isNullOrBlank() ||
+            !args["direction"].isNullOrBlank() ||
+            !args["dir"].isNullOrBlank() ||
+            !args["swipe_direction"].isNullOrBlank()
+    if (hasSwipeSignal) return "Swipe"
+    if (!args["point"].isNullOrBlank()) return "Tap"
+    if (!args["text"].isNullOrBlank()) return "Type"
+    return null
+}
+
+private fun hasLaunchTargetArg(args: Map<String, String>): Boolean {
+    return !resolveLaunchTargetFromArgs(args, includeLoose = false).isNullOrBlank()
+}
+
+private fun resolveLaunchTargetFromArgs(
+    args: Map<String, String>,
+    includeLoose: Boolean
+): String? {
+    val candidates =
+        buildList {
+            add(args["package"])
+            add(args["app"])
+            add(args["target"])
+            add(args["name"])
+            if (includeLoose) {
+                add(args["value"])
+                add(args["text"])
+            }
+        }
+    return candidates
+        .asSequence()
+        .map { it?.trim().orEmpty() }
+        .firstOrNull { candidate ->
+            candidate.isNotBlank() &&
+                candidate.length <= 120 &&
+                !looksLikeAutoSoulCoordinateValue(candidate)
+        }
+}
+
+private fun looksLikeAutoSoulCoordinateValue(value: String): Boolean {
+    val trimmed = value.trim()
+    if (trimmed.isBlank()) return false
+    if (Regex("""^[-+]?\d*\.?\d+%?$""").matches(trimmed)) return true
+    if (Regex("""^\[?\(?\s*[-+]?\d*\.?\d+%?\s*[,，]\s*[-+]?\d*\.?\d+%?\s*\)?\]?$""").matches(trimmed)) return true
+    return false
+}
+
 private fun buildAutoSoulPlannerSystemPrompt(): String {
     return buildString {
         appendLine("你是 AutoSoul 执行智能体。")
         appendLine("目标：根据任务和历史执行结果，在每一轮给出“下一步动作”，而不是一次性给出所有步骤。")
         appendLine("输出必须是 JSON 对象，不要 Markdown，不要解释文本。")
         appendLine("支持动作：Launch, Tap, Swipe, LongPress, Type, Wait, Back, Home, TapText。")
-        appendLine("坐标必须是 0~1 比例字符串。")
-        appendLine("Swipe 使用 start/end 与 duration_ms。Type/TapText 使用 text。Launch 使用 app 或 package。")
+        appendLine("坐标必须是 0~1 比例字符串，必须使用一对坐标（例如 \"0.50,0.72\" 或 \"[0.50,0.72]\"）。")
+        appendLine("Swipe 必须给 start 与 end，且二者都必须是坐标对；禁止只给单个数字。")
+        appendLine("Launch 只能提供 app 或 package，禁止给 start/end/point 坐标参数。")
+        appendLine("Type/TapText 使用 text。")
         appendLine("任务完成时输出：{\"status\":\"done\",\"message\":\"...\"}")
         appendLine("需要继续时输出：{\"status\":\"continue\",\"step\":{\"action\":\"Tap\",\"x\":\"0.50\",\"y\":\"0.72\"},\"reason\":\"...\"}")
         appendLine("如果上一步失败，优先调整策略并继续，不要直接 done。")
@@ -6203,9 +6351,16 @@ private fun appendAutoSoulArgsFromText(
 ) {
     val text = raw?.trim().orEmpty()
     if (text.isBlank()) return
+    val normalizedText =
+        text
+            .replace("，", ",")
+            .replace("；", ";")
+            .replace("：", ":")
     val matcher =
-        Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*("[^"]*"|'[^']*'|\[[^\]]*]|[^\n,;]+)""")
-    matcher.findAll(text).forEach { match ->
+        Regex(
+            """([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|\[[^\]]*]|\([^)]+\)|\{[^}]+}|[^;]+?)(?=\s*(?:[,;]\s*[A-Za-z_][A-Za-z0-9_]*\s*[:=]|$))"""
+        )
+    matcher.findAll(normalizedText).forEach { match ->
         val key = match.groupValues.getOrNull(1)?.trim().orEmpty()
         if (key.isBlank()) return@forEach
         val normalizedKey =
@@ -6231,7 +6386,7 @@ private fun appendAutoSoulArgsFromText(
         }
     }
     if (!target.containsKey("point")) {
-        val coordMatch = Regex("""([-+]?\d*\.?\d+%?)\s*[,，\s]\s*([-+]?\d*\.?\d+%?)""").find(text)
+        val coordMatch = Regex("""([-+]?\d*\.?\d+%?)\s*[,，\s]\s*([-+]?\d*\.?\d+%?)""").find(normalizedText)
         if (coordMatch != null) {
             val x = coordMatch.groupValues.getOrNull(1)?.trim().orEmpty()
             val y = coordMatch.groupValues.getOrNull(2)?.trim().orEmpty()
@@ -6249,11 +6404,16 @@ private fun parseAutoSoulLooseDecision(raw: String): AutoSoulPlannerDecision? {
     val doneSignal =
         Regex("(?i)\\b(done|finish(?:ed)?|complete(?:d)?|stop)\\b|完成|结束|停止")
             .containsMatchIn(trimmed)
-    val actionMatch =
+    val actionRegex =
         Regex(
             "(?i)\\b(launch|open|start|tap|click|touch|press|swipe|scroll(?:_[a-z]+)?|scrollup|scrollleft|scrollright|scroll_down|long[_ ]?press|longtap|type|input|wait|sleep|delay|back|home|tap[_ ]?text|click[_ ]?text)\\b"
-        ).find(trimmed)
-    if (actionMatch == null) {
+        )
+    val action =
+        actionRegex
+            .findAll(trimmed)
+            .mapNotNull { match -> canonicalizeAutoSoulAction(match.value) }
+            .lastOrNull()
+    if (action == null) {
         return if (doneSignal) {
             AutoSoulPlannerDecision(
                 done = true,
@@ -6267,7 +6427,6 @@ private fun parseAutoSoulLooseDecision(raw: String): AutoSoulPlannerDecision? {
         }
     }
 
-    val action = canonicalizeAutoSoulAction(actionMatch.value) ?: return null
     val args = linkedMapOf<String, String>()
     appendAutoSoulArgsFromText(args, trimmed)
     return AutoSoulPlannerDecision(

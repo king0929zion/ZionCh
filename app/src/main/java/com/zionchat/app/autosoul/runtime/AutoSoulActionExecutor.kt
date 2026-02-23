@@ -42,7 +42,11 @@ class AutoSoulActionExecutor(
             }
 
             "launch" -> {
-                val target = step.args["package"].orEmpty().ifBlank { step.args["app"].orEmpty() }
+                val target = resolveLaunchTarget(step.args)
+                if (target.isNullOrBlank()) {
+                    onLog("操作结果(Launch)：失败（缺少 app/package 参数）")
+                    return false
+                }
                 launchApp(target, onLog)
             }
 
@@ -90,7 +94,7 @@ class AutoSoulActionExecutor(
 
             "swipe" -> {
                 val direction = resolveSwipeDirection(rawAction, step.args)
-                val defaultSwipe = defaultSwipePoints(direction)
+                val defaultSwipe = defaultSwipePoints(direction) ?: defaultSwipePoints("up")
                 val startRaw =
                     firstNonBlank(
                         step.args["start"],
@@ -111,8 +115,16 @@ class AutoSoulActionExecutor(
                         coordinatePairString(step.args, "x2", "y2"),
                         defaultSwipe?.second?.let { "${it.first},${it.second}" }
                     )
-                val start = parsePoint(startRaw.orEmpty())
-                val end = parsePoint(endRaw.orEmpty())
+                val start =
+                    parseSwipePoint(
+                        raw = startRaw.orEmpty(),
+                        fallback = defaultSwipe?.first
+                    )
+                val end =
+                    parseSwipePoint(
+                        raw = endRaw.orEmpty(),
+                        fallback = defaultSwipe?.second
+                    )
                 if (start == null || end == null) {
                     onLog(
                         "操作结果(Swipe)：失败（坐标解析失败 start=${startRaw.orEmpty()} end=${endRaw.orEmpty()}）"
@@ -158,6 +170,29 @@ class AutoSoulActionExecutor(
                 false
             }
         }
+    }
+
+    private fun resolveLaunchTarget(args: Map<String, String>): String? {
+        val explicit =
+            firstNonBlank(
+                args["package"],
+                args["app"],
+                args["app_name"],
+                args["target"],
+                args["name"]
+            )
+        if (!explicit.isNullOrBlank()) return explicit
+
+        val loose = firstNonBlank(args["value"], args["text"])
+        if (loose.isNullOrBlank()) return null
+        return if (looksLikeCoordinatePayload(loose)) null else loose
+    }
+
+    private fun looksLikeCoordinatePayload(raw: String): Boolean {
+        if (raw.isBlank()) return false
+        if (parsePoint(raw) != null) return true
+        val normalized = raw.trim()
+        return Regex("""^[-+]?\d*\.?\d+%?\s*[,，]\s*[-+]?\d*\.?\d+%?$""").matches(normalized)
     }
 
     private fun normalizeAction(rawAction: String): String {
@@ -234,6 +269,22 @@ class AutoSoulActionExecutor(
             "right" -> (0.18 to 0.52) to (0.82 to 0.52)
             else -> null
         }
+    }
+
+    private fun parseSwipePoint(
+        raw: String,
+        fallback: Pair<Double, Double>?
+    ): Pair<Double, Double>? {
+        if (raw.isBlank()) return fallback
+        parsePoint(raw)?.let { return it }
+        val coordinates = extractCoordinateValues(raw)
+        if (coordinates.size >= 2) {
+            return coordinates[0] to coordinates[1]
+        }
+        if (coordinates.size == 1 && fallback != null) {
+            return coordinates[0] to fallback.second
+        }
+        return fallback
     }
 
     private fun launchApp(
@@ -415,16 +466,26 @@ class AutoSoulActionExecutor(
                 .removeSuffix("]")
                 .removePrefix("(")
                 .removeSuffix(")")
+                .removePrefix("（")
+                .removeSuffix("）")
+                .removePrefix("【")
+                .removeSuffix("】")
                 .replace("，", ",")
                 .replace("；", ",")
                 .replace(";", ",")
                 .replace("、", ",")
                 .trim()
         val parts = cleaned.split(Regex("[,\\s]+")).map { it.trim() }.filter { it.isNotBlank() }
-        if (parts.size < 2) return null
-        val x = parseCoordinateValue(parts[0]) ?: return null
-        val y = parseCoordinateValue(parts[1]) ?: return null
-        return x to y
+        val parsedValues = parts.mapNotNull { parseCoordinateValue(it) }
+        if (parsedValues.size >= 2) {
+            return parsedValues[0] to parsedValues[1]
+        }
+        val extracted = extractCoordinateValues(cleaned)
+        return if (extracted.size >= 2) {
+            extracted[0] to extracted[1]
+        } else {
+            null
+        }
     }
 
     private fun parseCoordinateValue(raw: String): Double? {
@@ -434,9 +495,24 @@ class AutoSoulActionExecutor(
                 .trim()
         if (token.isBlank()) return null
         if (token.endsWith("%")) {
-            return token.removeSuffix("%").trim().toDoubleOrNull()?.div(100.0)
+            token.removeSuffix("%").trim().toDoubleOrNull()?.let { return it.div(100.0) }
         }
-        return token.toDoubleOrNull()
+        token.toDoubleOrNull()?.let { return it }
+
+        val numberPart = Regex("[-+]?\\d*\\.?\\d+%?").find(token)?.value?.trim().orEmpty()
+        if (numberPart.isBlank()) return null
+        if (numberPart.endsWith("%")) {
+            return numberPart.removeSuffix("%").trim().toDoubleOrNull()?.div(100.0)
+        }
+        return numberPart.toDoubleOrNull()
+    }
+
+    private fun extractCoordinateValues(raw: String): List<Double> {
+        if (raw.isBlank()) return emptyList()
+        return Regex("[-+]?\\d*\\.?\\d+%?")
+            .findAll(raw)
+            .mapNotNull { parseCoordinateValue(it.value) }
+            .toList()
     }
 
     private fun toAbsolutePoint(
