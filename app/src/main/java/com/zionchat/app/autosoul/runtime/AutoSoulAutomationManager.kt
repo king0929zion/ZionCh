@@ -33,7 +33,7 @@ object AutoSoulAutomationManager {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val gson = Gson()
-    private val logListType = object : TypeToken<List<String>>() {}.type
+    private val logListType = object : TypeToken<List<Any?>>() {}.type
     private val logsLock = Any()
     private var runJob: Job? = null
     private var appContext: Context? = null
@@ -254,9 +254,12 @@ object AutoSoulAutomationManager {
             val prefs = context.getSharedPreferences(LOG_PREFS_NAME, Context.MODE_PRIVATE)
             val raw = prefs.getString(LOG_PREFS_KEY, "").orEmpty()
             val loaded =
-                runCatching { gson.fromJson<List<String>>(raw, logListType) }
-                    .getOrDefault(emptyList())
-                    .mapNotNull { it?.trim()?.takeIf { line -> line.isNotBlank() } }
+                runCatching { gson.fromJson<List<Any?>>(raw, logListType) }
+                    .getOrNull()
+                    .orEmpty()
+                    .mapNotNull { item ->
+                        item?.toString()?.trim()?.takeIf { line -> line.isNotBlank() }
+                    }
                     .takeLast(MAX_LOG_SIZE)
             if (loaded.isNotEmpty()) {
                 _logs.value = loaded
