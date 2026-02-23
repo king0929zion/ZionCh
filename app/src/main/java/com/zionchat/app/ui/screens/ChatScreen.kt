@@ -110,6 +110,8 @@ import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import coil3.compose.AsyncImage
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -1563,7 +1565,7 @@ fun ChatScreen(navController: NavController) {
                             modelId = modelId,
                             messages = requestMessages,
                             extraHeaders = selectedModel.headers,
-                            reasoningEffort = if (chatThinkingEnabled) selectedModel.reasoningEffort else null,
+                            reasoningEffort = if (chatThinkingEnabled) selectedModel.reasoningEffort else "none",
                             conversationId = safeConversationId
                         ).takeWhile { delta ->
                             val now = System.currentTimeMillis()
@@ -4388,7 +4390,7 @@ fun SidebarContent(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Search",
+                    text = stringResource(R.string.search),
                     color = TextSecondary,
                     fontSize = 15.sp
                 )
@@ -4417,12 +4419,12 @@ fun SidebarContent(
         ) {
             SidebarMenuItem(
                 icon = { Icon(AppIcons.NewChat, null, Modifier.size(22.dp), TextPrimary) },
-                label = "New chat",
+                label = stringResource(R.string.new_chat),
                 onClick = onNewChat
             )
             SidebarMenuItem(
                 icon = { Icon(AppIcons.ChatGPTLogo, null, Modifier.size(22.dp), TextPrimary) },
-                label = "Images",
+                label = stringResource(R.string.images),
                 onClick = { }
             )
             SidebarMenuItem(
@@ -4446,7 +4448,7 @@ fun SidebarContent(
                         tint = Color.Unspecified
                     )
                 },
-                label = "Apps",
+                label = stringResource(R.string.apps),
                 onClick = {
                     onClose()
                     navController.navigate("apps")
@@ -4477,7 +4479,7 @@ fun SidebarContent(
                         .padding(horizontal = 12.dp, vertical = 12.dp)
                 ) {
                     Text(
-                        text = conversation.title.ifBlank { "New chat" },
+                        text = conversation.title.ifBlank { stringResource(R.string.new_chat) },
                         fontSize = 15.sp,
                         color = TextPrimary,
                         maxLines = 1
@@ -4531,7 +4533,7 @@ fun SidebarContent(
                         color = TextPrimary
                     )
                     Text(
-                        text = "Personal",
+                        text = stringResource(R.string.profile_personal),
                         fontSize = 13.sp,
                         color = TextSecondary
                     )
@@ -5276,27 +5278,50 @@ private fun ChatThinkingToggleButton(
     enabled: Boolean,
     onToggle: (Boolean) -> Unit
 ) {
+    val trackColor by animateColorAsState(
+        targetValue = if (enabled) Color(0xFF18181B) else Color(0xFFE4E4E7),
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "thinking_switch_track"
+    )
+    val thumbOffsetX by animateDpAsState(
+        targetValue = if (enabled) 23.dp else 3.dp,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "thinking_switch_thumb"
+    )
     Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (enabled) TextPrimary else GrayLighter, RoundedCornerShape(14.dp))
-            .pressableScale(pressedScale = 0.97f, onClick = { onToggle(!enabled) })
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = stringResource(R.string.chat_model_picker_thinking_short),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = if (enabled) Surface else TextPrimary
+            text = stringResource(R.string.chat_model_picker_thinking_label),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = TextSecondary
         )
         Box(
             modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(if (enabled) Color(0xFF30D158) else Color(0xFF8E8E93))
+                .width(52.dp)
+                .height(32.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(trackColor, RoundedCornerShape(10.dp))
+                .pressableScale(pressedScale = 0.98f, onClick = { onToggle(!enabled) })
         )
+        {
+            Box(
+                modifier = Modifier
+                    .offset(x = thumbOffsetX, y = 3.dp)
+                    .size(26.dp)
+                    .shadow(
+                        elevation = 2.dp,
+                        shape = RoundedCornerShape(8.dp),
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.15f),
+                        spotColor = Color.Black.copy(alpha = 0.15f)
+                    )
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.White, RoundedCornerShape(8.dp))
+            )
+        }
     }
 }
 
@@ -5418,6 +5443,25 @@ private data class AutoSoulExecutionResult(
     val timedOut: Boolean
 )
 
+private data class AutoSoulPlannerDecision(
+    val done: Boolean,
+    val message: String?,
+    val action: String?,
+    val args: Map<String, String>,
+    val reason: String?
+)
+
+private data class AutoSoulStepTrace(
+    val stepNo: Int,
+    val action: String,
+    val args: Map<String, String>,
+    val success: Boolean,
+    val statusText: String,
+    val error: String?,
+    val logs: List<String>,
+    val timedOut: Boolean
+)
+
 private suspend fun handleAutoSoulInvocation(
     repository: AppRepository,
     chatApiClient: ChatApiClient,
@@ -5490,45 +5534,115 @@ private suspend fun executeAutoSoulTask(
             throw IllegalStateException("AutoSoul 模型的提供方未正确配置 API URL / API Key。")
         }
 
-        val plannerMessages =
-            buildList {
-                add(Message(role = "system", content = buildAutoSoulPlannerSystemPrompt()))
-                add(
-                    Message(
-                        role = "user",
-                        content = taskPrompt.trim().ifBlank { "请根据当前目标生成 AutoSoul 自动化脚本。" },
-                        attachments = attachments
+        val maxAgentRounds = 14
+        val stepTraces = mutableListOf<AutoSoulStepTrace>()
+        var finishMessage: String? = null
+
+        for (round in 1..maxAgentRounds) {
+            val plannerMessages =
+                buildList {
+                    add(Message(role = "system", content = buildAutoSoulPlannerSystemPrompt()))
+                    add(
+                        Message(
+                            role = "user",
+                            content =
+                                buildAutoSoulPlannerRoundPrompt(
+                                    taskPrompt = taskPrompt,
+                                    currentRound = round,
+                                    maxRounds = maxAgentRounds,
+                                    traces = stepTraces
+                                ),
+                            attachments = if (round == 1) attachments else null
+                        )
                     )
-                )
+                }
+
+            val plannerText =
+                chatApiClient.chatCompletions(
+                    provider = provider,
+                    modelId = extractRemoteModelId(selectedModel.id),
+                    messages = plannerMessages,
+                    extraHeaders = selectedModel.headers
+                ).getOrElse { error ->
+                    throw IllegalStateException("AutoSoul 决策失败：${error.message ?: error.toString()}")
+                }.trim()
+            if (plannerText.isBlank()) {
+                throw IllegalStateException("AutoSoul 决策失败：模型没有返回有效内容。")
             }
 
-        val plannerText =
-            chatApiClient.chatCompletions(
-                provider = provider,
-                modelId = extractRemoteModelId(selectedModel.id),
-                messages = plannerMessages,
-                extraHeaders = selectedModel.headers
-            ).getOrElse { error ->
-                throw IllegalStateException("AutoSoul 规划失败：${error.message ?: error.toString()}")
-            }.trim()
-        if (plannerText.isBlank()) {
-            throw IllegalStateException("AutoSoul 规划失败：模型没有返回可执行脚本。")
+            val decision =
+                parseAutoSoulPlannerDecision(plannerText).getOrElse { error ->
+                    throw IllegalStateException("AutoSoul 决策解析失败：${error.message ?: "unknown"}")
+                }
+
+            if (decision.done) {
+                finishMessage = decision.message?.trim()?.ifBlank { null } ?: "执行完成"
+                break
+            }
+
+            val actionName =
+                decision.action?.trim().orEmpty().ifBlank {
+                    throw IllegalStateException("AutoSoul 决策缺少 action。")
+                }
+            val singleStepScript = buildAutoSoulSingleStepScript(actionName, decision.args)
+            val parsedStep =
+                AutoSoulScriptParser.parse(singleStepScript).getOrElse { error ->
+                    throw IllegalStateException("AutoSoul 单步脚本校验失败：${error.message ?: "unknown"}")
+                }.firstOrNull() ?: throw IllegalStateException("AutoSoul 单步脚本为空。")
+
+            val execution =
+                awaitAutoSoulCompletion(
+                    context = context.applicationContext,
+                    script = singleStepScript,
+                    stepCount = 1,
+                    timeoutMs = 95_000L
+                )
+            stepTraces +=
+                AutoSoulStepTrace(
+                    stepNo = stepTraces.size + 1,
+                    action = parsedStep.action,
+                    args = parsedStep.args,
+                    success = execution.success,
+                    statusText = execution.statusText,
+                    error = execution.error,
+                    logs = execution.logs.takeLast(12),
+                    timedOut = execution.timedOut
+                )
         }
 
-        val script =
-            normalizeAutoSoulScriptCandidate(plannerText).getOrElse { error ->
-                throw IllegalStateException("AutoSoul 脚本解析失败：${error.message ?: "unknown"}")
+        val exhaustedRounds = finishMessage == null && stepTraces.size >= maxAgentRounds
+        val timedOut = stepTraces.any { it.timedOut }
+        val success = finishMessage != null
+        val errorText =
+            when {
+                success -> null
+                exhaustedRounds -> "达到最大执行轮次（$maxAgentRounds）仍未完成任务。"
+                timedOut -> stepTraces.lastOrNull { it.timedOut }?.error ?: "执行超时"
+                else -> stepTraces.lastOrNull()?.error ?: "任务未完成"
             }
-        val steps =
-            AutoSoulScriptParser.parse(script).getOrElse { error ->
-                throw IllegalStateException("AutoSoul 脚本校验失败：${error.message ?: "unknown"}")
+        val statusText =
+            when {
+                success -> finishMessage ?: "执行完成"
+                exhaustedRounds -> "达到最大执行轮次"
+                else -> stepTraces.lastOrNull()?.statusText?.ifBlank { "执行失败" } ?: "执行失败"
             }
+        val mergedLogs =
+            stepTraces
+                .flatMap { trace ->
+                    val prefix = "Step ${trace.stepNo}(${trace.action})"
+                    trace.logs.map { line -> "$prefix | $line" }
+                }
+                .takeLast(80)
+                .ifEmpty { AutoSoulAutomationManager.logs.value.takeLast(40) }
 
-        awaitAutoSoulCompletion(
-            context = context.applicationContext,
-            script = script,
-            stepCount = steps.size,
-            timeoutMs = 180_000L
+        AutoSoulExecutionResult(
+            success = success,
+            script = buildAutoSoulExecutionTraceJson(taskPrompt, stepTraces, finishMessage, maxAgentRounds),
+            stepCount = stepTraces.size,
+            statusText = statusText,
+            error = errorText,
+            logs = mergedLogs,
+            timedOut = timedOut
         )
     }
 }
@@ -5646,23 +5760,222 @@ private fun normalizeAutoSoulScriptCandidate(raw: String): Result<String> {
     return Result.failure(IllegalStateException("no valid autosoul json script found"))
 }
 
+private fun buildAutoSoulPlannerRoundPrompt(
+    taskPrompt: String,
+    currentRound: Int,
+    maxRounds: Int,
+    traces: List<AutoSoulStepTrace>
+): String {
+    return buildString {
+        appendLine("任务目标：")
+        appendLine(taskPrompt.trim().ifBlank { "请完成当前用户请求。" })
+        appendLine()
+        appendLine("当前轮次：$currentRound / $maxRounds")
+        appendLine()
+        if (traces.isEmpty()) {
+            appendLine("当前还未执行任何步骤，请给出第一步动作。")
+        } else {
+            appendLine("历史执行结果（最近优先）：")
+            traces.takeLast(6).forEach { trace ->
+                append("- Step ")
+                append(trace.stepNo)
+                append(" | action=")
+                append(trace.action)
+                append(" | result=")
+                append(if (trace.success) "success" else "failed")
+                append(" | status=")
+                append(trace.statusText.ifBlank { if (trace.success) "done" else "failed" })
+                trace.error?.trim()?.takeIf { it.isNotBlank() }?.let { err ->
+                    append(" | error=")
+                    append(err.take(120))
+                }
+                append('\n')
+            }
+        }
+        appendLine()
+        appendLine("请只输出一个 JSON 对象，不要 Markdown：")
+        appendLine("完成任务时：{\"status\":\"done\",\"message\":\"...\"}")
+        appendLine("继续执行时：{\"status\":\"continue\",\"step\":{\"action\":\"Tap\",\"x\":\"0.50\",\"y\":\"0.72\"},\"reason\":\"...\"}")
+    }.trim()
+}
+
+private fun parseAutoSoulPlannerDecision(raw: String): Result<AutoSoulPlannerDecision> {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return Result.failure(IllegalStateException("empty decision"))
+
+    val objectCandidates = linkedSetOf<String>()
+    Regex("```(?:json)?\\s*([\\s\\S]*?)```", setOf(RegexOption.IGNORE_CASE))
+        .findAll(trimmed)
+        .forEach { match ->
+            val body = match.groupValues.getOrNull(1)?.trim().orEmpty()
+            if (body.startsWith("{") && body.endsWith("}")) objectCandidates += body
+        }
+    val objStart = trimmed.indexOf('{')
+    val objEnd = trimmed.lastIndexOf('}')
+    if (objStart >= 0 && objEnd > objStart) {
+        objectCandidates += trimmed.substring(objStart, objEnd + 1).trim()
+    }
+
+    objectCandidates.forEach { candidate ->
+        val obj = runCatching { JsonParser.parseString(candidate).asJsonObject }.getOrNull() ?: return@forEach
+        parseAutoSoulPlannerDecisionFromObject(obj)?.let { return Result.success(it) }
+    }
+
+    val fallbackScript = normalizeAutoSoulScriptCandidate(trimmed).getOrNull()
+    if (!fallbackScript.isNullOrBlank()) {
+        val steps = AutoSoulScriptParser.parse(fallbackScript).getOrNull().orEmpty()
+        val firstStep = steps.firstOrNull()
+        if (firstStep != null) {
+            return Result.success(
+                AutoSoulPlannerDecision(
+                    done = false,
+                    message = null,
+                    action = firstStep.action,
+                    args = firstStep.args,
+                    reason = null
+                )
+            )
+        }
+    }
+
+    return Result.failure(IllegalStateException("invalid decision json"))
+}
+
+private fun parseAutoSoulPlannerDecisionFromObject(obj: JsonObject): AutoSoulPlannerDecision? {
+    val status = obj.readString("status")?.trim()?.lowercase()
+    val doneFlag = obj.readBoolean("done") ?: false
+    val doneByStatus =
+        status == "done" || status == "finish" || status == "finished" ||
+            status == "complete" || status == "completed" || status == "stop"
+    if (doneFlag || doneByStatus) {
+        return AutoSoulPlannerDecision(
+            done = true,
+            message =
+                obj.readString("message")
+                    ?: obj.readString("result")
+                    ?: obj.readString("summary"),
+            action = null,
+            args = emptyMap(),
+            reason = obj.readString("reason")
+        )
+    }
+
+    val stepObj =
+        when {
+            obj.get("step")?.isJsonObject == true -> obj.getAsJsonObject("step")
+            else -> obj
+        }
+    val action =
+        stepObj.readString("action")
+            ?: obj.readString("action")
+            ?: return null
+    val args = linkedMapOf<String, String>()
+
+    if (stepObj.get("args")?.isJsonObject == true) {
+        stepObj.getAsJsonObject("args").entrySet().forEach { (key, value) ->
+            value.toAutoSoulValueString()?.let { args[key] = it }
+        }
+    }
+    stepObj.entrySet().forEach { (key, value) ->
+        if (key == "action" || key == "args" || key == "status" || key == "done" || key == "message" || key == "reason") return@forEach
+        value.toAutoSoulValueString()?.let { args.putIfAbsent(key, it) }
+    }
+
+    return AutoSoulPlannerDecision(
+        done = false,
+        message = null,
+        action = action,
+        args = args,
+        reason = obj.readString("reason") ?: stepObj.readString("reason")
+    )
+}
+
+private fun buildAutoSoulSingleStepScript(
+    action: String,
+    args: Map<String, String>
+): String {
+    val step = linkedMapOf<String, String>()
+    step["action"] = action.trim()
+    args.forEach { (key, value) ->
+        val k = key.trim()
+        val v = value.trim()
+        if (k.isNotBlank() && v.isNotBlank()) {
+            step[k] = v
+        }
+    }
+    return GsonBuilder().disableHtmlEscaping().create().toJson(listOf(step))
+}
+
+private fun buildAutoSoulExecutionTraceJson(
+    taskPrompt: String,
+    traces: List<AutoSoulStepTrace>,
+    finishMessage: String?,
+    maxRounds: Int
+): String {
+    val payload = linkedMapOf<String, Any?>()
+    payload["task"] = taskPrompt.trim()
+    payload["max_rounds"] = maxRounds
+    payload["finished"] = finishMessage != null
+    payload["finish_message"] = finishMessage
+    payload["steps"] =
+        traces.map { trace ->
+            linkedMapOf<String, Any?>(
+                "step" to trace.stepNo,
+                "action" to trace.action,
+                "args" to trace.args,
+                "success" to trace.success,
+                "status" to trace.statusText,
+                "error" to trace.error,
+                "timed_out" to trace.timedOut
+            )
+        }
+    return GsonBuilder().disableHtmlEscaping().create().toJson(payload)
+}
+
 private fun buildAutoSoulPlannerSystemPrompt(): String {
     return buildString {
-        appendLine("你是 AutoSoul 自动化规划器。")
-        appendLine("目标：把用户需求转换为可执行的 Android 自动化 JSON 脚本。")
-        appendLine("输出必须是 JSON，不要 Markdown，不要解释。")
+        appendLine("你是 AutoSoul 执行智能体。")
+        appendLine("目标：根据任务和历史执行结果，在每一轮给出“下一步动作”，而不是一次性给出所有步骤。")
+        appendLine("输出必须是 JSON 对象，不要 Markdown，不要解释文本。")
         appendLine("支持动作：Launch, Tap, Swipe, LongPress, Type, Wait, Back, Home, TapText。")
-        appendLine("每一步格式：{\"action\":\"Tap\",\"x\":\"0.50\",\"y\":\"0.72\"}")
-        appendLine("坐标用 0~1 的比例字符串。")
-        appendLine("Swipe 使用 start/end 与 duration_ms。")
-        appendLine("Type 使用 text。TapText 使用 text。Launch 使用 app 或 package。")
-        appendLine("返回格式只能是数组，示例：")
-        appendLine("[")
-        appendLine("  {\"action\":\"Launch\",\"app\":\"抖音\"},")
-        appendLine("  {\"action\":\"Wait\",\"duration\":\"1.0\"},")
-        appendLine("  {\"action\":\"Swipe\",\"start\":\"[0.50,0.80]\",\"end\":\"[0.50,0.20]\",\"duration_ms\":\"420\"}")
-        appendLine("]")
+        appendLine("坐标必须是 0~1 比例字符串。")
+        appendLine("Swipe 使用 start/end 与 duration_ms。Type/TapText 使用 text。Launch 使用 app 或 package。")
+        appendLine("任务完成时输出：{\"status\":\"done\",\"message\":\"...\"}")
+        appendLine("需要继续时输出：{\"status\":\"continue\",\"step\":{\"action\":\"Tap\",\"x\":\"0.50\",\"y\":\"0.72\"},\"reason\":\"...\"}")
+        appendLine("如果上一步失败，优先调整策略并继续，不要直接 done。")
     }.trim()
+}
+
+private fun JsonObject.readString(key: String): String? {
+    val element = get(key) ?: return null
+    return element.toAutoSoulValueString()
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+}
+
+private fun JsonObject.readBoolean(key: String): Boolean? {
+    val element = get(key) ?: return null
+    val primitive = element.takeIf { it.isJsonPrimitive }?.asJsonPrimitive ?: return null
+    return when {
+        primitive.isBoolean -> primitive.asBoolean
+        primitive.isString -> primitive.asString.trim().equals("true", ignoreCase = true)
+        primitive.isNumber -> primitive.asInt != 0
+        else -> null
+    }
+}
+
+private fun JsonElement.toAutoSoulValueString(): String? {
+    if (isJsonNull) return null
+    if (isJsonPrimitive) {
+        val primitive = asJsonPrimitive
+        return when {
+            primitive.isString -> primitive.asString
+            primitive.isBoolean -> primitive.asBoolean.toString()
+            primitive.isNumber -> primitive.asNumber.toString()
+            else -> primitive.toString()
+        }
+    }
+    return toString()
 }
 
 @Composable

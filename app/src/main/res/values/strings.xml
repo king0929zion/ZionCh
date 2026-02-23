@@ -35,6 +35,7 @@
 
     <string name="profile_default_name">Kendall Williamson</string>
     <string name="settings_group_my_chatgpt">My ZionChat</string>
+    <string name="profile_personal">Personal</string>
     <string name="settings_item_personalization">Personalization</string>
     <string name="settings_group_appearance">Appearance</string>
     <string name="settings_item_appearance">Appearance</string>
@@ -155,6 +156,7 @@
     <string name="chat_tool_autosoul_subtitle">Plan and run phone automation</string>
     <string name="chat_model_picker_title">Select default chat model</string>
     <string name="chat_model_picker_thinking_short">Thinking</string>
+    <string name="chat_model_picker_thinking_label">思考 / Thinking</string>
     <string name="chat_model_picker_empty">No models available</string>
     <string name="chat_model_switched_toast">Default chat model switched to %1$s</string>
     <string name="search_settings_engine">Search engine</string>
