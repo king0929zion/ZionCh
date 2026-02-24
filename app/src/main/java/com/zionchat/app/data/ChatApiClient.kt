@@ -1890,14 +1890,30 @@ class ChatApiClient {
             payload["tool_choice"] = if (isNoopQwenToolList(qwenTools)) "none" else "auto"
             payload["stream_options"] = mapOf("include_usage" to true)
         }
-        enableThinking?.let { payload["extra_body"] = mapOf("enable_thinking" to it) }
+        enableThinking?.let { thinkingEnabled ->
+            // Send both forms for broader OpenAI-compatible provider coverage:
+            // - top-level enable_thinking
+            // - extra_body.enable_thinking (qwen-code / dashscope style)
+            payload["enable_thinking"] = thinkingEnabled
+
+            val extraBody = linkedMapOf<String, Any>("enable_thinking" to thinkingEnabled)
+            // Kimi native endpoint also accepts thinking.type.
+            if (isKimiProvider(provider)) {
+                extraBody["thinking"] =
+                    mapOf(
+                        "type" to if (thinkingEnabled) "enabled" else "disabled"
+                    )
+            }
+            payload["extra_body"] = extraBody
+        }
         if (isGrok2Api(provider)) {
             normalizeReasoningEffort(reasoningEffort)?.let { payload["reasoning_effort"] = it }
         }
         val body = gson.toJson(payload)
-        val fallbackBodyWithoutEnableThinking =
-            if (enableThinking != null && payload.containsKey("extra_body")) {
+        val fallbackBodyWithoutThinkingParams =
+            if (enableThinking != null && (payload.containsKey("enable_thinking") || payload.containsKey("extra_body"))) {
                 val fallbackPayload = LinkedHashMap(payload)
+                fallbackPayload.remove("enable_thinking")
                 fallbackPayload.remove("extra_body")
                 gson.toJson(fallbackPayload)
             } else {
@@ -1939,7 +1955,7 @@ class ChatApiClient {
 
                 val initialResponse = client.newCall(buildStreamRequest(body)).execute()
                 val responseToUse =
-                    if (!initialResponse.isSuccessful && fallbackBodyWithoutEnableThinking != null) {
+                    if (!initialResponse.isSuccessful && fallbackBodyWithoutThinkingParams != null) {
                         val initialCode = initialResponse.code
                         val initialErrorBody = initialResponse.body?.string().orEmpty()
                         val shouldRetryWithoutParam =
@@ -1950,7 +1966,7 @@ class ChatApiClient {
                         }
 
                         val fallbackResponse =
-                            client.newCall(buildStreamRequest(fallbackBodyWithoutEnableThinking)).execute()
+                            client.newCall(buildStreamRequest(fallbackBodyWithoutThinkingParams)).execute()
                         if (!fallbackResponse.isSuccessful) {
                             val fallbackCode = fallbackResponse.code
                             val fallbackErrorBody = fallbackResponse.body?.string().orEmpty()
@@ -3193,7 +3209,7 @@ class ChatApiClient {
     private fun shouldRetryWithoutEnableThinking(statusCode: Int, errorBody: String): Boolean {
         if (statusCode != 400 && statusCode != 422) return false
         val lower = errorBody.lowercase()
-        if (!lower.contains("enable_thinking") && !lower.contains("extra_body")) return false
+        if (!lower.contains("enable_thinking") && !lower.contains("extra_body") && !lower.contains("thinking")) return false
         return lower.contains("unknown") ||
             lower.contains("unsupported") ||
             lower.contains("invalid") ||
@@ -3202,6 +3218,21 @@ class ChatApiClient {
             lower.contains("not permit") ||
             lower.contains("additional properties") ||
             lower.contains("schema")
+    }
+
+    private fun isKimiProvider(provider: ProviderConfig): Boolean {
+        val preset = provider.presetId?.trim().orEmpty()
+        val providerType = provider.type.trim()
+        val oauth = provider.oauthProvider?.trim().orEmpty()
+        val apiUrl = provider.apiUrl.trim()
+        val name = provider.name.trim()
+        return preset.equals("kimi", ignoreCase = true) ||
+            providerType.equals("kimi", ignoreCase = true) ||
+            oauth.equals("kimi", ignoreCase = true) ||
+            apiUrl.contains("api.moonshot.ai", ignoreCase = true) ||
+            apiUrl.contains("api.moonshot.cn", ignoreCase = true) ||
+            name.contains("kimi", ignoreCase = true) ||
+            name.contains("moonshot", ignoreCase = true)
     }
 
     private fun normalizeCodexBaseUrl(provider: ProviderConfig): String {
