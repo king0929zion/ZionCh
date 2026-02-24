@@ -11,6 +11,10 @@ import com.zionchat.app.autosoul.AutoSoulAccessibilityService
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
+class AutoSoulNonRetryableActionException(
+    message: String
+) : IllegalArgumentException(message)
+
 class AutoSoulActionExecutor(
     private val context: Context,
     private val serviceProvider: () -> AutoSoulAccessibilityService?
@@ -45,7 +49,7 @@ class AutoSoulActionExecutor(
                 val target = resolveLaunchTarget(step.args)
                 if (target.isNullOrBlank()) {
                     onLog("操作结果(Launch)：失败（缺少 app/package 参数）")
-                    return false
+                    throw AutoSoulNonRetryableActionException("缺少 app/package 参数")
                 }
                 launchApp(target, onLog)
             }
@@ -58,12 +62,13 @@ class AutoSoulActionExecutor(
                         step.args["coord"],
                         step.args["coords"],
                         step.args["position"],
+                        step.args["x"],
                         coordinatePairString(step.args, "x", "y")
                     )
                 val point = parsePoint(pointRaw.orEmpty())
                 if (point == null) {
                     onLog("操作结果(Tap)：失败（坐标解析失败：${pointRaw.orEmpty()}）")
-                    return false
+                    throw AutoSoulNonRetryableActionException("Tap 坐标解析失败")
                 }
                 val (x, y) = toAbsolutePoint(service, point.first, point.second)
                 val ok = awaitGesture { cb -> service.performTap(x, y, cb) }
@@ -79,12 +84,13 @@ class AutoSoulActionExecutor(
                         step.args["coord"],
                         step.args["coords"],
                         step.args["position"],
+                        step.args["x"],
                         coordinatePairString(step.args, "x", "y")
                     )
                 val point = parsePoint(pointRaw.orEmpty())
                 if (point == null) {
                     onLog("操作结果(LongPress)：失败（坐标解析失败：${pointRaw.orEmpty()}）")
-                    return false
+                    throw AutoSoulNonRetryableActionException("LongPress 坐标解析失败")
                 }
                 val (x, y) = toAbsolutePoint(service, point.first, point.second)
                 val ok = awaitGesture { cb -> service.performLongPress(x, y, cb) }
@@ -129,7 +135,7 @@ class AutoSoulActionExecutor(
                     onLog(
                         "操作结果(Swipe)：失败（坐标解析失败 start=${startRaw.orEmpty()} end=${endRaw.orEmpty()}）"
                     )
-                    return false
+                    throw AutoSoulNonRetryableActionException("Swipe 坐标解析失败")
                 }
                 val (sx, sy) = toAbsolutePoint(service, start.first, start.second)
                 val (ex, ey) = toAbsolutePoint(service, end.first, end.second)
@@ -158,7 +164,9 @@ class AutoSoulActionExecutor(
 
             "tap_text" -> {
                 val text = step.args["text"].orEmpty().trim()
-                if (text.isBlank()) return false
+                if (text.isBlank()) {
+                    throw AutoSoulNonRetryableActionException("TapText 缺少 text 参数")
+                }
                 val node = service.findNodeByText(text)
                 val ok = service.clickNode(node)
                 onLog("操作结果(TapText)：${if (ok) "成功" else "失败"}（$text）")
@@ -167,7 +175,7 @@ class AutoSoulActionExecutor(
 
             else -> {
                 onLog("操作结果(${step.action})：失败（未知动作）")
-                false
+                throw AutoSoulNonRetryableActionException("未知动作: ${step.action}")
             }
         }
     }
@@ -184,8 +192,27 @@ class AutoSoulActionExecutor(
         if (!explicit.isNullOrBlank()) return explicit
 
         val loose = firstNonBlank(args["value"], args["text"])
-        if (loose.isNullOrBlank()) return null
-        return if (looksLikeCoordinatePayload(loose)) null else loose
+        if (!loose.isNullOrBlank() && !looksLikeCoordinatePayload(loose)) {
+            return loose
+        }
+
+        val nestedFromValues =
+            args.values.asSequence()
+                .mapNotNull { extractLaunchTargetFromNarrative(it) }
+                .firstOrNull()
+        if (!nestedFromValues.isNullOrBlank()) return nestedFromValues
+
+        val nestedFromKeys =
+            args.entries.asSequence()
+                .firstOrNull { (key, _) ->
+                    key.contains("app", ignoreCase = true) || key.contains("package", ignoreCase = true)
+                }
+                ?.value
+                ?.trim()
+        if (!nestedFromKeys.isNullOrBlank() && !looksLikeCoordinatePayload(nestedFromKeys)) {
+            return nestedFromKeys
+        }
+        return null
     }
 
     private fun looksLikeCoordinatePayload(raw: String): Boolean {
@@ -193,6 +220,34 @@ class AutoSoulActionExecutor(
         if (parsePoint(raw) != null) return true
         val normalized = raw.trim()
         return Regex("""^[-+]?\d*\.?\d+%?\s*[,，]\s*[-+]?\d*\.?\d+%?$""").matches(normalized)
+    }
+
+    private fun extractLaunchTargetFromNarrative(raw: String): String? {
+        val text = raw.trim()
+        if (text.isBlank()) return null
+
+        val quotedPattern =
+            Regex(
+                """(?i)(?:app(?:_name)?|package|pkg|target|name)\s*[:=]\s*["'“”]?([^"'”’,\s)\]\}；;]+)"""
+            )
+        quotedPattern.findAll(text).forEach { match ->
+            val candidate = match.groupValues.getOrNull(1)?.trim().orEmpty()
+            if (candidate.isNotBlank() && !looksLikeCoordinatePayload(candidate)) {
+                return candidate
+            }
+        }
+
+        val launchPipePattern =
+            Regex(
+                """(?i)\blaunch\b[^\n\r]{0,160}\b(?:app(?:_name)?|package|pkg)\s*[:=]\s*["'“”]?([^"'”’,\s)\]\}；;]+)"""
+            )
+        launchPipePattern.find(text)?.groupValues?.getOrNull(1)?.trim()?.let { candidate ->
+            if (candidate.isNotBlank() && !looksLikeCoordinatePayload(candidate)) {
+                return candidate
+            }
+        }
+
+        return null
     }
 
     private fun normalizeAction(rawAction: String): String {
@@ -408,7 +463,7 @@ class AutoSoulActionExecutor(
     ): Boolean {
         if (text.isBlank()) {
             onLog("操作结果(Input)：失败（输入内容为空）")
-            return false
+            throw AutoSoulNonRetryableActionException("Input 缺少 text 参数")
         }
         val root = service.rootInActiveWindow ?: run {
             onLog("操作结果(Input)：失败（未获取到当前窗口）")

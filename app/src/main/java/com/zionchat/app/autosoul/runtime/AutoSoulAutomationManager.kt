@@ -45,7 +45,11 @@ object AutoSoulAutomationManager {
     private val _logs = MutableStateFlow<List<String>>(emptyList())
     val logs: StateFlow<List<String>> = _logs.asStateFlow()
 
-    fun start(context: Context, script: String): Result<Unit> {
+    fun start(
+        context: Context,
+        script: String,
+        keepOverlayVisibleAfterFinish: Boolean = false
+    ): Result<Unit> {
         return runCatching {
             val ctx = context.applicationContext
             appContext = ctx
@@ -83,6 +87,7 @@ object AutoSoulAutomationManager {
                         val totalAttempt = maxRetry + 1
                         var attempt = 1
                         var stepSucceeded = false
+                        var nonRetryableError: String? = null
 
                         while (attempt <= totalAttempt && isActiveRun()) {
                             val statusText =
@@ -110,13 +115,22 @@ object AutoSoulAutomationManager {
                             )
                             delay(180L)
 
-                            val ok =
+                            val executionResult =
                                 runCatching {
                                     executor.execute(step) { line -> appendLog(line) }
-                                }.getOrDefault(false)
+                                }
+                            val failure = executionResult.exceptionOrNull()
+                            val ok = executionResult.getOrDefault(false)
                             appendLog(
                                 "Step $stepNo/${steps.size} 尝试 $attempt/$totalAttempt 执行结果：${if (ok) "成功" else "失败"}"
                             )
+                            if (failure is AutoSoulNonRetryableActionException) {
+                                nonRetryableError = failure.message?.trim()?.ifBlank { null }
+                                nonRetryableError?.let { detail ->
+                                    appendLog("Step $stepNo/${steps.size} 不可重试错误：$detail")
+                                }
+                                break
+                            }
                             if (ok) {
                                 stepSucceeded = true
                                 break
@@ -132,7 +146,12 @@ object AutoSoulAutomationManager {
                         }
 
                         if (!stepSucceeded) {
-                            failedError = "步骤执行失败：${step.action}（已重试 ${maxRetry} 次）"
+                            failedError =
+                                if (!nonRetryableError.isNullOrBlank()) {
+                                    "步骤执行失败：${step.action}（$nonRetryableError）"
+                                } else {
+                                    "步骤执行失败：${step.action}（已重试 ${maxRetry} 次）"
+                                }
                             appendLog(failedError)
                             break
                         }
@@ -172,14 +191,19 @@ object AutoSoulAutomationManager {
                     }
                     AutoSoulFloatingOverlay.updateState(AutoSoulUiStatus.state.value)
                     AutoSoulForegroundService.setRunning(ctx, false)
-                    delay(240L)
-                    AutoSoulFloatingOverlay.hide()
+                    if (!keepOverlayVisibleAfterFinish) {
+                        delay(240L)
+                        AutoSoulFloatingOverlay.hide()
+                    }
                 }
             }
         }
     }
 
-    fun stop(reason: String = "用户终止") {
+    fun stop(
+        reason: String = "用户终止",
+        hideOverlay: Boolean = true
+    ) {
         scope.launch {
             appendLog(reason)
             runJob?.cancelAndJoin()
@@ -190,13 +214,19 @@ object AutoSoulAutomationManager {
             }
             AutoSoulUiStatus.setStopped("已停止")
             AutoSoulFloatingOverlay.updateState(AutoSoulUiStatus.state.value)
-            AutoSoulFloatingOverlay.hide()
+            if (hideOverlay) {
+                AutoSoulFloatingOverlay.hide()
+            }
             _state.value =
                 _state.value.copy(
                     running = false,
                     statusText = "已停止"
                 )
         }
+    }
+
+    fun closeOverlay() {
+        AutoSoulFloatingOverlay.hide()
     }
 
     fun retryLast(): Result<Unit> {

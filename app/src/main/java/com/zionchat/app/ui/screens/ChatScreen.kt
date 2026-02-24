@@ -5590,162 +5590,167 @@ private suspend fun executeAutoSoulTask(
     attachments: List<MessageAttachment>?
 ): Result<AutoSoulExecutionResult> {
     return runCatching {
-        val modelKey =
-            repository.defaultAutoSoulModelIdFlow.first()
-                ?.trim()
-                .orEmpty()
-                .ifBlank {
-                    throw IllegalStateException("AutoSoul 模型未配置。请先在 Settings → AutoSoul 里选择支持视觉的模型。")
-                }
-
-        val allModels = repository.modelsFlow.first()
-        val providers = repository.providersFlow.first()
-        val selectedModel =
-            allModels.firstOrNull { it.id == modelKey }
-                ?: allModels.firstOrNull { extractRemoteModelId(it.id) == modelKey }
-                ?: throw IllegalStateException("AutoSoul 模型不存在：$modelKey。请在 Settings → AutoSoul 重新选择。")
-
-        if (!selectedModel.enabled) {
-            throw IllegalStateException("当前 AutoSoul 模型已被禁用，请在 Settings → AutoSoul 选择已启用模型。")
-        }
-
-        if (!isLikelyVisionModel(selectedModel)) {
-            throw IllegalStateException("当前 AutoSoul 模型不符合视觉模型要求，请在 Settings → AutoSoul 重新选择视觉模型。")
-        }
-
-        val provider =
-            selectedModel.providerId?.let { pid -> providers.firstOrNull { it.id == pid } }
-                ?: providers.firstOrNull()
-        if (provider == null || provider.apiUrl.isBlank() || provider.apiKey.isBlank()) {
-            throw IllegalStateException("AutoSoul 模型的提供方未正确配置 API URL / API Key。")
-        }
-
-        val maxAgentRounds = 14
-        val stepTraces = mutableListOf<AutoSoulStepTrace>()
-        var finishMessage: String? = null
-
-        for (round in 1..maxAgentRounds) {
-            val plannerMessages =
-                buildList {
-                    add(Message(role = "system", content = buildAutoSoulPlannerSystemPrompt()))
-                    add(
-                        Message(
-                            role = "user",
-                            content =
-                                buildAutoSoulPlannerRoundPrompt(
-                                    taskPrompt = taskPrompt,
-                                    currentRound = round,
-                                    maxRounds = maxAgentRounds,
-                                    traces = stepTraces
-                                ),
-                            attachments = if (round == 1) attachments else null
-                        )
-                    )
-                }
-
-            val plannerText =
-                chatApiClient.chatCompletions(
-                    provider = provider,
-                    modelId = extractRemoteModelId(selectedModel.id),
-                    messages = plannerMessages,
-                    extraHeaders = selectedModel.headers
-                ).getOrElse { error ->
-                    throw IllegalStateException("AutoSoul 决策失败：${error.message ?: error.toString()}")
-                }.trim()
-            if (plannerText.isBlank()) {
-                throw IllegalStateException("AutoSoul 决策失败：模型没有返回有效内容。")
-            }
-
-            val decision =
-                parseAutoSoulPlannerDecision(plannerText).getOrElse { error ->
-                    throw IllegalStateException("AutoSoul 决策解析失败：${error.message ?: "unknown"}")
-                }
-
-            if (decision.done) {
-                finishMessage = decision.message?.trim()?.ifBlank { null } ?: "执行完成"
-                break
-            }
-
-            val normalizedStep =
-                normalizeAutoSoulPlannerStep(
-                    actionRaw = decision.action?.trim().orEmpty(),
-                    rawArgs = decision.args
-                )
-            val actionName =
-                normalizedStep.action.trim().ifBlank {
-                    throw IllegalStateException("AutoSoul 决策缺少 action。")
-                }
-            val currentFingerprint = buildAutoSoulActionFingerprint(actionName, normalizedStep.args)
-            val repeatedSuccessCount =
-                stepTraces
-                    .asReversed()
-                    .takeWhile { trace ->
-                        trace.success && buildAutoSoulActionFingerprint(trace.action, trace.args) == currentFingerprint
+        try {
+            val modelKey =
+                repository.defaultAutoSoulModelIdFlow.first()
+                    ?.trim()
+                    .orEmpty()
+                    .ifBlank {
+                        throw IllegalStateException("AutoSoul 模型未配置。请先在 Settings → AutoSoul 里选择支持视觉的模型。")
                     }
-                    .size
-            if (repeatedSuccessCount >= 2) {
-                throw IllegalStateException("AutoSoul 检测到重复动作循环（$actionName），已自动停止。请补充更具体任务目标后重试。")
-            }
-            val singleStepScript = buildAutoSoulSingleStepScript(actionName, normalizedStep.args)
-            val parsedStep =
-                AutoSoulScriptParser.parse(singleStepScript).getOrElse { error ->
-                    throw IllegalStateException("AutoSoul 单步脚本校验失败：${error.message ?: "unknown"}")
-                }.firstOrNull() ?: throw IllegalStateException("AutoSoul 单步脚本为空。")
 
-            val execution =
-                awaitAutoSoulCompletion(
-                    context = context.applicationContext,
-                    script = singleStepScript,
-                    stepCount = 1,
-                    timeoutMs = 95_000L
-                )
-            stepTraces +=
-                AutoSoulStepTrace(
-                    stepNo = stepTraces.size + 1,
-                    action = parsedStep.action,
-                    args = parsedStep.args,
-                    success = execution.success,
-                    statusText = execution.statusText,
-                    error = execution.error,
-                    logs = execution.logs.takeLast(12),
-                    timedOut = execution.timedOut
-                )
-        }
+            val allModels = repository.modelsFlow.first()
+            val providers = repository.providersFlow.first()
+            val selectedModel =
+                allModels.firstOrNull { it.id == modelKey }
+                    ?: allModels.firstOrNull { extractRemoteModelId(it.id) == modelKey }
+                    ?: throw IllegalStateException("AutoSoul 模型不存在：$modelKey。请在 Settings → AutoSoul 重新选择。")
 
-        val exhaustedRounds = finishMessage == null && stepTraces.size >= maxAgentRounds
-        val timedOut = stepTraces.any { it.timedOut }
-        val success = finishMessage != null
-        val errorText =
-            when {
-                success -> null
-                exhaustedRounds -> "达到最大执行轮次（$maxAgentRounds）仍未完成任务。"
-                timedOut -> stepTraces.lastOrNull { it.timedOut }?.error ?: "执行超时"
-                else -> stepTraces.lastOrNull()?.error ?: "任务未完成"
+            if (!selectedModel.enabled) {
+                throw IllegalStateException("当前 AutoSoul 模型已被禁用，请在 Settings → AutoSoul 选择已启用模型。")
             }
-        val statusText =
-            when {
-                success -> finishMessage ?: "执行完成"
-                exhaustedRounds -> "达到最大执行轮次"
-                else -> stepTraces.lastOrNull()?.statusText?.ifBlank { "执行失败" } ?: "执行失败"
+
+            if (!isLikelyVisionModel(selectedModel)) {
+                throw IllegalStateException("当前 AutoSoul 模型不符合视觉模型要求，请在 Settings → AutoSoul 重新选择视觉模型。")
             }
-        val mergedLogs =
-            stepTraces
-                .flatMap { trace ->
-                    val prefix = "Step ${trace.stepNo}(${trace.action})"
-                    trace.logs.map { line -> "$prefix | $line" }
+
+            val provider =
+                selectedModel.providerId?.let { pid -> providers.firstOrNull { it.id == pid } }
+                    ?: providers.firstOrNull()
+            if (provider == null || provider.apiUrl.isBlank() || provider.apiKey.isBlank()) {
+                throw IllegalStateException("AutoSoul 模型的提供方未正确配置 API URL / API Key。")
+            }
+
+            val maxAgentRounds = 14
+            val stepTraces = mutableListOf<AutoSoulStepTrace>()
+            var finishMessage: String? = null
+
+            for (round in 1..maxAgentRounds) {
+                val plannerMessages =
+                    buildList {
+                        add(Message(role = "system", content = buildAutoSoulPlannerSystemPrompt()))
+                        add(
+                            Message(
+                                role = "user",
+                                content =
+                                    buildAutoSoulPlannerRoundPrompt(
+                                        taskPrompt = taskPrompt,
+                                        currentRound = round,
+                                        maxRounds = maxAgentRounds,
+                                        traces = stepTraces
+                                    ),
+                                attachments = if (round == 1) attachments else null
+                            )
+                        )
+                    }
+
+                val plannerText =
+                    chatApiClient.chatCompletions(
+                        provider = provider,
+                        modelId = extractRemoteModelId(selectedModel.id),
+                        messages = plannerMessages,
+                        extraHeaders = selectedModel.headers
+                    ).getOrElse { error ->
+                        throw IllegalStateException("AutoSoul 决策失败：${error.message ?: error.toString()}")
+                    }.trim()
+                if (plannerText.isBlank()) {
+                    throw IllegalStateException("AutoSoul 决策失败：模型没有返回有效内容。")
                 }
-                .takeLast(80)
-                .ifEmpty { AutoSoulAutomationManager.logs.value.takeLast(40) }
 
-        AutoSoulExecutionResult(
-            success = success,
-            script = buildAutoSoulExecutionTraceJson(taskPrompt, stepTraces, finishMessage, maxAgentRounds),
-            stepCount = stepTraces.size,
-            statusText = statusText,
-            error = errorText,
-            logs = mergedLogs,
-            timedOut = timedOut
-        )
+                val decision =
+                    parseAutoSoulPlannerDecision(plannerText).getOrElse { error ->
+                        throw IllegalStateException("AutoSoul 决策解析失败：${error.message ?: "unknown"}")
+                    }
+
+                if (decision.done) {
+                    finishMessage = decision.message?.trim()?.ifBlank { null } ?: "执行完成"
+                    break
+                }
+
+                val normalizedStep =
+                    normalizeAutoSoulPlannerStep(
+                        actionRaw = decision.action?.trim().orEmpty(),
+                        rawArgs = decision.args
+                    )
+                val actionName =
+                    normalizedStep.action.trim().ifBlank {
+                        throw IllegalStateException("AutoSoul 决策缺少 action。")
+                    }
+                val currentFingerprint = buildAutoSoulActionFingerprint(actionName, normalizedStep.args)
+                val repeatedSuccessCount =
+                    stepTraces
+                        .asReversed()
+                        .takeWhile { trace ->
+                            trace.success && buildAutoSoulActionFingerprint(trace.action, trace.args) == currentFingerprint
+                        }
+                        .size
+                if (repeatedSuccessCount >= 2) {
+                    throw IllegalStateException("AutoSoul 检测到重复动作循环（$actionName），已自动停止。请补充更具体任务目标后重试。")
+                }
+                val singleStepScript = buildAutoSoulSingleStepScript(actionName, normalizedStep.args)
+                val parsedStep =
+                    AutoSoulScriptParser.parse(singleStepScript).getOrElse { error ->
+                        throw IllegalStateException("AutoSoul 单步脚本校验失败：${error.message ?: "unknown"}")
+                    }.firstOrNull() ?: throw IllegalStateException("AutoSoul 单步脚本为空。")
+
+                val execution =
+                    awaitAutoSoulCompletion(
+                        context = context.applicationContext,
+                        script = singleStepScript,
+                        stepCount = 1,
+                        timeoutMs = 95_000L,
+                        keepOverlayVisibleAfterFinish = true
+                    )
+                stepTraces +=
+                    AutoSoulStepTrace(
+                        stepNo = stepTraces.size + 1,
+                        action = parsedStep.action,
+                        args = parsedStep.args,
+                        success = execution.success,
+                        statusText = execution.statusText,
+                        error = execution.error,
+                        logs = execution.logs.takeLast(12),
+                        timedOut = execution.timedOut
+                    )
+            }
+
+            val exhaustedRounds = finishMessage == null && stepTraces.size >= maxAgentRounds
+            val timedOut = stepTraces.any { it.timedOut }
+            val success = finishMessage != null
+            val errorText =
+                when {
+                    success -> null
+                    exhaustedRounds -> "达到最大执行轮次（$maxAgentRounds）仍未完成任务。"
+                    timedOut -> stepTraces.lastOrNull { it.timedOut }?.error ?: "执行超时"
+                    else -> stepTraces.lastOrNull()?.error ?: "任务未完成"
+                }
+            val statusText =
+                when {
+                    success -> finishMessage ?: "执行完成"
+                    exhaustedRounds -> "达到最大执行轮次"
+                    else -> stepTraces.lastOrNull()?.statusText?.ifBlank { "执行失败" } ?: "执行失败"
+                }
+            val mergedLogs =
+                stepTraces
+                    .flatMap { trace ->
+                        val prefix = "Step ${trace.stepNo}(${trace.action})"
+                        trace.logs.map { line -> "$prefix | $line" }
+                    }
+                    .takeLast(80)
+                    .ifEmpty { AutoSoulAutomationManager.logs.value.takeLast(40) }
+
+            AutoSoulExecutionResult(
+                success = success,
+                script = buildAutoSoulExecutionTraceJson(taskPrompt, stepTraces, finishMessage, maxAgentRounds),
+                stepCount = stepTraces.size,
+                statusText = statusText,
+                error = errorText,
+                logs = mergedLogs,
+                timedOut = timedOut
+            )
+        } finally {
+            AutoSoulAutomationManager.closeOverlay()
+        }
     }
 }
 
@@ -5753,11 +5758,16 @@ private suspend fun awaitAutoSoulCompletion(
     context: Context,
     script: String,
     stepCount: Int,
-    timeoutMs: Long
+    timeoutMs: Long,
+    keepOverlayVisibleAfterFinish: Boolean = false
 ): AutoSoulExecutionResult {
     AutoSoulAutomationManager.bindOverlayActions(context.applicationContext)
     val logStartIndex = AutoSoulAutomationManager.logs.value.size
-    AutoSoulAutomationManager.start(context.applicationContext, script).getOrThrow()
+    AutoSoulAutomationManager.start(
+        context = context.applicationContext,
+        script = script,
+        keepOverlayVisibleAfterFinish = keepOverlayVisibleAfterFinish
+    ).getOrThrow()
 
     val startedAt = System.currentTimeMillis()
     var seenRunning = false
@@ -5792,7 +5802,10 @@ private suspend fun awaitAutoSoulCompletion(
         delay(260L)
     }
 
-    AutoSoulAutomationManager.stop("执行超时自动停止")
+    AutoSoulAutomationManager.stop(
+        reason = "执行超时自动停止",
+        hideOverlay = !keepOverlayVisibleAfterFinish
+    )
     return AutoSoulExecutionResult(
         success = false,
         script = script,
@@ -6128,13 +6141,25 @@ private fun normalizeAutoSoulPlannerStep(
     actionRaw: String,
     rawArgs: Map<String, String>
 ): AutoSoulNormalizedStep {
-    val normalizedAction = canonicalizeAutoSoulAction(actionRaw)?.trim().orEmpty().ifBlank { actionRaw.trim() }
+    val actionHintFromNarrative = extractActionFromAutoSoulNarrative(rawArgs)
+    val normalizedAction =
+        canonicalizeAutoSoulAction(actionRaw)
+            ?.trim()
+            .orEmpty()
+            .ifBlank { actionHintFromNarrative ?: actionRaw.trim() }
     val normalizedArgs = linkedMapOf<String, String>()
     rawArgs.forEach { (key, value) ->
         val canonicalKey = canonicalizeAutoSoulArgKey(key)
         val canonicalValue = value.trim().removeSurrounding("\"").removeSurrounding("'").trim()
         if (canonicalKey.isNotBlank() && canonicalValue.isNotBlank()) {
             normalizedArgs[canonicalKey] = canonicalValue
+        }
+    }
+    extractAutoSoulNestedArgs(rawArgs).forEach { (key, value) ->
+        val canonicalKey = canonicalizeAutoSoulArgKey(key)
+        val canonicalValue = value.trim().removeSurrounding("\"").removeSurrounding("'").trim()
+        if (canonicalKey.isNotBlank() && canonicalValue.isNotBlank()) {
+            normalizedArgs.putIfAbsent(canonicalKey, canonicalValue)
         }
     }
 
@@ -6165,13 +6190,153 @@ private fun normalizeAutoSoulPlannerStep(
                 normalizedArgs["end"].isNullOrBlank() &&
                 !normalizedArgs["point"].isNullOrBlank() -> "Tap"
 
+            !actionHintFromNarrative.isNullOrBlank() && normalizedAction.isBlank() ->
+                actionHintFromNarrative
+
+            !actionHintFromNarrative.isNullOrBlank() &&
+                normalizedAction.equals("Tap", ignoreCase = true) &&
+                actionHintFromNarrative.equals("Launch", ignoreCase = true) &&
+                hasLaunchTargetArg(normalizedArgs) -> actionHintFromNarrative
+
             else -> normalizedAction
         }
+    val finalAction = canonicalizeAutoSoulAction(correctedAction)?.trim().orEmpty().ifBlank { correctedAction }
+    val filteredArgs = filterAutoSoulArgsForAction(finalAction, normalizedArgs)
 
     return AutoSoulNormalizedStep(
-        action = correctedAction,
-        args = normalizedArgs
+        action = finalAction,
+        args = filteredArgs
     )
+}
+
+private fun extractAutoSoulNestedArgs(rawArgs: Map<String, String>): Map<String, String> {
+    val extracted = linkedMapOf<String, String>()
+    rawArgs.values.forEach { value ->
+        val text = value.trim()
+        if (text.isBlank()) return@forEach
+        appendAutoSoulArgsFromText(extracted, text)
+        extractDoCallBodies(text).forEach { body ->
+            appendAutoSoulArgsFromText(extracted, body)
+        }
+        extractPipeCommandBodies(text).forEach { body ->
+            appendAutoSoulArgsFromText(extracted, body)
+        }
+    }
+    return extracted
+}
+
+private fun extractActionFromAutoSoulNarrative(rawArgs: Map<String, String>): String? {
+    val actionFromArgs =
+        rawArgs.entries
+            .firstNotNullOfOrNull { (key, value) ->
+                if (key.equals("action", ignoreCase = true)) {
+                    canonicalizeAutoSoulAction(value)
+                } else {
+                    null
+                }
+            }
+    if (!actionFromArgs.isNullOrBlank()) return actionFromArgs
+
+    val fromText =
+        rawArgs.values.firstNotNullOfOrNull { value ->
+            extractActionFromFreeText(value)
+        }
+    return fromText
+}
+
+private fun extractActionFromFreeText(raw: String): String? {
+    val text = raw.trim()
+    if (text.isBlank()) return null
+
+    val doActionRegex = Regex("""(?i)do\s*\([^)]*?\baction\s*[:=]\s*["']?([A-Za-z_ ]+)["']?""")
+    doActionRegex.findAll(text).lastOrNull()?.groupValues?.getOrNull(1)?.trim()?.let { action ->
+        canonicalizeAutoSoulAction(action)?.let { return it }
+    }
+
+    val pipeActionRegex = Regex("""(?i)\b(launch|tap|swipe|long[_ ]?press|type|input|wait|back|home|tap[_ ]?text)\b\s*\|""")
+    pipeActionRegex.findAll(text).lastOrNull()?.groupValues?.getOrNull(1)?.trim()?.let { action ->
+        canonicalizeAutoSoulAction(action)?.let { return it }
+    }
+
+    val actionRegex =
+        Regex(
+            "(?i)\\b(launch|open|start|tap|click|touch|press|swipe|scroll(?:_[a-z]+)?|scrollup|scrollleft|scrollright|scroll_down|long[_ ]?press|longtap|type|input|wait|sleep|delay|back|home|tap[_ ]?text|click[_ ]?text)\\b"
+        )
+    return actionRegex
+        .findAll(text)
+        .mapNotNull { match -> canonicalizeAutoSoulAction(match.value) }
+        .lastOrNull()
+}
+
+private fun filterAutoSoulArgsForAction(
+    action: String,
+    args: Map<String, String>
+): Map<String, String> {
+    val genericKeys = setOf("ai_retry", "retry", "retries", "max_retry", "max_retries", "duration", "duration_ms")
+    val allowed =
+        when (action.trim().lowercase()) {
+            "launch" -> genericKeys + setOf("app", "package", "target", "name", "app_name")
+            "tap" -> genericKeys + setOf("point", "value", "coord", "coords", "position", "x", "y")
+            "longpress", "long_press" -> genericKeys + setOf("point", "value", "coord", "coords", "position", "x", "y")
+            "swipe" -> genericKeys + setOf(
+                "start",
+                "end",
+                "from",
+                "to",
+                "start_point",
+                "end_point",
+                "from_point",
+                "to_point",
+                "start_x",
+                "start_y",
+                "end_x",
+                "end_y",
+                "x1",
+                "y1",
+                "x2",
+                "y2",
+                "direction",
+                "dir",
+                "swipe_direction"
+            )
+            "type", "input", "taptext", "tap_text" -> genericKeys + setOf("text", "point", "x", "y")
+            "wait" -> genericKeys + setOf("duration", "duration_ms")
+            "home", "back" -> genericKeys
+            else -> args.keys
+        }
+
+    return args
+        .filter { (key, value) ->
+            val normalizedKey = canonicalizeAutoSoulArgKey(key)
+            normalizedKey in allowed && value.trim().isNotBlank() && value.trim().length <= 220
+        }
+        .toMap(LinkedHashMap())
+}
+
+private fun extractDoCallBodies(raw: String): List<String> {
+    val text = raw.trim()
+    if (text.isBlank()) return emptyList()
+    val matches = Regex("""(?is)do\s*\((.*?)\)""").findAll(text)
+    return matches
+        .mapNotNull { match ->
+            match.groupValues.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
+        }
+        .toList()
+}
+
+private fun extractPipeCommandBodies(raw: String): List<String> {
+    val text = raw.trim()
+    if (text.isBlank()) return emptyList()
+    val regex =
+        Regex(
+            """(?i)\b(?:launch|tap|swipe|long[_ ]?press|type|input|wait|back|home|tap[_ ]?text)\b\s*\|\s*([^\n\r]+)"""
+        )
+    return regex
+        .findAll(text)
+        .mapNotNull { match ->
+            match.groupValues.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
+        }
+        .toList()
 }
 
 private fun canonicalizeAutoSoulArgKey(rawKey: String): String {
@@ -6269,8 +6434,10 @@ private fun buildAutoSoulPlannerSystemPrompt(): String {
         appendLine("Swipe 必须给 start 与 end，且二者都必须是坐标对；禁止只给单个数字。")
         appendLine("Launch 只能提供 app 或 package，禁止给 start/end/point 坐标参数。")
         appendLine("Type/TapText 使用 text。")
+        appendLine("参数必须是纯字段，不要在参数值中包含分析过程、任务复述、解释文本。")
         appendLine("任务完成时输出：{\"status\":\"done\",\"message\":\"...\"}")
         appendLine("需要继续时输出：{\"status\":\"continue\",\"step\":{\"action\":\"Tap\",\"x\":\"0.50\",\"y\":\"0.72\"},\"reason\":\"...\"}")
+        appendLine("只有在用户全部要求都完成后才能输出 done。")
         appendLine("如果上一步失败，优先调整策略并继续，不要直接 done。")
         appendLine("禁止连续重复输出相同成功动作（尤其 Home/Back/Wait），若遇到循环应切换策略或直接 done。")
     }.trim()
@@ -6494,11 +6661,11 @@ private fun looksLikeNextAutoSoulKey(text: String, startIndex: Int): Boolean {
 }
 
 private fun isAutoSoulKeyStartChar(ch: Char): Boolean {
-    return ch == '_' || ch.isLetter()
+    return ch == '_' || ch in 'a'..'z' || ch in 'A'..'Z'
 }
 
 private fun isAutoSoulKeyBodyChar(ch: Char): Boolean {
-    return ch == '_' || ch.isLetterOrDigit()
+    return ch == '_' || ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9'
 }
 
 private fun parseAutoSoulLooseDecision(raw: String): AutoSoulPlannerDecision? {
@@ -6508,15 +6675,7 @@ private fun parseAutoSoulLooseDecision(raw: String): AutoSoulPlannerDecision? {
     val doneSignal =
         Regex("(?i)\\b(done|finish(?:ed)?|complete(?:d)?|stop)\\b|完成|结束|停止")
             .containsMatchIn(trimmed)
-    val actionRegex =
-        Regex(
-            "(?i)\\b(launch|open|start|tap|click|touch|press|swipe|scroll(?:_[a-z]+)?|scrollup|scrollleft|scrollright|scroll_down|long[_ ]?press|longtap|type|input|wait|sleep|delay|back|home|tap[_ ]?text|click[_ ]?text)\\b"
-        )
-    val action =
-        actionRegex
-            .findAll(trimmed)
-            .mapNotNull { match -> canonicalizeAutoSoulAction(match.value) }
-            .lastOrNull()
+    val action = extractActionFromFreeText(trimmed)
     if (action == null) {
         return if (doneSignal) {
             AutoSoulPlannerDecision(
