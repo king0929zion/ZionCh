@@ -512,6 +512,7 @@ internal fun MessageTagRow(
 
     val tagRunning = isTagRunning(tag)
     val isAutoSoulTag = remember(tag.kind, tag.title, tag.content) { isAutoSoulMcpTag(tag) }
+    val isAutoBrowserTag = remember(tag.kind, tag.title, tag.content) { isAutoBrowserMcpTag(tag) }
     val toolName = remember(tag.title) {
         tag.title.trim().takeIf { it.isNotBlank() && !it.equals("tool", ignoreCase = true) }
     }
@@ -519,6 +520,8 @@ internal fun MessageTagRow(
         if (tag.kind == "mcp") {
             if (isAutoSoulTag) {
                 stringResource(R.string.settings_item_autosoul)
+            } else if (isAutoBrowserTag) {
+                tag.title.trim().ifBlank { stringResource(R.string.settings_item_autobrowser) }
             } else if (toolName == null) {
                 stringResource(R.string.tool_label)
             } else {
@@ -542,6 +545,13 @@ internal fun MessageTagRow(
             if (isAutoSoulTag) {
                 Icon(
                     painter = rememberResourceDrawablePainter(R.drawable.ic_autosoul),
+                    contentDescription = null,
+                    tint = ThinkingLabelColor,
+                    modifier = Modifier.size(14.dp)
+                )
+            } else if (isAutoBrowserTag) {
+                Icon(
+                    imageVector = AppIcons.AutoBrowserCompass,
                     contentDescription = null,
                     tint = ThinkingLabelColor,
                     modifier = Modifier.size(14.dp)
@@ -592,6 +602,19 @@ internal fun isAutoSoulMcpTag(tag: MessageTag): Boolean {
     if (serverHit) return true
     val toolHit = detail.tool.trim().contains("autosoul", ignoreCase = true)
     return toolHit
+}
+
+internal fun isAutoBrowserMcpTag(tag: MessageTag): Boolean {
+    if (tag.kind != "mcp") return false
+    val title = tag.title.trim()
+    if (title.contains("autobrowser", ignoreCase = true)) return true
+    if (title.contains("browser", ignoreCase = true)) return true
+    val detail = parseMcpTagDetail(tag.content)
+    val server = detail.server.trim()
+    val tool = detail.tool.trim()
+    return server.contains("autobrowser", ignoreCase = true) ||
+        tool.contains("autobrowser", ignoreCase = true) ||
+        tool.startsWith("autobrowser_", ignoreCase = true)
 }
 
 @Composable
@@ -1792,7 +1815,9 @@ fun SidebarMenuItem(
 fun TopNavBar(
     onMenuClick: () -> Unit,
     onChatModelClick: () -> Unit,
-    onNewChatClick: () -> Unit
+    onNewChatClick: () -> Unit,
+    showAutoBrowserButton: Boolean = false,
+    onAutoBrowserClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -1855,22 +1880,64 @@ fun TopNavBar(
             }
         }
 
-        // 右侧新建对话
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .shadow(elevation = 8.dp, shape = CircleShape, clip = false, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.08f))
-                .clip(CircleShape)
-                .background(Surface, CircleShape)
-                .pressableScale(pressedScale = 0.95f, onClick = onNewChatClick),
-            contentAlignment = Alignment.Center
+        // 右侧：AutoBrowser + 新建对话
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = AppIcons.NewChat,
-                contentDescription = "New Chat",
-                tint = TextPrimary,
-                modifier = Modifier.size(22.dp)
-            )
+            AnimatedVisibility(
+                visible = showAutoBrowserButton,
+                enter = fadeIn(animationSpec = tween(170, easing = FastOutSlowInEasing)) +
+                    scaleIn(initialScale = 0.88f, animationSpec = tween(190, easing = FastOutSlowInEasing)),
+                exit = fadeOut(animationSpec = tween(130, easing = FastOutSlowInEasing)) +
+                    scaleOut(targetScale = 0.88f, animationSpec = tween(130, easing = FastOutSlowInEasing))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = CircleShape,
+                            clip = false,
+                            ambientColor = Color.Black.copy(alpha = 0.08f),
+                            spotColor = Color.Black.copy(alpha = 0.08f)
+                        )
+                        .clip(CircleShape)
+                        .background(Surface, CircleShape)
+                        .pressableScale(pressedScale = 0.95f, onClick = onAutoBrowserClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = AppIcons.AutoBrowserCompass,
+                        contentDescription = stringResource(R.string.settings_item_autobrowser),
+                        tint = TextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .shadow(
+                        elevation = 8.dp,
+                        shape = CircleShape,
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.08f),
+                        spotColor = Color.Black.copy(alpha = 0.08f)
+                    )
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(pressedScale = 0.95f, onClick = onNewChatClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.NewChat,
+                    contentDescription = "New Chat",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
     }
 }
@@ -2134,6 +2201,12 @@ internal fun ToolMenuPanel(
                                         title = stringResource(R.string.settings_item_autosoul),
                                         subtitle = stringResource(R.string.chat_tool_autosoul_subtitle),
                                         onClick = { onToolSelect("autosoul") }
+                                    )
+                                    ToolListItem(
+                                        icon = { Icon(AppIcons.AutoBrowserCompass, null, Modifier.size(24.dp), TextPrimary) },
+                                        title = stringResource(R.string.settings_item_autobrowser),
+                                        subtitle = stringResource(R.string.chat_tool_autobrowser_subtitle),
+                                        onClick = { onToolSelect("autobrowser") }
                                     )
                                     ToolListItem(
                                         icon = { Icon(AppIcons.MCPTools, null, Modifier.size(24.dp), TextPrimary) },
@@ -4305,6 +4378,7 @@ internal fun BottomInputArea(
         "web" -> "Search · ${displaySearchEngineName(webSearchEngine)}"
         "image" -> "Image"
         "autosoul" -> stringResource(R.string.settings_item_autosoul)
+        "autobrowser" -> stringResource(R.string.settings_item_autobrowser)
         "mcp" ->
             if (mcpSelectedCount > 0) {
                 stringResource(R.string.chat_mcp_selected_count, mcpSelectedCount)
@@ -4324,6 +4398,7 @@ internal fun BottomInputArea(
         "web" -> AppIcons.Globe
         "image" -> AppIcons.CreateImage
         "autosoul" -> null
+        "autobrowser" -> AppIcons.AutoBrowserCompass
         "mcp" -> AppIcons.MCPTools
         "app_builder" -> AppIcons.AppDeveloper
         else -> AppIcons.Globe
@@ -4994,6 +5069,37 @@ internal fun isBuiltInAutoSoulCall(call: PlannedMcpToolCall): Boolean {
         "builtin_autosoul",
         "autosoul",
         "internal_autosoul"
+    )
+}
+
+internal fun isBuiltInAutoBrowserCall(call: PlannedMcpToolCall): Boolean {
+    val server = call.serverId.trim().lowercase()
+    val tool = call.toolName.trim().lowercase()
+    return tool in setOf(
+        "autobrowser",
+        "autobrowser_start_session",
+        "autobrowser_navigate",
+        "autobrowser_open_url",
+        "autobrowser_click_ref",
+        "autobrowser_fill_css",
+        "autobrowser_exec_js",
+        "autobrowser_wait",
+        "autobrowser_snapshot",
+        "autobrowser_upload_file",
+        "autobrowser_close_session",
+        "browser_start_session",
+        "browser_navigate",
+        "browser_click_ref",
+        "browser_fill_css",
+        "browser_exec_js",
+        "browser_wait",
+        "browser_snapshot",
+        "browser_upload_file",
+        "browser_close_session"
+    ) || server in setOf(
+        "builtin_autobrowser",
+        "autobrowser",
+        "internal_autobrowser"
     )
 }
 
@@ -6519,6 +6625,40 @@ internal fun buildAutoSoulToolInstruction(
             appendLine("- Do not split one task into multiple autosoul_agent calls.")
             appendLine("- Never fabricate execution results. Wait for tool result context in next round.")
         }
+    }.trim()
+}
+
+internal fun buildAutoBrowserToolInstruction(
+    roundIndex: Int,
+    maxCallsPerRound: Int
+): String {
+    val callLimit = minOf(maxCallsPerRound.coerceAtLeast(1), 4)
+    return buildString {
+        appendLine("Built-in tool available: autobrowser (Android WebView browser automation).")
+        appendLine("Current round: $roundIndex")
+        appendLine("Use this tool only when the user explicitly selected AutoBrowser in this chat.")
+        appendLine("Do not call AutoBrowser for generic Q&A, memory tasks, or AutoSoul phone automation tasks.")
+        appendLine("First write a normal visible reply, then append tool call tags if needed.")
+        appendLine("At most $callLimit AutoBrowser call(s) in this round.")
+        appendLine()
+        appendLine("Tool call format:")
+        appendLine("<tool_call>{\"serverId\":\"builtin_autobrowser\",\"toolName\":\"autobrowser_start_session\",\"arguments\":{...}}</tool_call>")
+        appendLine()
+        appendLine("Supported toolName values:")
+        appendLine("- autobrowser_start_session: start browser session, optional arguments.url")
+        appendLine("- autobrowser_navigate: navigate to URL, arguments.url required")
+        appendLine("- autobrowser_click_ref: click element by snapshot ref, arguments.ref required")
+        appendLine("- autobrowser_fill_css: fill input by css selector, arguments.selector + arguments.value")
+        appendLine("- autobrowser_exec_js: execute JS, arguments.script required")
+        appendLine("- autobrowser_wait: wait seconds, arguments.seconds (default 1)")
+        appendLine("- autobrowser_snapshot: capture text snapshot and refs")
+        appendLine("- autobrowser_upload_file: upload system file to file input, arguments.selector required")
+        appendLine("- autobrowser_close_session: close current browser session")
+        appendLine()
+        appendLine("Rules:")
+        appendLine("- For click_ref, call autobrowser_snapshot first in same task to obtain refs.")
+        appendLine("- Keep arguments concise and deterministic.")
+        appendLine("- Never fabricate browser execution results. Wait for tool results in next round.")
     }.trim()
 }
 

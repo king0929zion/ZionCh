@@ -40,6 +40,7 @@
     <string name="settings_item_search">搜索</string>
     <string name="settings_item_mcp_tools">MCP 工具</string>
     <string name="settings_item_autosoul">AutoSoul</string>
+    <string name="settings_item_autobrowser">AutoBrowser</string>
 
     <string name="language_title">Language</string>
     <string name="language_option_system">跟随系统</string>
@@ -162,6 +163,7 @@
     <string name="chat_tool_files">附件</string>
     <string name="chat_tool_mcp_choose_providers">选择 MCP 提供方</string>
     <string name="chat_tool_autosoul_subtitle">规划并执行手机自动化</string>
+    <string name="chat_tool_autobrowser_subtitle">在网页中自动执行任务</string>
     <string name="chat_model_picker_title">选择对话模型</string>
     <string name="chat_model_picker_thinking_short">推理</string>
     <string name="chat_model_picker_thinking_label">推理</string>

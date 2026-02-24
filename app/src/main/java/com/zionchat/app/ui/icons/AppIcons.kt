@@ -1192,6 +1192,44 @@ object AppIcons {
         }
     }.build()
 
+    // AutoBrowser 指南针图标（对齐 Lucide compass）
+    val AutoBrowserCompass = ImageVector.Builder(
+        name = "autobrowser_compass",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color(0xFF1C1C1E)),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(12f, 2f)
+            arcToRelative(10f, 10f, 0f, true, true, 0f, 20f)
+            arcToRelative(10f, 10f, 0f, true, true, 0f, -20f)
+            close()
+        }
+        path(
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color(0xFF1C1C1E)),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(16.24f, 7.76f)
+            lineTo(14.436f, 13.171f)
+            curveToRelative(-0.2f, 0.6f, -0.665f, 1.065f, -1.265f, 1.265f)
+            lineTo(7.76f, 16.24f)
+            lineTo(9.564f, 10.829f)
+            curveToRelative(0.2f, -0.6f, 0.665f, -1.065f, 1.265f, -1.265f)
+            lineTo(16.24f, 7.76f)
+            close()
+        }
+    }.build()
+
     // Create Image 图标
     val CreateImage = ImageVector.Builder(
         name = "create_image",

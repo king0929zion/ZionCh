@@ -40,6 +40,7 @@
     <string name="settings_item_search">Search</string>
     <string name="settings_item_mcp_tools">MCP Tools</string>
     <string name="settings_item_autosoul">AutoSoul</string>
+    <string name="settings_item_autobrowser">AutoBrowser</string>
 
     <string name="language_title">Language</string>
     <string name="language_option_system">Follow system</string>
@@ -171,6 +172,7 @@
     <string name="chat_tool_files">Files</string>
     <string name="chat_tool_mcp_choose_providers">Choose MCP providers</string>
     <string name="chat_tool_autosoul_subtitle">Plan and run phone automation</string>
+    <string name="chat_tool_autobrowser_subtitle">Automate tasks in web pages</string>
     <string name="chat_model_picker_title">Select chat model</string>
     <string name="chat_model_picker_thinking_short">Reasoning</string>
     <string name="chat_model_picker_thinking_label">Reasoning</string>
