@@ -4250,13 +4250,13 @@ internal fun BottomInputArea(
             colors =
                 if (imeVisible) {
                     listOf(
-                        Surface.copy(alpha = 0.94f),
-                        Surface.copy(alpha = 0.88f)
+                        Surface.copy(alpha = 0.995f),
+                        Surface.copy(alpha = 0.97f)
                     )
                 } else {
                     listOf(
-                        Surface.copy(alpha = 0.98f),
-                        Surface.copy(alpha = 0.94f)
+                        Surface.copy(alpha = 0.995f),
+                        Surface.copy(alpha = 0.965f)
                     )
                 }
         )
@@ -4266,13 +4266,13 @@ internal fun BottomInputArea(
             colors =
                 if (imeVisible) {
                     listOf(
-                        Surface.copy(alpha = 0.90f),
-                        Surface.copy(alpha = 0.82f)
+                        Surface.copy(alpha = 0.985f),
+                        Surface.copy(alpha = 0.95f)
                     )
                 } else {
                     listOf(
-                        Surface.copy(alpha = 0.98f),
-                        Surface.copy(alpha = 0.92f)
+                        Surface.copy(alpha = 0.99f),
+                        Surface.copy(alpha = 0.95f)
                     )
                 }
         )
@@ -6723,11 +6723,12 @@ internal suspend fun extractMemoryCandidatesFromTurn(
 
     val systemPrompt =
         buildString {
-            append("Extract memory candidates from the user message. Return ONLY a JSON array of strings. ")
-            append("Keep only explicit user-stated stable preferences, factual profile details, or long-term requirements. ")
-            append("Never infer, guess, or rewrite speculative statements. ")
-            append("Do not save temporary tasks, one-off requests, current-session actions, moods, assumptions, or assistant-generated claims. ")
-            append("If there is nothing safe to save, return []. Keep at most 2 short items.")
+            append("You are the memory gate for a chat assistant. Return ONLY a JSON array of strings. ")
+            append("Use semantic judgment from the user message itself; do not rely on keyword matching. ")
+            append("Only keep explicit long-term user memory: stable preferences, profile facts, or persistent requirements. ")
+            append("Never infer, speculate, or rewrite uncertain statements. ")
+            append("Never store one-off tasks, temporary requests, current-session actions, moods, or assistant-generated claims. ")
+            append("If nothing should be stored, return []. Keep at most 2 short memory items.")
         }
 
     val userPrompt =
@@ -6763,149 +6764,11 @@ internal suspend fun extractMemoryCandidatesFromTurn(
 internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
     val text = userText.trim()
     if (text.isBlank()) return false
-
-    val lower = text.lowercase()
-    val hasQuestionTone = text.contains("？") || lower.contains("?")
-    val rememberMarkersEn =
-        listOf(
-            "please remember",
-            "remember that",
-            "for future reference",
-            "save this preference",
-            "keep this in memory"
-        )
-    val rememberMarkersZh =
-        listOf(
-            "请记住",
-            "记住这点",
-            "记下来",
-            "帮我记住",
-            "记一下",
-            "记到记忆里"
-        )
-    val preferenceMarkersEn =
-        listOf(
-            "i prefer",
-            "i like",
-            "i love",
-            "i dislike",
-            "i don't like",
-            "my favorite",
-            "my name is",
-            "call me"
-        )
-    val profileMarkersEn =
-        listOf(
-            "i am ",
-            "i'm ",
-            "i work as",
-            "i live in",
-            "i usually",
-            "i always",
-            "i never"
-        )
-    val preferenceMarkersZh =
-        listOf(
-            "我喜欢",
-            "我偏好",
-            "我更喜欢",
-            "我不喜欢",
-            "我最喜欢",
-            "我最常用",
-            "我一般用",
-            "我习惯用",
-            "我希望默认",
-            "默认用",
-            "优先用"
-        )
-    val profileMarkersZh =
-        listOf(
-            "我是",
-            "我叫",
-            "叫我",
-            "我的名字是",
-            "我来自",
-            "我的工作是",
-            "我通常",
-            "我总是",
-            "我从不"
-        )
-    val longTermMarkersEn =
-        listOf(
-            "from now on",
-            "going forward",
-            "in future",
-            "for future",
-            "default to",
-            "always use",
-            "use this by default",
-            "for all future chats"
-        )
-    val longTermMarkersZh =
-        listOf(
-            "从现在开始",
-            "之后都",
-            "以后都",
-            "以后请都",
-            "后续都",
-            "以后请",
-            "今后",
-            "默认",
-            "长期",
-            "一直按",
-            "后面都"
-        )
-    val transientTaskMarkersEn =
-        listOf(
-            "open ",
-            "search ",
-            "click ",
-            "send ",
-            "today",
-            "right now",
-            "this time",
-            "for this task",
-            "for now",
-            "temporarily"
-        )
-    val transientTaskMarkersZh =
-        listOf(
-            "帮我",
-            "打开",
-            "搜索",
-            "点击",
-            "发送",
-            "这次",
-            "现在",
-            "今天",
-            "临时",
-            "本次"
-        )
-
-    val hasRememberSignal =
-        rememberMarkersEn.any { marker -> lower.contains(marker) } ||
-            rememberMarkersZh.any { marker -> text.contains(marker) }
-    val hasPreferenceOrProfileSignal =
-        preferenceMarkersEn.any { marker -> lower.contains(marker) } ||
-            profileMarkersEn.any { marker -> lower.contains(marker) } ||
-            preferenceMarkersZh.any { marker -> text.contains(marker) } ||
-            profileMarkersZh.any { marker -> text.contains(marker) }
-    val hasLongTermSignal =
-        longTermMarkersEn.any { marker -> lower.contains(marker) } ||
-            longTermMarkersZh.any { marker -> text.contains(marker) }
-    val hasSignal = hasRememberSignal || hasPreferenceOrProfileSignal || hasLongTermSignal
-    if (!hasSignal) return false
-
-    if (hasQuestionTone && !hasRememberSignal && !hasLongTermSignal) return false
-
-    val looksLikeTransientTaskOnly =
-        (transientTaskMarkersEn.any { marker -> lower.contains(marker) } ||
-            transientTaskMarkersZh.any { marker -> text.contains(marker) }) &&
-            !hasPreferenceOrProfileSignal &&
-            !hasLongTermSignal &&
-            !hasRememberSignal
-    if (looksLikeTransientTaskOnly) return false
-
+    if (text.startsWith("/")) return false
+    val compact = text.replace(Regex("\\s+"), "")
+    if (compact.length < 2) return false
+    val hasSemanticChar = Regex("[\\p{L}\\p{N}\\u4e00-\\u9fa5]").containsMatchIn(compact)
+    if (!hasSemanticChar) return false
     return true
 }
 

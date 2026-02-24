@@ -2691,31 +2691,19 @@ internal fun ChatScreenContent(navController: NavController) {
                     .zIndex(1.1f)
             )
 
-            // Bottom fade mask: starts near the input top and fades to solid background at screen bottom.
-            val bottomFadeHeightTarget = remember(imeVisible, bottomSystemPadding, bottomBarHeightDp) {
-                val baseHeight = bottomBarHeightDp + bottomSystemPadding
-                if (imeVisible) {
-                    baseHeight + 18.dp
-                } else {
-                    baseHeight + 20.dp
-                }
+            // Bottom fade mask follows the input area so keyboard-up state keeps the same
+            // "outside-area" gradient blur feeling as the normal bottom state.
+            val bottomFadeHeightTarget = remember(bottomBarHeightDp) {
+                (bottomBarHeightDp + 24.dp).coerceAtLeast(88.dp)
             }
-            val bottomFadeColors = remember(imeVisible) {
-                if (imeVisible) {
-                    listOf(
-                        ChatBackground.copy(alpha = 0.06f),
-                        ChatBackground.copy(alpha = 0.34f),
-                        ChatBackground.copy(alpha = 0.68f),
-                        ChatBackground.copy(alpha = 0.96f)
-                    )
-                } else {
-                    listOf(
-                        ChatBackground.copy(alpha = 0f),
-                        ChatBackground.copy(alpha = 0.28f),
-                        ChatBackground.copy(alpha = 0.58f),
-                        ChatBackground
-                    )
-                }
+            val bottomFadeColors = remember {
+                listOf(
+                    ChatBackground.copy(alpha = 0f),
+                    ChatBackground.copy(alpha = 0.24f),
+                    ChatBackground.copy(alpha = 0.56f),
+                    ChatBackground.copy(alpha = 0.9f),
+                    ChatBackground
+                )
             }
             val bottomFadeHeight by animateDpAsState(
                 targetValue = bottomFadeHeightTarget,
@@ -2726,6 +2714,7 @@ internal fun ChatScreenContent(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .padding(bottom = inputBottomInset)
                         .fillMaxWidth()
                         .height(bottomFadeHeight)
                         .zIndex(3f)
