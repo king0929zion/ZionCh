@@ -1916,11 +1916,14 @@ internal fun ToolMenuPanel(
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val panelMaxHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.6f)
-    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+    val screenHeightDp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+    val panelMaxHeight = screenHeightDp * 0.6f
+    var panelOffsetPx by remember { mutableFloatStateOf(0f) }
     val dismissThresholdPx = remember(density) { with(density) { 120.dp.toPx() } }
-    val dragProgress = remember(dragOffsetPx, dismissThresholdPx) {
-        (dragOffsetPx / dismissThresholdPx).coerceIn(0f, 1f)
+    val maxLiftPx = remember(density, screenHeightDp) { with(density) { (screenHeightDp * 0.28f).toPx() } }
+    val expandSnapThresholdPx = remember(maxLiftPx) { maxLiftPx * 0.35f }
+    val dragProgress = remember(panelOffsetPx, dismissThresholdPx) {
+        (panelOffsetPx.coerceAtLeast(0f) / dismissThresholdPx).coerceIn(0f, 1f)
     }
     val scrimAlpha by animateFloatAsState(
         targetValue = if (visible) (0.5f * (1f - dragProgress * 0.72f)) else 0f,
@@ -1928,8 +1931,10 @@ internal fun ToolMenuPanel(
     )
     LaunchedEffect(visible) {
         if (!visible) {
-            dragOffsetPx = 0f
+            panelOffsetPx = 0f
             onMcpPageChange(ToolMenuPage.Tools)
+        } else {
+            panelOffsetPx = 0f
         }
     }
 
@@ -1957,29 +1962,33 @@ internal fun ToolMenuPanel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .offset { IntOffset(0, dragOffsetPx.roundToInt()) }
+                        .offset { IntOffset(0, panelOffsetPx.roundToInt()) }
                         .draggable(
                             orientation = Orientation.Vertical,
                             state = rememberDraggableState { delta ->
-                                dragOffsetPx = (dragOffsetPx + delta).coerceAtLeast(0f)
+                                panelOffsetPx = (panelOffsetPx + delta).coerceIn(-maxLiftPx, dismissThresholdPx * 1.8f)
                             },
                             onDragStopped = { velocity ->
                                 val shouldDismiss =
-                                    dragOffsetPx > dismissThresholdPx || velocity > 2400f
+                                    panelOffsetPx > dismissThresholdPx || velocity > 2400f
                                 if (shouldDismiss) {
                                     onDismiss()
-                                    dragOffsetPx = 0f
+                                    panelOffsetPx = 0f
                                 } else {
+                                    val shouldExpand =
+                                        panelOffsetPx < -expandSnapThresholdPx || velocity < -1700f
+                                    val targetOffset =
+                                        if (shouldExpand && maxLiftPx > 1f) -maxLiftPx else 0f
                                     scope.launch {
                                         animate(
-                                            initialValue = dragOffsetPx,
-                                            targetValue = 0f,
+                                            initialValue = panelOffsetPx,
+                                            targetValue = targetOffset,
                                             animationSpec = tween(
                                                 durationMillis = 150,
                                                 easing = FastOutSlowInEasing
                                             )
                                         ) { value, _ ->
-                                            dragOffsetPx = value
+                                            panelOffsetPx = value
                                         }
                                     }
                                 }
@@ -2014,7 +2023,7 @@ internal fun ToolMenuPanel(
                             .fillMaxWidth()
                             .heightIn(max = panelMaxHeight)
                             .background(Surface)
-                            .padding(16.dp)
+                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
                     ) {
                         Box(
                             modifier = Modifier.fillMaxWidth(),
