@@ -1853,6 +1853,7 @@ class ChatApiClient {
         messages: List<Message>,
         extraHeaders: List<HttpHeader> = emptyList(),
         reasoningEffort: String? = null,
+        enableThinking: Boolean? = null,
         conversationId: String? = null
     ): Flow<ChatStreamDelta> {
         val type = provider.type.trim().lowercase()
@@ -1861,7 +1862,7 @@ class ChatApiClient {
             isGrokReverseDirect(provider) -> grokReverseChatCompletionsStream(provider, modelId, messages, extraHeaders, reasoningEffort)
             type == "antigravity" -> antigravityStream(provider, modelId, messages, extraHeaders)
             type == "gemini-cli" -> geminiCliStream(provider, modelId, messages, extraHeaders)
-            else -> openAIChatCompletionsStream(provider, modelId, messages, extraHeaders, reasoningEffort)
+            else -> openAIChatCompletionsStream(provider, modelId, messages, extraHeaders, reasoningEffort, enableThinking)
         }
     }
 
@@ -1870,7 +1871,8 @@ class ChatApiClient {
         modelId: String,
         messages: List<Message>,
         extraHeaders: List<HttpHeader>,
-        reasoningEffort: String? = null
+        reasoningEffort: String? = null,
+        enableThinking: Boolean? = null
     ): Flow<ChatStreamDelta> = flow {
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
         val copilotInitiator =
@@ -1887,6 +1889,7 @@ class ChatApiClient {
             payload["tools"] = qwenTools
             payload["tool_choice"] = if (isNoopQwenToolList(qwenTools)) "none" else "auto"
             payload["stream_options"] = mapOf("include_usage" to true)
+            enableThinking?.let { payload["extra_body"] = mapOf("enable_thinking" to it) }
         }
         if (isGrok2Api(provider)) {
             normalizeReasoningEffort(reasoningEffort)?.let { payload["reasoning_effort"] = it }
