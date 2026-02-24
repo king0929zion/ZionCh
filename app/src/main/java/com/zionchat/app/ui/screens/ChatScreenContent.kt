@@ -1089,6 +1089,10 @@ internal fun ChatScreenContent(navController: NavController) {
                             append('\n')
                         }
                     }
+                    if (isNotEmpty()) append("\n\n")
+                    append("Memory policy:\n")
+                    append("- Only store memory when the user explicitly states stable preference/profile or long-term requirements.\n")
+                    append("- Never store one-off task instructions or temporary requests.")
                 }.trim()
                 if (content.isBlank()) null else Message(role = "system", content = content)
             }

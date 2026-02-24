@@ -363,6 +363,37 @@ fun MessageItem(
             val inlineTagIds = remember(contentSegments) {
                 contentSegments.mapNotNull { it.tagId }.toSet()
             }
+            val orderedTags = remember(message.tags, inlineTagIds) {
+                val base =
+                    message.tags.orEmpty()
+                    .filterNot { tag -> inlineTagIds.contains(tag.id) }
+                    .sortedBy { it.createdAt }
+                val dedupFromTail = mutableListOf<MessageTag>()
+                var keptAutoSoulTag = false
+                base.asReversed().forEach { tag ->
+                    if (isAutoSoulMcpTag(tag)) {
+                        if (keptAutoSoulTag) return@forEach
+                        keptAutoSoulTag = true
+                    }
+                    dedupFromTail += tag
+                }
+                dedupFromTail.asReversed()
+            }
+            val topMemoryTags = remember(orderedTags) {
+                orderedTags.filter { isMemoryTag(it) }
+            }
+            val trailingTags = remember(orderedTags) {
+                orderedTags.filterNot { isMemoryTag(it) }
+            }
+
+            topMemoryTags.forEach { tag ->
+                MessageTagRow(
+                    tag = tag,
+                    messageId = message.id,
+                    onShowTag = onShowTag,
+                    onDownloadAppDevTag = onDownloadAppDevTag
+                )
+            }
 
             if (contentSegments.isEmpty()) {
                 MarkdownText(
@@ -400,23 +431,7 @@ fun MessageItem(
                 }
             }
 
-            val orderedTags = remember(message.tags, inlineTagIds) {
-                val base =
-                    message.tags.orEmpty()
-                    .filterNot { tag -> inlineTagIds.contains(tag.id) }
-                    .sortedBy { it.createdAt }
-                val dedupFromTail = mutableListOf<MessageTag>()
-                var keptAutoSoulTag = false
-                base.asReversed().forEach { tag ->
-                    if (isAutoSoulMcpTag(tag)) {
-                        if (keptAutoSoulTag) return@forEach
-                        keptAutoSoulTag = true
-                    }
-                    dedupFromTail += tag
-                }
-                dedupFromTail.asReversed()
-            }
-            orderedTags.forEach { tag ->
+            trailingTags.forEach { tag ->
                 MessageTagRow(
                     tag = tag,
                     messageId = message.id,
@@ -560,6 +575,10 @@ internal fun MessageTagRow(
             )
         }
     }
+}
+
+internal fun isMemoryTag(tag: MessageTag): Boolean {
+    return tag.kind.trim().equals("memory", ignoreCase = true)
 }
 
 internal fun isAutoSoulMcpTag(tag: MessageTag): Boolean {
@@ -6705,9 +6724,9 @@ internal suspend fun extractMemoryCandidatesFromTurn(
     val systemPrompt =
         buildString {
             append("Extract memory candidates from the user message. Return ONLY a JSON array of strings. ")
-            append("Keep only explicit user-stated stable preferences or factual profile details. ")
+            append("Keep only explicit user-stated stable preferences, factual profile details, or long-term requirements. ")
             append("Never infer, guess, or rewrite speculative statements. ")
-            append("Do not save temporary tasks, one-off requests, moods, assumptions, or assistant-generated claims. ")
+            append("Do not save temporary tasks, one-off requests, current-session actions, moods, assumptions, or assistant-generated claims. ")
             append("If there is nothing safe to save, return []. Keep at most 2 short items.")
         }
 
@@ -6746,36 +6765,50 @@ internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
     if (text.isBlank()) return false
 
     val lower = text.lowercase()
-    val explicitMarkersEn =
+    val rememberMarkersEn =
         listOf(
             "please remember",
             "remember that",
-            "for future reference",
+            "for future reference"
+        )
+    val rememberMarkersZh =
+        listOf(
+            "请记住",
+            "记住这点",
+            "记下来"
+        )
+    val preferenceMarkersEn =
+        listOf(
             "i prefer",
             "i like",
             "i love",
             "i dislike",
             "i don't like",
             "my favorite",
+            "my name is",
+            "call me"
+        )
+    val profileMarkersEn =
+        listOf(
             "i am ",
             "i'm ",
-            "my name is",
-            "call me",
             "i usually",
             "i always",
             "i never"
         )
-    val explicitMarkersZh =
+    val preferenceMarkersZh =
         listOf(
-            "请记住",
-            "记住",
-            "以后",
-            "从现在开始",
             "我喜欢",
             "我偏好",
             "我更喜欢",
             "我不喜欢",
-            "我讨厌",
+            "我最喜欢",
+            "我最常用",
+            "我一般用",
+            "我习惯用"
+        )
+    val profileMarkersZh =
+        listOf(
             "我是",
             "我叫",
             "叫我",
@@ -6783,13 +6816,76 @@ internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
             "我总是",
             "我从不"
         )
+    val longTermMarkersEn =
+        listOf(
+            "from now on",
+            "going forward",
+            "in future",
+            "for future",
+            "default to",
+            "always use",
+            "use this by default",
+            "for all future chats"
+        )
+    val longTermMarkersZh =
+        listOf(
+            "从现在开始",
+            "之后都",
+            "以后都",
+            "后续都",
+            "以后请",
+            "今后",
+            "默认",
+            "长期",
+            "一直按",
+            "后面都"
+        )
+    val transientTaskMarkersEn =
+        listOf(
+            "open ",
+            "search ",
+            "click ",
+            "send ",
+            "today",
+            "right now",
+            "this time",
+            "for this task"
+        )
+    val transientTaskMarkersZh =
+        listOf(
+            "帮我",
+            "打开",
+            "搜索",
+            "点击",
+            "发送",
+            "这次",
+            "现在",
+            "今天"
+        )
 
-    val hasSignal =
-        explicitMarkersEn.any { marker -> lower.contains(marker) } ||
-            explicitMarkersZh.any { marker -> text.contains(marker) }
+    val hasRememberSignal =
+        rememberMarkersEn.any { marker -> lower.contains(marker) } ||
+            rememberMarkersZh.any { marker -> text.contains(marker) }
+    val hasPreferenceOrProfileSignal =
+        preferenceMarkersEn.any { marker -> lower.contains(marker) } ||
+            profileMarkersEn.any { marker -> lower.contains(marker) } ||
+            preferenceMarkersZh.any { marker -> text.contains(marker) } ||
+            profileMarkersZh.any { marker -> text.contains(marker) }
+    val hasLongTermSignal =
+        longTermMarkersEn.any { marker -> lower.contains(marker) } ||
+            longTermMarkersZh.any { marker -> text.contains(marker) }
+    val hasSignal = hasRememberSignal || hasPreferenceOrProfileSignal || hasLongTermSignal
     if (!hasSignal) return false
 
-    if (lower.endsWith("?") && !lower.contains("remember")) return false
+    val looksLikeTransientTaskOnly =
+        (transientTaskMarkersEn.any { marker -> lower.contains(marker) } ||
+            transientTaskMarkersZh.any { marker -> text.contains(marker) }) &&
+            !hasPreferenceOrProfileSignal &&
+            !hasLongTermSignal &&
+            !hasRememberSignal
+    if (looksLikeTransientTaskOnly) return false
+
+    if (lower.endsWith("?") && !hasRememberSignal && !hasPreferenceOrProfileSignal && !hasLongTermSignal) return false
     return true
 }
 
