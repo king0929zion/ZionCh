@@ -1323,6 +1323,7 @@ internal fun ChatScreenContent(navController: NavController) {
 
                     val visibleContent = StringBuilder()
                     val thinkingContent = StringBuilder()
+                    var autoSoulInvokedInThisTask = false
 
                     fun updateAssistantFromCombined(roundVisible: String, roundThinking: String) {
                         val mergedVisible = mergeTextSections(visibleContent.toString(), roundVisible)
@@ -1362,7 +1363,8 @@ internal fun ChatScreenContent(navController: NavController) {
                             if (canUseAutoSoulTool) {
                                 buildAutoSoulToolInstruction(
                                     roundIndex = roundIndex,
-                                    maxCallsPerRound = maxCallsPerRound
+                                    maxCallsPerRound = maxCallsPerRound,
+                                    alreadyInvoked = autoSoulInvokedInThisTask
                                 )
                             } else {
                                 null
@@ -1641,7 +1643,7 @@ internal fun ChatScreenContent(navController: NavController) {
                         val hadRawCallBlocks = allRawCallBlocks.any { it.isNotBlank() }
                         val parseFailedBlocks = mutableListOf<String>()
                         val roundSeenSignatures = linkedSetOf<String>()
-                        val parsedCalls =
+                        val parsedCallsRaw =
                             allRawCallBlocks
                                 .flatMap { block ->
                                     val parsed = parseMcpToolCallsPayload(block)
@@ -1667,6 +1669,24 @@ internal fun ChatScreenContent(navController: NavController) {
                                     roundSeenSignatures.add(buildMcpCallSignature(call))
                                 }
                                 .take(maxCallsPerRound)
+                        var droppedAutoSoulCallByPolicy = false
+                        var keptAutoSoulInRound = false
+                        val parsedCalls =
+                            parsedCallsRaw.filter { call ->
+                                if (!isBuiltInAutoSoulCall(call)) {
+                                    return@filter true
+                                }
+                                if (autoSoulInvokedInThisTask) {
+                                    droppedAutoSoulCallByPolicy = true
+                                    return@filter false
+                                }
+                                if (keptAutoSoulInRound) {
+                                    droppedAutoSoulCallByPolicy = true
+                                    return@filter false
+                                }
+                                keptAutoSoulInRound = true
+                                true
+                            }
 
                         updateAssistantFromCombined(roundVisible = roundVisible, roundThinking = roundThinking)
                         appendRoundToCombined(roundVisible = roundVisible, roundThinking = roundThinking)
@@ -1701,6 +1721,22 @@ internal fun ChatScreenContent(navController: NavController) {
                             break
                         }
                         if (parsedCalls.isEmpty()) {
+                            if (droppedAutoSoulCallByPolicy && roundIndex < maxRounds) {
+                                baseMessages.add(
+                                    Message(
+                                        role = "system",
+                                        content = buildMcpRoundResultContext(
+                                            roundIndex = roundIndex,
+                                            summary =
+                                                "- autosoul_agent was already invoked for this user task.\n" +
+                                                    "- Do NOT call autosoul_agent again.\n" +
+                                                    "- Continue with direct user-facing answer based on existing AutoSoul result."
+                                        )
+                                    )
+                                )
+                                roundIndex += 1
+                                continue
+                            }
                             if (hadRawCallBlocks && roundIndex < maxRounds) {
                                 baseMessages.add(
                                     Message(
@@ -1737,6 +1773,7 @@ internal fun ChatScreenContent(navController: NavController) {
                             val argsJson = prettyGson.toJson(args)
 
                             if (isBuiltInAutoSoulCall(call)) {
+                                autoSoulInvokedInThisTask = true
                                 val taskPrompt = resolveAutoSoulTaskPrompt(args, trimmed)
                                 val pendingTag =
                                     MessageTag(

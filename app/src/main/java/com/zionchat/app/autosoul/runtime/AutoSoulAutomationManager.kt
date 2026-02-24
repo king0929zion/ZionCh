@@ -155,15 +155,16 @@ object AutoSoulAutomationManager {
                             appendLog(failedError)
                             break
                         }
-                        AutoSoulUiStatus.setRunning("已完成 $stepNo/${steps.size}")
-                        AutoSoulFloatingOverlay.updateState(AutoSoulUiStatus.state.value)
-                        delay(320L)
+                        if (stepNo < steps.size) {
+                            AutoSoulUiStatus.setRunning("准备下一步...")
+                            AutoSoulFloatingOverlay.updateState(AutoSoulUiStatus.state.value)
+                            delay(220L)
+                        }
                     }
 
                     if (failedError == null && isActiveRun()) {
-                        val successStatusText = "执行完成"
+                        val successStatusText = "任务结束"
                         AutoSoulUiStatus.setStopped(successStatusText)
-                        appendLog("执行完成")
                         _state.value =
                             _state.value.copy(
                                 running = false,

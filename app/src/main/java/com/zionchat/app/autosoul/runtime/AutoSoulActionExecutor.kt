@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import com.zionchat.app.autosoul.AutoSoulAccessibilityService
@@ -115,35 +116,37 @@ class AutoSoulActionExecutor(
             "swipe" -> {
                 val direction = resolveSwipeDirection(rawAction, step.args)
                 val defaultSwipe = defaultSwipePoints(direction) ?: defaultSwipePoints("up")
-                val startRaw =
+                val explicitStartRaw =
                     firstNonBlank(
                         step.args["start"],
                         step.args["from"],
                         step.args["start_point"],
                         step.args["from_point"],
                         coordinatePairString(step.args, "start_x", "start_y"),
-                        coordinatePairString(step.args, "x1", "y1"),
-                        defaultSwipe?.first?.let { "${it.first},${it.second}" }
+                        coordinatePairString(step.args, "x1", "y1")
                     )
-                val endRaw =
+                val explicitEndRaw =
                     firstNonBlank(
                         step.args["end"],
                         step.args["to"],
                         step.args["end_point"],
                         step.args["to_point"],
                         coordinatePairString(step.args, "end_x", "end_y"),
-                        coordinatePairString(step.args, "x2", "y2"),
-                        defaultSwipe?.second?.let { "${it.first},${it.second}" }
+                        coordinatePairString(step.args, "x2", "y2")
                     )
+                val startRaw = explicitStartRaw ?: defaultSwipe?.first?.let { "${it.first},${it.second}" }
+                val endRaw = explicitEndRaw ?: defaultSwipe?.second?.let { "${it.first},${it.second}" }
                 val start =
                     parseSwipePoint(
                         raw = startRaw.orEmpty(),
-                        fallback = defaultSwipe?.first
+                        fallback = defaultSwipe?.first,
+                        allowSingleAxisFallback = explicitStartRaw.isNullOrBlank()
                     )
                 val end =
                     parseSwipePoint(
                         raw = endRaw.orEmpty(),
-                        fallback = defaultSwipe?.second
+                        fallback = defaultSwipe?.second,
+                        allowSingleAxisFallback = explicitEndRaw.isNullOrBlank()
                     )
                 if (start == null || end == null) {
                     onLog(
@@ -342,19 +345,34 @@ class AutoSoulActionExecutor(
 
     private fun parseSwipePoint(
         raw: String,
-        fallback: Pair<Double, Double>?
+        fallback: Pair<Double, Double>?,
+        allowSingleAxisFallback: Boolean
     ): Pair<Double, Double>? {
         if (raw.isBlank()) return fallback
-        parsePoint(raw)?.let { return it }
-        extractDelimitedCoordinatePair(raw.trim())?.let { return it }
-        val coordinates = extractCoordinateValues(raw)
+        val trimmed = raw.trim()
+        parsePoint(trimmed)?.let { return it }
+        extractDelimitedCoordinatePair(trimmed)?.let { return it }
+
+        if (looksLikeNarrativeCoordinateNoise(trimmed)) {
+            return if (allowSingleAxisFallback) fallback else null
+        }
+        val coordinates = extractCoordinateValues(trimmed)
         if (coordinates.size == 2) {
             return coordinates[0] to coordinates[1]
         }
-        if (coordinates.size == 1 && fallback != null) {
+        if (coordinates.size == 1 && fallback != null && allowSingleAxisFallback) {
             return coordinates[0] to fallback.second
         }
-        return fallback
+        return if (allowSingleAxisFallback) fallback else null
+    }
+
+    private fun looksLikeNarrativeCoordinateNoise(raw: String): Boolean {
+        if (raw.length < 36) return false
+        val letters = raw.count { ch ->
+            ch.isLetter() || Character.UnicodeScript.of(ch.code) == Character.UnicodeScript.HAN
+        }
+        val digits = raw.count { it.isDigit() }
+        return letters >= 8 && letters > digits
     }
 
     private fun launchApp(
@@ -634,28 +652,64 @@ class AutoSoulActionExecutor(
         rawY: Double
     ): Pair<Float, Float> {
         val dm = context.resources.displayMetrics
-        val width = dm.widthPixels.toFloat().coerceAtLeast(2f)
-        val height = dm.heightPixels.toFloat().coerceAtLeast(2f)
-        val percentMode = rawX in 1.0..100.0 && rawY in 1.0..100.0
+        val screenWidth = dm.widthPixels.toFloat().coerceAtLeast(2f)
+        val screenHeight = dm.heightPixels.toFloat().coerceAtLeast(2f)
+        val bounds = resolveGestureBounds(service, screenWidth, screenHeight)
+        val width = bounds.width().toFloat().coerceAtLeast(2f)
+        val height = bounds.height().toFloat().coerceAtLeast(2f)
+        val left = bounds.left.toFloat()
+        val top = bounds.top.toFloat()
 
         val absX =
             when {
-                rawX in 0.0..1.0 -> (rawX * width).toFloat()
-                percentMode -> ((rawX / 100.0) * width).toFloat()
+                rawX in 0.0..1.0 -> (left.toDouble() + rawX * width.toDouble()).toFloat()
                 else -> rawX.toFloat()
             }
         val absY =
             when {
-                rawY in 0.0..1.0 -> (rawY * height).toFloat()
-                percentMode -> ((rawY / 100.0) * height).toFloat()
+                rawY in 0.0..1.0 -> (top.toDouble() + rawY * height.toDouble()).toFloat()
                 else -> rawY.toFloat()
             }
 
-        val minX = 1f
-        val maxX = (width - 1f).coerceAtLeast(1f)
-        val minY = 1f
-        val maxY = (height - 1f).coerceAtLeast(1f)
+        val minX = (left + 1f).coerceAtLeast(1f)
+        val maxX = (left + width - 1f).coerceAtLeast(minX)
+        val minY = (top + 1f).coerceAtLeast(1f)
+        val maxY = (top + height - 1f).coerceAtLeast(minY)
         return absX.coerceIn(minX, maxX) to absY.coerceIn(minY, maxY)
+    }
+
+    private fun resolveGestureBounds(
+        service: AutoSoulAccessibilityService,
+        screenWidth: Float,
+        screenHeight: Float
+    ): Rect {
+        val fallback =
+            Rect(
+                0,
+                0,
+                screenWidth.toInt().coerceAtLeast(2),
+                screenHeight.toInt().coerceAtLeast(2)
+            )
+        val root = service.rootInActiveWindow ?: return fallback
+        val rootRect = Rect()
+        val gotBounds =
+            runCatching {
+                root.getBoundsInScreen(rootRect)
+                true
+            }.getOrDefault(false)
+        if (!gotBounds) return fallback
+
+        val minWidth = (screenWidth * 0.35f).toInt().coerceAtLeast(2)
+        val minHeight = (screenHeight * 0.35f).toInt().coerceAtLeast(2)
+        val left = rootRect.left.coerceIn(0, fallback.right - 1)
+        val top = rootRect.top.coerceIn(0, fallback.bottom - 1)
+        val right = rootRect.right.coerceIn(left + 1, fallback.right)
+        val bottom = rootRect.bottom.coerceIn(top + 1, fallback.bottom)
+        val candidate = Rect(left, top, right, bottom)
+        if (candidate.width() < minWidth || candidate.height() < minHeight) {
+            return fallback
+        }
+        return candidate
     }
 
     private fun awaitGesture(start: ((Boolean) -> Unit) -> Unit): Boolean {

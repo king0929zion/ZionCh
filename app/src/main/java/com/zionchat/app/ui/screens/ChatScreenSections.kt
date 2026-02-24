@@ -2726,10 +2726,10 @@ internal suspend fun handleAutoSoulInvocation(
 
     val logsText = execution.logs.takeLast(10).joinToString("\n")
     return buildString {
-        append(if (execution.success) "✅ AutoSoul 执行完成" else "❌ AutoSoul 执行失败")
+        append(if (execution.success) "✅ AutoSoul 任务结束" else "❌ AutoSoul 执行失败")
         append("（${execution.stepCount} 步）")
         append("\n状态：")
-        append(execution.statusText.ifBlank { if (execution.success) "执行完成" else "执行失败" })
+        append(execution.statusText.ifBlank { if (execution.success) "任务结束" else "执行失败" })
         execution.error?.trim()?.takeIf { it.isNotBlank() }?.let { err ->
             append("\n错误：")
             append(err.take(280))
@@ -2825,7 +2825,7 @@ internal suspend fun executeAutoSoulTask(
                     }
 
                 if (decision.done) {
-                    finishMessage = decision.message?.trim()?.ifBlank { null } ?: "执行完成"
+                    finishMessage = decision.message?.trim()?.ifBlank { null } ?: "任务结束"
                     break
                 }
 
@@ -2890,7 +2890,7 @@ internal suspend fun executeAutoSoulTask(
                 }
             val statusText =
                 when {
-                    success -> finishMessage ?: "执行完成"
+                    success -> finishMessage ?: "任务结束"
                     exhaustedRounds -> "达到最大执行轮次"
                     else -> stepTraces.lastOrNull()?.statusText?.ifBlank { "执行失败" } ?: "执行失败"
                 }
@@ -4059,7 +4059,7 @@ internal fun parseAutoSoulDoFinishDecision(raw: String): AutoSoulPlannerDecision
 
     val finishRegex = Regex("""(?is)\bfinish\s*\(\s*message\s*[:=]\s*["']?(.+?)["']?\s*\)""")
     finishRegex.findAll(trimmed).lastOrNull()?.let { match ->
-        val message = match.groupValues.getOrNull(1)?.trim().orEmpty().ifBlank { "执行完成" }
+        val message = match.groupValues.getOrNull(1)?.trim().orEmpty().ifBlank { "任务结束" }
         return AutoSoulPlannerDecision(
             done = true,
             message = message.take(240),
@@ -6305,23 +6305,32 @@ internal fun buildPendingAppAutomationPrompt(task: AppAutomationTask): String {
 
 internal fun buildAutoSoulToolInstruction(
     roundIndex: Int,
-    maxCallsPerRound: Int
+    maxCallsPerRound: Int,
+    alreadyInvoked: Boolean = false
 ): String {
     return buildString {
         appendLine("Built-in tool available: autosoul_agent.")
         appendLine("Current round: $roundIndex")
-        appendLine("Use this tool only for Android phone automation tasks (open app / tap / swipe / input / back / home).")
-        appendLine("Do not call this tool for normal Q&A.")
-        appendLine("First write a normal visible reply, then append tool call tags if needed.")
-        appendLine("At most $maxCallsPerRound tool calls in this round.")
-        appendLine()
-        appendLine("Tool call format:")
-        appendLine("<tool_call>{\"serverId\":\"builtin_autosoul\",\"toolName\":\"autosoul_agent\",\"arguments\":{\"task\":\"...\"}}</tool_call>")
-        appendLine()
-        appendLine("Arguments policy:")
-        appendLine("- task: required, concise and executable Android automation goal.")
-        appendLine("- Optional: app/package for target app hint.")
-        appendLine("- Never fabricate execution results. Wait for tool result context in next round.")
+        if (alreadyInvoked) {
+            appendLine("autosoul_agent has already been invoked for this user task.")
+            appendLine("Do NOT call autosoul_agent again in this task.")
+            appendLine("Continue with a normal user-facing reply based on existing tool results.")
+        } else {
+            appendLine("Use this tool only for Android phone automation tasks (open app / tap / swipe / input / back / home).")
+            appendLine("Do not call this tool for normal Q&A.")
+            appendLine("First write a normal visible reply, then append tool call tags if needed.")
+            appendLine("At most $maxCallsPerRound tool calls in this round.")
+            appendLine()
+            appendLine("Tool call format:")
+            appendLine("<tool_call>{\"serverId\":\"builtin_autosoul\",\"toolName\":\"autosoul_agent\",\"arguments\":{\"task\":\"...\"}}</tool_call>")
+            appendLine()
+            appendLine("Arguments policy:")
+            appendLine("- task: required, concise and executable Android automation goal.")
+            appendLine("- Optional: app/package for target app hint.")
+            appendLine("- For one user task, call autosoul_agent only once with the complete goal.")
+            appendLine("- Do not split one task into multiple autosoul_agent calls.")
+            appendLine("- Never fabricate execution results. Wait for tool result context in next round.")
+        }
     }.trim()
 }
 
