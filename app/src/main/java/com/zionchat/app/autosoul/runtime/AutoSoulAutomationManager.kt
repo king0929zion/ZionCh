@@ -162,13 +162,17 @@ object AutoSoulAutomationManager {
                     }
 
                     if (failedError == null && isActiveRun()) {
-                        AutoSoulUiStatus.setStopped("执行完成")
-                        appendLog("执行完成")
+                        val singleStepRun = steps.size <= 1
+                        val successStatusText = if (singleStepRun) "步骤完成" else "执行完成"
+                        AutoSoulUiStatus.setStopped(successStatusText)
+                        if (!singleStepRun) {
+                            appendLog("执行完成")
+                        }
                         _state.value =
                             _state.value.copy(
                                 running = false,
                                 currentStep = steps.size,
-                                statusText = "执行完成",
+                                statusText = successStatusText,
                                 lastError = null
                             )
                     } else if (failedError != null) {

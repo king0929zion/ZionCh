@@ -4,7 +4,6 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import com.zionchat.app.autosoul.AutoSoulAccessibilityService
@@ -332,8 +331,9 @@ class AutoSoulActionExecutor(
     ): Pair<Double, Double>? {
         if (raw.isBlank()) return fallback
         parsePoint(raw)?.let { return it }
+        extractDelimitedCoordinatePair(raw.trim())?.let { return it }
         val coordinates = extractCoordinateValues(raw)
-        if (coordinates.size >= 2) {
+        if (coordinates.size == 2) {
             return coordinates[0] to coordinates[1]
         }
         if (coordinates.size == 1 && fallback != null) {
@@ -530,17 +530,32 @@ class AutoSoulActionExecutor(
                 .replace(";", ",")
                 .replace("、", ",")
                 .trim()
-        val parts = cleaned.split(Regex("[,\\s]+")).map { it.trim() }.filter { it.isNotBlank() }
-        val parsedValues = parts.mapNotNull { parseCoordinateValue(it) }
-        if (parsedValues.size >= 2) {
-            return parsedValues[0] to parsedValues[1]
+        if (cleaned.isBlank()) return null
+        extractKeyedCoordinatePair(cleaned)?.let { return it }
+        extractDelimitedCoordinatePair(cleaned)?.let { return it }
+        val parts = cleaned.split(Regex("\\s+")).map { it.trim() }.filter { it.isNotBlank() }
+        if (parts.size == 2) {
+            val x = parseCoordinateValue(parts[0])
+            val y = parseCoordinateValue(parts[1])
+            if (x != null && y != null) return x to y
         }
-        val extracted = extractCoordinateValues(cleaned)
-        return if (extracted.size >= 2) {
-            extracted[0] to extracted[1]
-        } else {
-            null
-        }
+        return null
+    }
+
+    private fun extractKeyedCoordinatePair(raw: String): Pair<Double, Double>? {
+        val xRaw = Regex("""(?i)\bx\s*[:=]\s*([-+]?\d*\.?\d+%?)""").findAll(raw).lastOrNull()?.groupValues?.getOrNull(1)
+        val yRaw = Regex("""(?i)\by\s*[:=]\s*([-+]?\d*\.?\d+%?)""").findAll(raw).lastOrNull()?.groupValues?.getOrNull(1)
+        val x = xRaw?.let { parseCoordinateValue(it) }
+        val y = yRaw?.let { parseCoordinateValue(it) }
+        return if (x != null && y != null) x to y else null
+    }
+
+    private fun extractDelimitedCoordinatePair(raw: String): Pair<Double, Double>? {
+        val pairPattern = Regex("""([-+]?\d*\.?\d+%?)\s*[,，]\s*([-+]?\d*\.?\d+%?)""")
+        val match = pairPattern.findAll(raw).lastOrNull() ?: return null
+        val x = parseCoordinateValue(match.groupValues.getOrNull(1).orEmpty())
+        val y = parseCoordinateValue(match.groupValues.getOrNull(2).orEmpty())
+        return if (x != null && y != null) x to y else null
     }
 
     private fun parseCoordinateValue(raw: String): Double? {
@@ -575,36 +590,28 @@ class AutoSoulActionExecutor(
         rawX: Double,
         rawY: Double
     ): Pair<Float, Float> {
-        val windowBounds = Rect()
-        val hasWindowBounds =
-            service.rootInActiveWindow?.let { root ->
-                root.getBoundsInScreen(windowBounds)
-                windowBounds.width() > 0 && windowBounds.height() > 0
-            } == true
         val dm = context.resources.displayMetrics
-        val left = if (hasWindowBounds) windowBounds.left.toFloat() else 0f
-        val top = if (hasWindowBounds) windowBounds.top.toFloat() else 0f
-        val width = if (hasWindowBounds) windowBounds.width().toFloat() else dm.widthPixels.toFloat()
-        val height = if (hasWindowBounds) windowBounds.height().toFloat() else dm.heightPixels.toFloat()
+        val width = dm.widthPixels.toFloat().coerceAtLeast(2f)
+        val height = dm.heightPixels.toFloat().coerceAtLeast(2f)
         val percentMode = rawX in 1.0..100.0 && rawY in 1.0..100.0
 
         val absX =
             when {
-                rawX in 0.0..1.0 -> left + (rawX * width).toFloat()
-                percentMode -> left + ((rawX / 100.0) * width).toFloat()
+                rawX in 0.0..1.0 -> (rawX * width).toFloat()
+                percentMode -> ((rawX / 100.0) * width).toFloat()
                 else -> rawX.toFloat()
             }
         val absY =
             when {
-                rawY in 0.0..1.0 -> top + (rawY * height).toFloat()
-                percentMode -> top + ((rawY / 100.0) * height).toFloat()
+                rawY in 0.0..1.0 -> (rawY * height).toFloat()
+                percentMode -> ((rawY / 100.0) * height).toFloat()
                 else -> rawY.toFloat()
             }
 
-        val minX = if (hasWindowBounds) left else 0f
-        val maxX = if (hasWindowBounds) left + width - 1f else dm.widthPixels.toFloat() - 1f
-        val minY = if (hasWindowBounds) top else 0f
-        val maxY = if (hasWindowBounds) top + height - 1f else dm.heightPixels.toFloat() - 1f
+        val minX = 1f
+        val maxX = (width - 1f).coerceAtLeast(1f)
+        val minY = 1f
+        val maxY = (height - 1f).coerceAtLeast(1f)
         return absX.coerceIn(minX, maxX) to absY.coerceIn(minY, maxY)
     }
 

@@ -138,6 +138,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
 import java.io.ByteArrayOutputStream
 import java.io.StringReader
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -2834,7 +2835,9 @@ internal suspend fun executeAutoSoulTask(
                             trace.success && buildAutoSoulActionFingerprint(trace.action, trace.args) == currentFingerprint
                         }
                         .size
-                if (repeatedSuccessCount >= 2) {
+                val strictLoopActions = setOf("tap", "longpress", "long_press", "launch", "home", "back")
+                val repeatLimit = if (strictLoopActions.contains(actionName.trim().lowercase())) 1 else 2
+                if (repeatedSuccessCount >= repeatLimit) {
                     throw IllegalStateException("AutoSoul 检测到重复动作循环（$actionName），已自动停止。请补充更具体任务目标后重试。")
                 }
                 val singleStepScript = buildAutoSoulSingleStepScript(actionName, normalizedStep.args)
@@ -3281,12 +3284,126 @@ internal fun buildAutoSoulActionFingerprint(
             val duration = filteredArgs["duration_ms"] ?: filteredArgs["duration"] ?: ""
             "$normalizedAction|$duration"
         }
+        "launch" -> {
+            val target =
+                sequenceOf(
+                    filteredArgs["app"],
+                    filteredArgs["package"],
+                    filteredArgs["target"],
+                    filteredArgs["name"]
+                ).firstOrNull { !it.isNullOrBlank() }
+                    ?.lowercase()
+                    ?.replace(" ", "")
+                    ?.replace("　", "")
+                    .orEmpty()
+            "$normalizedAction|$target"
+        }
+        "tap", "longpress", "long_press" -> {
+            val point =
+                normalizeAutoSoulCoordinatePair(
+                    sequenceOf(
+                        filteredArgs["point"],
+                        if (filteredArgs["x"].isNullOrBlank() || filteredArgs["y"].isNullOrBlank()) filteredArgs["x"] else null,
+                        if (!filteredArgs["x"].isNullOrBlank() && !filteredArgs["y"].isNullOrBlank()) {
+                            "${filteredArgs["x"]},${filteredArgs["y"]}"
+                        } else {
+                            null
+                        }
+                    ).firstOrNull { !it.isNullOrBlank() }
+                ).orEmpty()
+            "$normalizedAction|point=$point"
+        }
+        "swipe" -> {
+            val start =
+                normalizeAutoSoulCoordinatePair(
+                    sequenceOf(
+                        filteredArgs["start"],
+                        if (!filteredArgs["start_x"].isNullOrBlank() && !filteredArgs["start_y"].isNullOrBlank()) {
+                            "${filteredArgs["start_x"]},${filteredArgs["start_y"]}"
+                        } else {
+                            null
+                        }
+                    ).firstOrNull { !it.isNullOrBlank() }
+                ).orEmpty()
+            val end =
+                normalizeAutoSoulCoordinatePair(
+                    sequenceOf(
+                        filteredArgs["end"],
+                        if (!filteredArgs["end_x"].isNullOrBlank() && !filteredArgs["end_y"].isNullOrBlank()) {
+                            "${filteredArgs["end_x"]},${filteredArgs["end_y"]}"
+                        } else {
+                            null
+                        }
+                    ).firstOrNull { !it.isNullOrBlank() }
+                ).orEmpty()
+            "$normalizedAction|$start->$end"
+        }
         else -> {
             val sorted = filteredArgs.toSortedMap()
             val tail = sorted.entries.joinToString(separator = "&") { (k, v) -> "$k=$v" }
             "$normalizedAction|$tail"
         }
     }
+}
+
+internal fun normalizeAutoSoulCoordinatePair(raw: String?): String? {
+    val text =
+        raw
+            ?.trim()
+            ?.removeSurrounding("\"")
+            ?.removeSurrounding("'")
+            ?.trim()
+            .orEmpty()
+    if (text.isBlank()) return null
+
+    val xRaw = Regex("""(?i)\bx\s*[:=]\s*([-+]?\d*\.?\d+%?)""").findAll(text).lastOrNull()?.groupValues?.getOrNull(1)
+    val yRaw = Regex("""(?i)\by\s*[:=]\s*([-+]?\d*\.?\d+%?)""").findAll(text).lastOrNull()?.groupValues?.getOrNull(1)
+    if (!xRaw.isNullOrBlank() && !yRaw.isNullOrBlank()) {
+        val x = normalizeAutoSoulCoordinateToken(xRaw)
+        val y = normalizeAutoSoulCoordinateToken(yRaw)
+        if (!x.isNullOrBlank() && !y.isNullOrBlank()) return "$x,$y"
+    }
+
+    val pairPattern = Regex("""([-+]?\d*\.?\d+%?)\s*[,，]\s*([-+]?\d*\.?\d+%?)""")
+    pairPattern.findAll(text).lastOrNull()?.let { match ->
+        val x = normalizeAutoSoulCoordinateToken(match.groupValues.getOrNull(1))
+        val y = normalizeAutoSoulCoordinateToken(match.groupValues.getOrNull(2))
+        if (!x.isNullOrBlank() && !y.isNullOrBlank()) return "$x,$y"
+    }
+
+    val compact = text.replace("，", " ").replace(",", " ").trim()
+    val parts = compact.split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (parts.size == 2) {
+        val x = normalizeAutoSoulCoordinateToken(parts[0])
+        val y = normalizeAutoSoulCoordinateToken(parts[1])
+        if (!x.isNullOrBlank() && !y.isNullOrBlank()) return "$x,$y"
+    }
+    return null
+}
+
+private fun normalizeAutoSoulCoordinateToken(raw: String?): String? {
+    val token =
+        raw
+            ?.trim()
+            ?.removeSurrounding("\"")
+            ?.removeSurrounding("'")
+            ?.replace(Regex("^[xyXY]\\s*[:=]\\s*"), "")
+            ?.trim()
+            .orEmpty()
+    if (token.isBlank()) return null
+    val normalized =
+        if (token.endsWith("%")) {
+            token.removeSuffix("%").trim().toDoubleOrNull()?.div(100.0)
+        } else {
+            token.toDoubleOrNull()
+        } ?: return null
+    val formatted =
+        if (kotlin.math.abs(normalized) <= 1.0) {
+            String.format(Locale.US, "%.4f", normalized)
+        } else {
+            String.format(Locale.US, "%.3f", normalized)
+        }
+    return formatted.trimEnd('0').trimEnd('.').ifBlank { "0" }
 }
 
 internal fun normalizeAutoSoulPlannerStep(
@@ -3353,6 +3470,42 @@ internal fun normalizeAutoSoulPlannerStep(
             else -> normalizedAction
         }
     val finalAction = canonicalizeAutoSoulAction(correctedAction)?.trim().orEmpty().ifBlank { correctedAction }
+    if (finalAction.equals("Tap", ignoreCase = true) || finalAction.equals("LongPress", ignoreCase = true)) {
+        val pointRaw =
+            sequenceOf(
+                normalizedArgs["point"],
+                normalizedArgs["x"],
+                normalizedArgs["value"],
+                normalizedArgs["coord"],
+                normalizedArgs["coords"],
+                normalizedArgs["position"]
+            ).firstOrNull { !it.isNullOrBlank() }
+        normalizeAutoSoulCoordinatePair(pointRaw)?.let { normalizedPoint ->
+            normalizedArgs["point"] = normalizedPoint
+        }
+    }
+    if (finalAction.equals("Swipe", ignoreCase = true)) {
+        val startRaw =
+            sequenceOf(
+                normalizedArgs["start"],
+                normalizedArgs["from"],
+                normalizedArgs["start_point"],
+                normalizedArgs["from_point"]
+            ).firstOrNull { !it.isNullOrBlank() }
+        val endRaw =
+            sequenceOf(
+                normalizedArgs["end"],
+                normalizedArgs["to"],
+                normalizedArgs["end_point"],
+                normalizedArgs["to_point"]
+            ).firstOrNull { !it.isNullOrBlank() }
+        normalizeAutoSoulCoordinatePair(startRaw)?.let { normalizedStart ->
+            normalizedArgs["start"] = normalizedStart
+        }
+        normalizeAutoSoulCoordinatePair(endRaw)?.let { normalizedEnd ->
+            normalizedArgs["end"] = normalizedEnd
+        }
+    }
     val filteredArgs = filterAutoSoulArgsForAction(finalAction, normalizedArgs)
 
     return AutoSoulNormalizedStep(
@@ -3424,9 +3577,10 @@ internal fun filterAutoSoulArgsForAction(
     action: String,
     args: Map<String, String>
 ): Map<String, String> {
+    val normalizedAction = action.trim().lowercase()
     val genericKeys = setOf("ai_retry", "retry", "retries", "max_retry", "max_retries", "duration", "duration_ms")
     val allowed =
-        when (action.trim().lowercase()) {
+        when (normalizedAction) {
             "launch" -> genericKeys + setOf("app", "package", "target", "name", "app_name")
             "tap" -> genericKeys + setOf("point", "value", "coord", "coords", "position", "x", "y")
             "longpress", "long_press" -> genericKeys + setOf("point", "value", "coord", "coords", "position", "x", "y")
@@ -3457,12 +3611,46 @@ internal fun filterAutoSoulArgsForAction(
             else -> args.keys
         }
 
-    return args
+    val maxValueLength =
+        when (normalizedAction) {
+            "launch" -> 80
+            "tap", "longpress", "long_press", "swipe" -> 96
+            else -> 220
+        }
+
+    val filtered =
+        args
         .filter { (key, value) ->
             val normalizedKey = canonicalizeAutoSoulArgKey(key)
-            normalizedKey in allowed && value.trim().isNotBlank() && value.trim().length <= 220
+            normalizedKey in allowed && value.trim().isNotBlank() && value.trim().length <= maxValueLength
         }
         .toMap(LinkedHashMap())
+        .toMutableMap()
+
+    if ((normalizedAction == "tap" || normalizedAction == "longpress" || normalizedAction == "long_press")) {
+        normalizeAutoSoulCoordinatePair(filtered["point"])?.let { normalizedPoint ->
+            filtered["point"] = normalizedPoint
+        }
+        if (!filtered["point"].isNullOrBlank()) {
+            filtered.remove("x")
+            filtered.remove("y")
+            filtered.remove("value")
+            filtered.remove("coord")
+            filtered.remove("coords")
+            filtered.remove("position")
+        }
+    }
+
+    if (normalizedAction == "swipe") {
+        normalizeAutoSoulCoordinatePair(filtered["start"])?.let { normalizedStart ->
+            filtered["start"] = normalizedStart
+        }
+        normalizeAutoSoulCoordinatePair(filtered["end"])?.let { normalizedEnd ->
+            filtered["end"] = normalizedEnd
+        }
+    }
+
+    return filtered.toMap(LinkedHashMap())
 }
 
 internal fun extractDoCallBodies(raw: String): List<String> {
