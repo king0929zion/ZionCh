@@ -50,7 +50,14 @@ class AutoSoulActionExecutor(
                     onLog("操作结果(Launch)：失败（缺少 app/package 参数）")
                     throw AutoSoulNonRetryableActionException("缺少 app/package 参数")
                 }
-                launchApp(target, onLog)
+                val launched = launchApp(target, onLog)
+                if (launched) {
+                    val settleMs = parseSettleDurationMs(step.args, defaultMs = 900L)
+                    if (settleMs > 0L) {
+                        Thread.sleep(settleMs)
+                    }
+                }
+                launched
             }
 
             "tap" -> {
@@ -70,7 +77,11 @@ class AutoSoulActionExecutor(
                     throw AutoSoulNonRetryableActionException("Tap 坐标解析失败")
                 }
                 val (x, y) = toAbsolutePoint(service, point.first, point.second)
-                val ok = awaitGesture { cb -> service.performTap(x, y, cb) }
+                var ok = awaitGesture { cb -> service.performTap(x, y, cb) }
+                if (!ok) {
+                    Thread.sleep(120L)
+                    ok = awaitGesture { cb -> service.performTap(x, y, cb) }
+                }
                 onLog("操作结果(Tap)：${if (ok) "成功" else "失败"} @(${x.toInt()}, ${y.toInt()})")
                 ok
             }
@@ -92,7 +103,11 @@ class AutoSoulActionExecutor(
                     throw AutoSoulNonRetryableActionException("LongPress 坐标解析失败")
                 }
                 val (x, y) = toAbsolutePoint(service, point.first, point.second)
-                val ok = awaitGesture { cb -> service.performLongPress(x, y, cb) }
+                var ok = awaitGesture { cb -> service.performLongPress(x, y, cb) }
+                if (!ok) {
+                    Thread.sleep(120L)
+                    ok = awaitGesture { cb -> service.performLongPress(x, y, cb) }
+                }
                 onLog("操作结果(LongPress)：${if (ok) "成功" else "失败"} @(${x.toInt()}, ${y.toInt()})")
                 ok
             }
@@ -512,6 +527,34 @@ class AutoSoulActionExecutor(
             return duration.removeSuffix("ms").trim().toLongOrNull() ?: 800L
         }
         return (duration.toDoubleOrNull()?.times(1000.0))?.toLong() ?: 800L
+    }
+
+    private fun parseSettleDurationMs(
+        args: Map<String, String>,
+        defaultMs: Long
+    ): Long {
+        val raw =
+            firstNonBlank(
+                args["settle_ms"],
+                args["settle"],
+                args["wait_after_launch_ms"],
+                args["wait_after_launch"]
+            ) ?: return defaultMs
+        val normalized = raw.trim().lowercase()
+        val millis =
+            when {
+                normalized.endsWith("ms") ->
+                    normalized.removeSuffix("ms").trim().toDoubleOrNull()
+
+                normalized.endsWith("s") ->
+                    normalized.removeSuffix("s").trim().toDoubleOrNull()?.times(1000.0)
+
+                else -> {
+                    val parsed = normalized.toDoubleOrNull()
+                    if (parsed == null) null else if (parsed > 20.0) parsed else parsed * 1000.0
+                }
+            } ?: defaultMs.toDouble()
+        return millis.toLong().coerceIn(0L, 5_000L)
     }
 
     private fun parsePoint(raw: String): Pair<Double, Double>? {

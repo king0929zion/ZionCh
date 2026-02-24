@@ -401,9 +401,20 @@ fun MessageItem(
             }
 
             val orderedTags = remember(message.tags, inlineTagIds) {
-                message.tags.orEmpty()
+                val base =
+                    message.tags.orEmpty()
                     .filterNot { tag -> inlineTagIds.contains(tag.id) }
                     .sortedBy { it.createdAt }
+                val dedupFromTail = mutableListOf<MessageTag>()
+                var keptAutoSoulTag = false
+                base.asReversed().forEach { tag ->
+                    if (isAutoSoulMcpTag(tag)) {
+                        if (keptAutoSoulTag) return@forEach
+                        keptAutoSoulTag = true
+                    }
+                    dedupFromTail += tag
+                }
+                dedupFromTail.asReversed()
             }
             orderedTags.forEach { tag ->
                 MessageTagRow(
@@ -483,18 +494,7 @@ internal fun MessageTagRow(
     }
 
     val tagRunning = isTagRunning(tag)
-    val isAutoSoulTag =
-        remember(tag.kind, tag.title, tag.content) {
-            if (tag.kind != "mcp") {
-                false
-            } else {
-                val titleHit = tag.title.trim().contains("autosoul", ignoreCase = true)
-                val detail = parseMcpTagDetail(tag.content)
-                val serverHit = detail.server.trim().contains("autosoul", ignoreCase = true)
-                val toolHit = detail.tool.trim().contains("autosoul", ignoreCase = true)
-                titleHit || serverHit || toolHit
-            }
-        }
+    val isAutoSoulTag = remember(tag.kind, tag.title, tag.content) { isAutoSoulMcpTag(tag) }
     val toolName = remember(tag.title) {
         tag.title.trim().takeIf { it.isNotBlank() && !it.equals("tool", ignoreCase = true) }
     }
@@ -560,6 +560,17 @@ internal fun MessageTagRow(
             )
         }
     }
+}
+
+internal fun isAutoSoulMcpTag(tag: MessageTag): Boolean {
+    if (tag.kind != "mcp") return false
+    val titleHit = tag.title.trim().contains("autosoul", ignoreCase = true)
+    if (titleHit) return true
+    val detail = parseMcpTagDetail(tag.content)
+    val serverHit = detail.server.trim().contains("autosoul", ignoreCase = true)
+    if (serverHit) return true
+    val toolHit = detail.tool.trim().contains("autosoul", ignoreCase = true)
+    return toolHit
 }
 
 @Composable
@@ -4160,6 +4171,7 @@ internal fun BottomInputArea(
     onSend: () -> Unit,
     onStopStreaming: () -> Unit,
     sendAllowed: Boolean = true,
+    sendBusy: Boolean = false,
     isStreaming: Boolean = false,
     imeVisible: Boolean = false,
     onInputFocusChanged: (Boolean) -> Unit = {},
@@ -4167,7 +4179,7 @@ internal fun BottomInputArea(
 ) {
     val hasText = messageText.trim().isNotEmpty()
     val hasAttachments = attachments.isNotEmpty()
-    val sendEnabled = (hasText || hasAttachments) && sendAllowed
+    val sendEnabled = (hasText || hasAttachments) && sendAllowed && !sendBusy
     val actionIsStop = isStreaming
     val actionEnabled = if (actionIsStop) true else sendEnabled
     val actionBackground by animateColorAsState(

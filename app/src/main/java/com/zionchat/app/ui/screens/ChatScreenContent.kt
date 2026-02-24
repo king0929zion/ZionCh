@@ -311,6 +311,7 @@ internal fun ChatScreenContent(navController: NavController) {
 
     // 流式输出：用同一条 assistant 消息实时更新，避免结束时“闪一下重新渲染”
     var isStreaming by remember { mutableStateOf(false) }
+    var sendInFlight by remember { mutableStateOf(false) }
     var streamingMessageId by remember { mutableStateOf<String?>(null) }
     var streamingConversationId by remember { mutableStateOf<String?>(null) }
     var streamingThinkingActive by remember { mutableStateOf(false) }
@@ -875,7 +876,7 @@ internal fun ChatScreenContent(navController: NavController) {
     fun sendMessage() {
         val trimmed = messageText.trim()
         val attachmentsSnapshot = imageAttachments
-        if ((trimmed.isEmpty() && attachmentsSnapshot.isEmpty()) || isStreaming) return
+        if ((trimmed.isEmpty() && attachmentsSnapshot.isEmpty()) || isStreaming || sendInFlight) return
         val selectedToolSnapshot = selectedTool
         val webSearchConfigSnapshot = webSearchConfig
         val explicitWebSearchRequest = selectedToolSnapshot == "web"
@@ -900,6 +901,7 @@ internal fun ChatScreenContent(navController: NavController) {
                 shouldEnableAppBuilderForPrompt(trimmed)
 
         stopRequestedByUser = false
+        sendInFlight = true
         streamingJob = chatStreamingExecutionScope.launch {
             val nowMs = System.currentTimeMillis()
             val provisionalTitle = trimmed.lineSequence().firstOrNull().orEmpty().trim().take(24)
@@ -2428,6 +2430,7 @@ internal fun ChatScreenContent(navController: NavController) {
                             pending.conversationId == safeConversationId && pending.message.id == assistantMessage.id
                         }
                 }
+                sendInFlight = false
                 isStreaming = false
                 streamingMessageId = null
                 streamingConversationId = null
@@ -2733,6 +2736,7 @@ internal fun ChatScreenContent(navController: NavController) {
                         onSend = ::sendMessage,
                         onStopStreaming = ::stopStreaming,
                         sendAllowed = selectedTool == "autosoul" || !defaultChatModelId.isNullOrBlank(),
+                        sendBusy = sendInFlight,
                         isStreaming = isStreaming,
                         imeVisible = imeVisible,
                         onInputFocusChanged = { focused ->
