@@ -6356,12 +6356,8 @@ private fun appendAutoSoulArgsFromText(
             .replace("，", ",")
             .replace("；", ";")
             .replace("：", ":")
-    val matcher =
-        Regex(
-            """([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|\[[^\]]*]|\([^)]+\)|\{[^}]+}|[^;]+?)(?=\s*(?:[,;]\s*[A-Za-z_][A-Za-z0-9_]*\s*[:=]|$))"""
-        )
-    matcher.findAll(normalizedText).forEach { match ->
-        val key = match.groupValues.getOrNull(1)?.trim().orEmpty()
+    parseAutoSoulInlineArgs(normalizedText).forEach { (rawKey, rawValue) ->
+        val key = rawKey.trim()
         if (key.isBlank()) return@forEach
         val normalizedKey =
             when (key.lowercase()) {
@@ -6379,7 +6375,6 @@ private fun appendAutoSoulArgsFromText(
         ) {
             return@forEach
         }
-        val rawValue = match.groupValues.getOrNull(2)?.trim().orEmpty()
         val value = rawValue.removeSurrounding("\"").removeSurrounding("'").trim()
         if (value.isNotBlank()) {
             target.putIfAbsent(normalizedKey, value)
@@ -6395,6 +6390,115 @@ private fun appendAutoSoulArgsFromText(
             }
         }
     }
+}
+
+private fun parseAutoSoulInlineArgs(text: String): List<Pair<String, String>> {
+    if (text.isBlank()) return emptyList()
+    val result = mutableListOf<Pair<String, String>>()
+    var cursor = 0
+    val length = text.length
+
+    while (cursor < length) {
+        while (cursor < length && (text[cursor].isWhitespace() || text[cursor] == ',' || text[cursor] == ';')) {
+            cursor++
+        }
+        if (cursor >= length) break
+
+        if (!isAutoSoulKeyStartChar(text[cursor])) {
+            cursor++
+            continue
+        }
+
+        val keyStart = cursor
+        cursor++
+        while (cursor < length && isAutoSoulKeyBodyChar(text[cursor])) {
+            cursor++
+        }
+        val key = text.substring(keyStart, cursor).trim()
+        if (key.isBlank()) continue
+
+        while (cursor < length && text[cursor].isWhitespace()) {
+            cursor++
+        }
+        if (cursor >= length || (text[cursor] != ':' && text[cursor] != '=')) {
+            continue
+        }
+        cursor++
+        while (cursor < length && text[cursor].isWhitespace()) {
+            cursor++
+        }
+        if (cursor >= length) {
+            result += key to ""
+            break
+        }
+
+        val valueStart = cursor
+        var quote: Char? = null
+        var bracketDepth = 0
+        var parenDepth = 0
+        var braceDepth = 0
+
+        while (cursor < length) {
+            val ch = text[cursor]
+            if (quote != null) {
+                if (ch == quote && (cursor == valueStart || text[cursor - 1] != '\\')) {
+                    quote = null
+                }
+                cursor++
+                continue
+            }
+            when (ch) {
+                '"', '\'' -> quote = ch
+                '[' -> bracketDepth++
+                ']' -> if (bracketDepth > 0) bracketDepth--
+                '(' -> parenDepth++
+                ')' -> if (parenDepth > 0) parenDepth--
+                '{' -> braceDepth++
+                '}' -> if (braceDepth > 0) braceDepth--
+                ',', ';' -> {
+                    if (bracketDepth == 0 && parenDepth == 0 && braceDepth == 0) {
+                        if (looksLikeNextAutoSoulKey(text, cursor + 1)) {
+                            break
+                        }
+                    }
+                }
+            }
+            cursor++
+        }
+
+        val value = text.substring(valueStart, cursor).trim()
+        result += key to value
+    }
+
+    return result
+}
+
+private fun looksLikeNextAutoSoulKey(text: String, startIndex: Int): Boolean {
+    val length = text.length
+    var cursor = startIndex
+    while (cursor < length && text[cursor].isWhitespace()) {
+        cursor++
+    }
+    if (cursor >= length || !isAutoSoulKeyStartChar(text[cursor])) {
+        return false
+    }
+
+    cursor++
+    while (cursor < length && isAutoSoulKeyBodyChar(text[cursor])) {
+        cursor++
+    }
+    while (cursor < length && text[cursor].isWhitespace()) {
+        cursor++
+    }
+    return cursor < length && (text[cursor] == ':' || text[cursor] == '=')
+}
+
+private fun isAutoSoulKeyStartChar(ch: Char): Boolean {
+    return ch == '_' || ch.isLetter()
+}
+
+private fun isAutoSoulKeyBodyChar(ch: Char): Boolean {
+    return ch == '_' || ch.isLetterOrDigit()
 }
 
 private fun parseAutoSoulLooseDecision(raw: String): AutoSoulPlannerDecision? {
