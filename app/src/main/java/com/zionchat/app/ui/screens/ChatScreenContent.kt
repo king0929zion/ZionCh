@@ -2654,7 +2654,7 @@ internal fun ChatScreenContent(navController: NavController) {
                             return true
                         }
 
-                        parsedCalls.forEach { call ->
+                        suspend fun processParsedCall(call: PlannedMcpToolCall) {
                             processedCallCount += 1
                             val args =
                                 call.arguments
@@ -2728,7 +2728,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                         )
                                     )
                                     roundSummary.append("- memory: rejected (no explicit user memory intent)\n")
-                                    return@forEach
+                                    return
                                 }
                                 if (action != "unknown" && action !in memoryIntentActions) {
                                     appendAssistantTag(
@@ -2743,7 +2743,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                         )
                                     )
                                     roundSummary.append("- memory: rejected (action not allowed in this turn)\n")
-                                    return@forEach
+                                    return
                                 }
 
                                 val (detail, status, summaryLine) =
@@ -2908,10 +2908,10 @@ internal fun ChatScreenContent(navController: NavController) {
                                 )
                                 roundSummary.append(summaryLine)
                                 roundSummary.append('\n')
-                                return@forEach
+                                return
                             }
                             if (handleAutoBrowserCall(call = call, args = args, argsJson = argsJson)) {
-                                return@forEach
+                                return
                             }
 
                             if (isBuiltInAutoSoulCall(call)) {
@@ -2964,7 +2964,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                         roundSummary.append("- autosoul_agent: failed - ")
                                         roundSummary.append(errorText.take(300))
                                         roundSummary.append('\n')
-                                        return@forEach
+                                        return
                                     }
 
                                 val elapsedMs = System.currentTimeMillis() - startedAt
@@ -2988,7 +2988,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                 roundSummary.append(" | ")
                                 roundSummary.append(resultText.replace('\n', ' ').take(560))
                                 roundSummary.append('\n')
-                                return@forEach
+                                return
                             }
 
                             if (isBuiltInAppDeveloperCall(call)) {
@@ -3039,7 +3039,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                         it.copy(content = encodeAppDevTagPayload(payload), status = "error")
                                     }
                                     roundSummary.append("- app_developer: disabled\n")
-                                    return@forEach
+                                    return
                                 }
 
                                 if (parsedSpec == null) {
@@ -3054,7 +3054,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                         it.copy(content = encodeAppDevTagPayload(payload), status = "error")
                                     }
                                     roundSummary.append("- app_developer: invalid arguments\n")
-                                    return@forEach
+                                    return
                                 }
                                 if (parsedSpec.mode == "edit" && targetSavedApp == null) {
                                     val payload =
@@ -3067,7 +3067,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                         it.copy(content = encodeAppDevTagPayload(payload), status = "error")
                                     }
                                     roundSummary.append("- app_developer: target app missing\n")
-                                    return@forEach
+                                    return
                                 }
 
                                 val preferredAppModelKey =
@@ -3083,7 +3083,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                         it.copy(content = encodeAppDevTagPayload(payload), status = "error")
                                     }
                                     roundSummary.append("- app_developer: model not configured\n")
-                                    return@forEach
+                                    return
                                 }
 
                                 val appModel =
@@ -3100,7 +3100,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                         it.copy(content = encodeAppDevTagPayload(payload), status = "error")
                                     }
                                     roundSummary.append("- app_developer: model missing\n")
-                                    return@forEach
+                                    return
                                 }
 
                                 val appProviderRaw =
@@ -3117,7 +3117,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                         it.copy(content = encodeAppDevTagPayload(payload), status = "error")
                                     }
                                     roundSummary.append("- app_developer: provider unavailable\n")
-                                    return@forEach
+                                    return
                                 }
 
                                 val appProvider = runCatching { providerAuthManager.ensureValidProvider(appProviderRaw) }.getOrElse { error ->
@@ -3131,7 +3131,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                         it.copy(content = encodeAppDevTagPayload(payload), status = "error")
                                     }
                                     roundSummary.append("- app_developer: auth failed\n")
-                                    return@forEach
+                                    return
                                 }
 
                                 val startedAt = System.currentTimeMillis()
@@ -3327,7 +3327,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                     }
                                     roundSummary.append("- app_developer: failed\n")
                                 }
-                                return@forEach
+                                return
                             }
 
                             fun resolveServer(): McpConfig? {
@@ -3383,7 +3383,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                 roundSummary.append("- ")
                                 roundSummary.append(call.toolName)
                                 roundSummary.append(": server unavailable\n")
-                                return@forEach
+                                return
                             }
 
                             val startedAt = System.currentTimeMillis()
@@ -3430,6 +3430,10 @@ internal fun ChatScreenContent(navController: NavController) {
                                 }.take(600)
                             )
                             roundSummary.append('\n')
+                        }
+
+                        parsedCalls.forEach { call ->
+                            processParsedCall(call)
                         }
 
                         if (processedCallCount == 0) {
