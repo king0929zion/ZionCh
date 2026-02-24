@@ -5938,6 +5938,8 @@ private fun parseAutoSoulPlannerDecision(raw: String): Result<AutoSoulPlannerDec
         }
     }
 
+    parseAutoSoulDoFinishDecision(trimmed)?.let { return Result.success(it) }
+
     val fallbackScript = normalizeAutoSoulScriptCandidate(trimmed).getOrNull()
     if (!fallbackScript.isNullOrBlank()) {
         val steps = AutoSoulScriptParser.parse(fallbackScript).getOrNull().orEmpty()
@@ -6348,6 +6350,7 @@ private fun canonicalizeAutoSoulArgKey(rawKey: String): String {
             .replace(" ", "_")
     return when (normalized) {
         "durationms", "duration_millis", "duration_milliseconds", "durationmillis", "durationmilliseconds" -> "duration_ms"
+        "element" -> "point"
         "pkg", "packagename", "package_name", "bundle", "bundle_id" -> "package"
         "appname", "app_name", "application", "application_name" -> "app"
         "startx", "fromx", "x1" -> "start_x"
@@ -6697,6 +6700,53 @@ private fun parseAutoSoulLooseDecision(raw: String): AutoSoulPlannerDecision? {
         message = null,
         action = action,
         args = args,
+        reason = null
+    )
+}
+
+private fun parseAutoSoulDoFinishDecision(raw: String): AutoSoulPlannerDecision? {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return null
+
+    val finishRegex = Regex("""(?is)\bfinish\s*\(\s*message\s*[:=]\s*["']?(.+?)["']?\s*\)""")
+    finishRegex.findAll(trimmed).lastOrNull()?.let { match ->
+        val message = match.groupValues.getOrNull(1)?.trim().orEmpty().ifBlank { "执行完成" }
+        return AutoSoulPlannerDecision(
+            done = true,
+            message = message.take(240),
+            action = null,
+            args = emptyMap(),
+            reason = null
+        )
+    }
+
+    val doBodies = extractDoCallBodies(trimmed)
+    val body = doBodies.lastOrNull()?.trim().orEmpty()
+    if (body.isBlank()) return null
+
+    val parsed = linkedMapOf<String, String>()
+    appendAutoSoulArgsFromText(parsed, body)
+    val action =
+        canonicalizeAutoSoulAction(
+            parsed["action"]
+                ?: parsed["tool"]
+                ?: parsed["name"]
+                ?: parsed["type"]
+        ) ?: return null
+
+    parsed.remove("action")
+    parsed.remove("tool")
+    parsed.remove("name")
+    parsed.remove("type")
+    parsed.remove("status")
+    parsed.remove("done")
+    parsed.remove("message")
+
+    return AutoSoulPlannerDecision(
+        done = false,
+        message = null,
+        action = action,
+        args = parsed,
         reason = null
     )
 }
