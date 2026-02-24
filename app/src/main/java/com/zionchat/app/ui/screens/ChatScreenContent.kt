@@ -1092,7 +1092,9 @@ internal fun ChatScreenContent(navController: NavController) {
                     if (isNotEmpty()) append("\n\n")
                     append("Memory policy:\n")
                     append("- Only store memory when the user explicitly states stable preference/profile or long-term requirements.\n")
-                    append("- Never store one-off task instructions or temporary requests.")
+                    append("- Never store one-off task instructions or temporary requests.\n")
+                    append("- 仅在用户明确表达稳定偏好、个人画像或长期要求时写入记忆。\n")
+                    append("- 不要保存一次性任务、临时指令或当前会话动作。")
                 }.trim()
                 if (content.isBlank()) null else Message(role = "system", content = content)
             }
@@ -2312,7 +2314,9 @@ internal fun ChatScreenContent(navController: NavController) {
                     val finalReasoning = thinkingContent.toString().trim().ifBlank { null }
                     val finalContentWithMarkers = insertMcpTagMarkers(finalContent, mcpTagAnchors)
                     updateAssistantContent(finalContent, finalReasoning)
-                    if (finalContent.isNotBlank() || !finalReasoning.isNullOrBlank() || assistantTags.isNotEmpty()) {
+                    val hasAssistantOutput =
+                        finalContent.isNotBlank() || !finalReasoning.isNullOrBlank() || assistantTags.isNotEmpty()
+                    if (hasAssistantOutput) {
                         repository.appendMessage(
                             safeConversationId,
                             assistantMessage.copy(
@@ -2323,44 +2327,51 @@ internal fun ChatScreenContent(navController: NavController) {
                         )
                     }
 
-                    if (finalContent.isNotBlank()) {
-                        val chatModelId = extractRemoteModelId(selectedModel.id)
-                        val chatExtraHeaders = selectedModel.headers
-                        val userTextForMemory = trimmed
-                        val assistantTextForMemory = finalContent
-                        val assistantMessageIdForTags = assistantMessage.id
+                    val chatModelId = extractRemoteModelId(selectedModel.id)
+                    val chatExtraHeaders = selectedModel.headers
+                    val userTextForMemory = trimmed
+                    val assistantTextForMemory = finalContent
+                    val assistantMessageIdForTags = assistantMessage.id
 
-                        if (shouldAttemptMemoryExtraction(userTextForMemory)) {
-                            scope.launch(Dispatchers.IO) {
-                                val result =
-                                    runCatching {
-                                        extractMemoryCandidatesFromTurn(
-                                            chatApiClient = chatApiClient,
-                                            provider = resolvedProvider,
-                                            modelId = chatModelId,
-                                            userText = userTextForMemory,
-                                            assistantText = assistantTextForMemory,
-                                            extraHeaders = chatExtraHeaders
-                                        )
-                                    }
-
-                                if (result.isFailure) return@launch
-
-                                val candidates =
-                                    filterMemoryCandidates(
-                                        candidates = result.getOrDefault(emptyList()),
-                                        userText = userTextForMemory
+                    if (shouldAttemptMemoryExtraction(userTextForMemory)) {
+                        scope.launch(Dispatchers.IO) {
+                            val result =
+                                runCatching {
+                                    extractMemoryCandidatesFromTurn(
+                                        chatApiClient = chatApiClient,
+                                        provider = resolvedProvider,
+                                        modelId = chatModelId,
+                                        userText = userTextForMemory,
+                                        assistantText = assistantTextForMemory,
+                                        extraHeaders = chatExtraHeaders
                                     )
-                                if (candidates.isEmpty()) return@launch
-
-                                val saved = mutableListOf<String>()
-                                candidates.forEach { candidate ->
-                                    repository.addMemory(candidate)?.let { added ->
-                                        saved.add(added.content)
-                                    }
                                 }
-                                if (saved.isEmpty()) return@launch
 
+                            if (result.isFailure) return@launch
+
+                            val candidates =
+                                filterMemoryCandidates(
+                                    candidates = result.getOrDefault(emptyList()),
+                                    userText = userTextForMemory
+                                )
+                            if (candidates.isEmpty()) return@launch
+
+                            val existingBeforeSave =
+                                repository.memoriesFlow.first()
+                                    .map { it.content.trim().lowercase() }
+                                    .toMutableSet()
+                            val saved = mutableListOf<String>()
+                            candidates.forEach { candidate ->
+                                val key = candidate.trim().lowercase()
+                                if (key in existingBeforeSave) return@forEach
+                                repository.addMemory(candidate)?.let { added ->
+                                    saved.add(added.content)
+                                    existingBeforeSave += key
+                                }
+                            }
+                            if (saved.isEmpty()) return@launch
+
+                            if (hasAssistantOutput) {
                                 val detail =
                                     buildString {
                                         append("Saved memories:\n")
@@ -2378,7 +2389,9 @@ internal fun ChatScreenContent(navController: NavController) {
                                 )
                             }
                         }
+                    }
 
+                    if (finalContent.isNotBlank()) {
                         scope.launch(Dispatchers.IO) {
                             runCatching {
                                 val titleModelKey = repository.defaultTitleModelIdFlow.first()?.trim().orEmpty()

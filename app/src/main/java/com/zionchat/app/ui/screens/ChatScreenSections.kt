@@ -6765,17 +6765,23 @@ internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
     if (text.isBlank()) return false
 
     val lower = text.lowercase()
+    val hasQuestionTone = text.contains("？") || lower.contains("?")
     val rememberMarkersEn =
         listOf(
             "please remember",
             "remember that",
-            "for future reference"
+            "for future reference",
+            "save this preference",
+            "keep this in memory"
         )
     val rememberMarkersZh =
         listOf(
             "请记住",
             "记住这点",
-            "记下来"
+            "记下来",
+            "帮我记住",
+            "记一下",
+            "记到记忆里"
         )
     val preferenceMarkersEn =
         listOf(
@@ -6792,6 +6798,8 @@ internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
         listOf(
             "i am ",
             "i'm ",
+            "i work as",
+            "i live in",
             "i usually",
             "i always",
             "i never"
@@ -6805,13 +6813,19 @@ internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
             "我最喜欢",
             "我最常用",
             "我一般用",
-            "我习惯用"
+            "我习惯用",
+            "我希望默认",
+            "默认用",
+            "优先用"
         )
     val profileMarkersZh =
         listOf(
             "我是",
             "我叫",
             "叫我",
+            "我的名字是",
+            "我来自",
+            "我的工作是",
             "我通常",
             "我总是",
             "我从不"
@@ -6832,6 +6846,7 @@ internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
             "从现在开始",
             "之后都",
             "以后都",
+            "以后请都",
             "后续都",
             "以后请",
             "今后",
@@ -6849,7 +6864,9 @@ internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
             "today",
             "right now",
             "this time",
-            "for this task"
+            "for this task",
+            "for now",
+            "temporarily"
         )
     val transientTaskMarkersZh =
         listOf(
@@ -6860,7 +6877,9 @@ internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
             "发送",
             "这次",
             "现在",
-            "今天"
+            "今天",
+            "临时",
+            "本次"
         )
 
     val hasRememberSignal =
@@ -6877,6 +6896,8 @@ internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
     val hasSignal = hasRememberSignal || hasPreferenceOrProfileSignal || hasLongTermSignal
     if (!hasSignal) return false
 
+    if (hasQuestionTone && !hasRememberSignal && !hasLongTermSignal) return false
+
     val looksLikeTransientTaskOnly =
         (transientTaskMarkersEn.any { marker -> lower.contains(marker) } ||
             transientTaskMarkersZh.any { marker -> text.contains(marker) }) &&
@@ -6885,7 +6906,6 @@ internal fun shouldAttemptMemoryExtraction(userText: String): Boolean {
             !hasRememberSignal
     if (looksLikeTransientTaskOnly) return false
 
-    if (lower.endsWith("?") && !hasRememberSignal && !hasPreferenceOrProfileSignal && !hasLongTermSignal) return false
     return true
 }
 
