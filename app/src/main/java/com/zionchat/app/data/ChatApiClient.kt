@@ -1889,12 +1889,20 @@ class ChatApiClient {
             payload["tools"] = qwenTools
             payload["tool_choice"] = if (isNoopQwenToolList(qwenTools)) "none" else "auto"
             payload["stream_options"] = mapOf("include_usage" to true)
-            enableThinking?.let { payload["extra_body"] = mapOf("enable_thinking" to it) }
         }
+        enableThinking?.let { payload["extra_body"] = mapOf("enable_thinking" to it) }
         if (isGrok2Api(provider)) {
             normalizeReasoningEffort(reasoningEffort)?.let { payload["reasoning_effort"] = it }
         }
         val body = gson.toJson(payload)
+        val fallbackBodyWithoutEnableThinking =
+            if (enableThinking != null && payload.containsKey("extra_body")) {
+                val fallbackPayload = LinkedHashMap(payload)
+                fallbackPayload.remove("extra_body")
+                gson.toJson(fallbackPayload)
+            } else {
+                null
+            }
         val baseCandidates = providerApiBaseCandidates(provider)
         ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
         val attemptErrors = mutableListOf<String>()
@@ -1903,33 +1911,58 @@ class ChatApiClient {
         for ((index, baseUrl) in baseCandidates.withIndex()) {
             try {
                 val url = baseUrl + "/chat/completions"
-                val requestBuilder = Request.Builder().url(url)
-
-                applyHeaders(requestBuilder, effectiveHeaders)
-                applyProviderAuthorizationIfNeeded(requestBuilder, provider, effectiveHeaders)
-                if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
-                    requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
+                fun buildStreamRequest(requestBody: String): Request {
+                    val requestBuilder = Request.Builder().url(url)
+                    applyHeaders(requestBuilder, effectiveHeaders)
+                    applyProviderAuthorizationIfNeeded(requestBuilder, provider, effectiveHeaders)
+                    if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
+                        requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
+                    }
+                    if (isQwenCode(provider)) {
+                        applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
+                    }
+                    if (isGitHubCopilot(provider)) {
+                        applyGitHubCopilotHeadersIfNeeded(
+                            requestBuilder = requestBuilder,
+                            effectiveHeaders = effectiveHeaders,
+                            initiator = copilotInitiator,
+                            visionRequest = copilotVisionRequest
+                        )
+                    }
+                    requestBuilder
+                        .header("Content-Type", "application/json")
+                        .header("Accept", "text/event-stream")
+                    return requestBuilder
+                        .post(requestBody.toRequestBody(jsonMediaType))
+                        .build()
                 }
-                if (isQwenCode(provider)) {
-                    applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
-                }
-                if (isGitHubCopilot(provider)) {
-                    applyGitHubCopilotHeadersIfNeeded(
-                        requestBuilder = requestBuilder,
-                        effectiveHeaders = effectiveHeaders,
-                        initiator = copilotInitiator,
-                        visionRequest = copilotVisionRequest
-                    )
-                }
 
-                requestBuilder
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "text/event-stream")
-                val request = requestBuilder
-                    .post(body.toRequestBody(jsonMediaType))
-                    .build()
+                val initialResponse = client.newCall(buildStreamRequest(body)).execute()
+                val responseToUse =
+                    if (!initialResponse.isSuccessful && fallbackBodyWithoutEnableThinking != null) {
+                        val initialCode = initialResponse.code
+                        val initialErrorBody = initialResponse.body?.string().orEmpty()
+                        val shouldRetryWithoutParam =
+                            shouldRetryWithoutEnableThinking(initialCode, initialErrorBody)
+                        initialResponse.close()
+                        if (!shouldRetryWithoutParam) {
+                            throw IllegalStateException("HTTP $initialCode @ $url: $initialErrorBody")
+                        }
 
-                client.newCall(request).execute().use { response ->
+                        val fallbackResponse =
+                            client.newCall(buildStreamRequest(fallbackBodyWithoutEnableThinking)).execute()
+                        if (!fallbackResponse.isSuccessful) {
+                            val fallbackCode = fallbackResponse.code
+                            val fallbackErrorBody = fallbackResponse.body?.string().orEmpty()
+                            fallbackResponse.close()
+                            throw IllegalStateException("HTTP $fallbackCode @ $url: $fallbackErrorBody")
+                        }
+                        fallbackResponse
+                    } else {
+                        initialResponse
+                    }
+
+                responseToUse.use { response ->
                     if (!response.isSuccessful) {
                         val errorBody = response.body?.string().orEmpty()
                         throw IllegalStateException("HTTP ${response.code} @ $url: $errorBody")
@@ -3155,6 +3188,20 @@ class ChatApiClient {
             "none", "minimal", "low", "medium", "high", "xhigh" -> normalized
             else -> null
         }
+    }
+
+    private fun shouldRetryWithoutEnableThinking(statusCode: Int, errorBody: String): Boolean {
+        if (statusCode != 400 && statusCode != 422) return false
+        val lower = errorBody.lowercase()
+        if (!lower.contains("enable_thinking") && !lower.contains("extra_body")) return false
+        return lower.contains("unknown") ||
+            lower.contains("unsupported") ||
+            lower.contains("invalid") ||
+            lower.contains("unrecognized") ||
+            lower.contains("not allowed") ||
+            lower.contains("not permit") ||
+            lower.contains("additional properties") ||
+            lower.contains("schema")
     }
 
     private fun normalizeCodexBaseUrl(provider: ProviderConfig): String {

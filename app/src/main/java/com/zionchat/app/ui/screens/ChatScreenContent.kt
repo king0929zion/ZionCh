@@ -1609,12 +1609,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                 providerSupportsThinkingParam -> "medium"
                                 else -> null
                             }
-                        val qwenEnableThinking =
-                            if (resolvedProvider.isQwenCodeProvider()) {
-                                chatThinkingEnabled
-                            } else {
-                                null
-                            }
+                        val enableThinking = chatThinkingEnabled
 
                         chatApiClient.chatCompletionsStream(
                             provider = resolvedProvider,
@@ -1622,7 +1617,7 @@ internal fun ChatScreenContent(navController: NavController) {
                             messages = requestMessages,
                             extraHeaders = selectedModel.headers,
                             reasoningEffort = effectiveReasoningEffort,
-                            enableThinking = qwenEnableThinking,
+                            enableThinking = enableThinking,
                             conversationId = safeConversationId
                         ).takeWhile { delta ->
                             val now = System.currentTimeMillis()
