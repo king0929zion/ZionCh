@@ -2531,7 +2531,7 @@ fun QuickActionButton(
     }
 }
 
-private suspend fun handleImageGeneration(
+internal suspend fun handleImageGeneration(
     repository: AppRepository,
     chatApiClient: ChatApiClient,
     safeConversationId: String,
@@ -2694,7 +2694,7 @@ internal data class AutoSoulStepTrace(
     val timedOut: Boolean
 )
 
-private suspend fun handleAutoSoulInvocation(
+internal suspend fun handleAutoSoulInvocation(
     repository: AppRepository,
     chatApiClient: ChatApiClient,
     context: Context,
@@ -2732,7 +2732,7 @@ private suspend fun handleAutoSoulInvocation(
     }.trim()
 }
 
-private suspend fun executeAutoSoulTask(
+internal suspend fun executeAutoSoulTask(
     repository: AppRepository,
     chatApiClient: ChatApiClient,
     context: Context,
@@ -4291,7 +4291,7 @@ internal fun BottomInputArea(
     }
 }
 
-private suspend fun encodeImageAttachmentToDataUrl(
+internal suspend fun encodeImageAttachmentToDataUrl(
     context: Context,
     attachment: PendingImageAttachment,
     maxDimension: Int = 1024,
@@ -4404,7 +4404,7 @@ private suspend fun collectStreamContent(
     return sb.toString().trim()
 }
 
-internal fun stripMarkdownCodeFences(text: String): String {
+private fun stripMarkdownCodeFences(text: String): String {
     var t = text.trim()
     if (t.startsWith("```")) {
         t = t.substringAfter('\n', t).trim()
@@ -4760,7 +4760,7 @@ internal fun normalizeAppDisplayName(raw: String): String {
     return filtered.ifBlank { trimmed }.take(80)
 }
 
-internal fun normalizeLucideIconName(raw: String?): String? {
+private fun normalizeLucideIconName(raw: String?): String? {
     val normalized =
         raw
             ?.trim()
@@ -5413,7 +5413,7 @@ internal fun computeAppDevProgressFromDraft(
     return progress.coerceIn(safeBase, maxProgress)
 }
 
-private suspend fun generateHtmlAppFromSpec(
+internal suspend fun generateHtmlAppFromSpec(
     chatApiClient: ChatApiClient,
     provider: ProviderConfig,
     modelId: String,
@@ -5475,7 +5475,7 @@ private suspend fun generateHtmlAppFromSpec(
     return normalizeGeneratedHtml(raw)
 }
 
-private suspend fun reviseHtmlAppFromPrompt(
+internal suspend fun reviseHtmlAppFromPrompt(
     chatApiClient: ChatApiClient,
     provider: ProviderConfig,
     modelId: String,
@@ -6447,7 +6447,7 @@ internal fun com.google.gson.JsonElement.toKotlinAny(): Any? {
     }
 }
 
-private suspend fun extractMemoryCandidatesFromTurn(
+internal suspend fun extractMemoryCandidatesFromTurn(
     chatApiClient: ChatApiClient,
     provider: ProviderConfig,
     modelId: String,
@@ -6612,7 +6612,7 @@ internal fun memoryCandidateIsGrounded(candidate: String, userText: String): Boo
     return chineseFragments.any { frag -> userText.contains(frag) }
 }
 
-private suspend fun generateConversationTitle(
+internal suspend fun generateConversationTitle(
     chatApiClient: ChatApiClient,
     provider: ProviderConfig,
     modelId: String,
