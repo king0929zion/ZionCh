@@ -1100,6 +1100,7 @@ internal fun ChatScreenContent(navController: NavController) {
                     append("\n\nTool policy:\n")
                     append("- 仅使用后续 system 消息里明确列出的工具。\n")
                     append("- 如果本轮没有工具清单，直接回答，不要输出 <tool_call>/<mcp_call> 标签。\n")
+                    append("- 对于“记住/忘记/查看记忆”类请求，优先使用 memory_* 工具。\n")
                     append("- 除非用户明确选择 AutoSoul 工具，否则不要调用 autosoul_agent。")
                 }.trim()
                 if (content.isBlank()) null else Message(role = "system", content = content)
@@ -1183,6 +1184,7 @@ internal fun ChatScreenContent(navController: NavController) {
                     val canUseAppBuilder = explicitAppBuilder
                     // 显式 AutoSoul 模式在前面已直接执行，这里禁用隐式 AutoSoul tool 路由。
                     val canUseAutoSoulTool = false
+                    val canUseMemoryTool = true
                     val configuredAppBuilderModel =
                         defaultAppBuilderModelId?.trim()?.takeIf { it.isNotBlank() }?.let { key ->
                             allModels.firstOrNull { it.id == key }
@@ -1293,7 +1295,7 @@ internal fun ChatScreenContent(navController: NavController) {
                         }
                     val availableMcpServers = scopedMcpServers.filter { it.tools.isNotEmpty() }
                     val canUseMcp = mcpAutoEnabled && availableMcpServers.isNotEmpty()
-                    val canUseAnyTool = canUseMcp || canUseAppBuilder || canUseAutoSoulTool
+                    val canUseAnyTool = canUseMcp || canUseAppBuilder || canUseAutoSoulTool || canUseMemoryTool
 
                     if (mcpAutoEnabled && !canUseMcp) {
                         val msg =
@@ -1317,12 +1319,14 @@ internal fun ChatScreenContent(navController: NavController) {
                             !canUseAnyTool -> 1
                             canUseMcp -> 6
                             canUseAppBuilder || canUseAutoSoulTool -> 4
+                            canUseMemoryTool -> 3
                             else -> 4
                         }
                     val maxCallsPerRound =
                         when {
                             canUseMcp -> 4
                             canUseAppBuilder || canUseAutoSoulTool -> 2
+                            canUseMemoryTool -> 2
                             else -> 3
                         }
                     val modelId = extractRemoteModelId(selectedModel.id)
@@ -1360,6 +1364,17 @@ internal fun ChatScreenContent(navController: NavController) {
                     var roundIndex = 1
                     while (roundIndex <= maxRounds) {
                         val savedAppsSnapshot = repository.savedAppsFlow.first()
+                        val memoriesSnapshot = repository.memoriesFlow.first()
+                        val memoryInstruction =
+                            if (canUseMemoryTool) {
+                                buildMemoryToolInstruction(
+                                    roundIndex = roundIndex,
+                                    maxCallsPerRound = maxCallsPerRound,
+                                    memories = memoriesSnapshot
+                                )
+                            } else {
+                                null
+                            }
                         val mcpInstruction =
                             if (canUseMcp) {
                                 buildMcpToolCallInstruction(
@@ -1392,6 +1407,9 @@ internal fun ChatScreenContent(navController: NavController) {
                             }
 
                         val requestMessages = buildList {
+                            if (!memoryInstruction.isNullOrBlank()) {
+                                add(Message(role = "system", content = memoryInstruction))
+                            }
                             if (!appBuilderInstruction.isNullOrBlank()) {
                                 add(Message(role = "system", content = appBuilderInstruction))
                             }
@@ -1826,6 +1844,221 @@ internal fun ChatScreenContent(navController: NavController) {
                                     }
                                     .toMap()
                             val argsJson = prettyGson.toJson(args)
+
+                            if (isBuiltInMemoryCall(call)) {
+                                fun anyString(vararg keys: String): String {
+                                    return keys
+                                        .asSequence()
+                                        .mapNotNull { key ->
+                                            val raw =
+                                                args.entries.firstOrNull { entry ->
+                                                    entry.key.equals(key, ignoreCase = true)
+                                                }?.value ?: return@mapNotNull null
+                                            when (raw) {
+                                                is String -> raw.trim().takeIf { it.isNotBlank() }
+                                                is Number, is Boolean -> raw.toString()
+                                                else -> raw.toString().trim().takeIf { it.isNotBlank() }
+                                            }
+                                        }.firstOrNull()
+                                        .orEmpty()
+                                }
+
+                                val toolLower = call.toolName.trim().lowercase()
+                                val actionHint = anyString("action", "op", "operation", "type", "mode", "intent").lowercase()
+                                val action =
+                                    when {
+                                        toolLower in setOf(
+                                            "memory",
+                                            "memory_write",
+                                            "memory_add",
+                                            "memory_save",
+                                            "save_memory",
+                                            "remember_memory"
+                                        ) -> "write"
+                                        toolLower in setOf(
+                                            "memory_delete",
+                                            "memory_remove",
+                                            "memory_forget",
+                                            "delete_memory",
+                                            "forget_memory"
+                                        ) -> "delete"
+                                        toolLower in setOf(
+                                            "memory_list",
+                                            "list_memory",
+                                            "show_memory",
+                                            "memory_read",
+                                            "memory_get"
+                                        ) -> "list"
+                                        actionHint in setOf("write", "add", "save", "remember", "upsert", "create", "store") -> "write"
+                                        actionHint in setOf("delete", "remove", "forget", "drop") -> "delete"
+                                        actionHint in setOf("list", "show", "read", "get", "view") -> "list"
+                                        else -> "unknown"
+                                    }
+
+                                val (detail, status, summaryLine) =
+                                    when (action) {
+                                        "write" -> {
+                                            val content =
+                                                anyString(
+                                                    "content",
+                                                    "memory",
+                                                    "text",
+                                                    "item",
+                                                    "value",
+                                                    "fact",
+                                                    "note"
+                                                ).trim()
+                                            if (content.isBlank()) {
+                                                Triple(
+                                                    "Memory write failed.\n- Missing arguments.content (or memory/text/item).",
+                                                    "error",
+                                                    "- memory_write: invalid arguments"
+                                                )
+                                            } else {
+                                                val memoriesBefore = repository.memoriesFlow.first()
+                                                val existed =
+                                                    memoriesBefore.any { item ->
+                                                        item.content.trim().equals(content, ignoreCase = true)
+                                                    }
+                                                val saved = repository.addMemory(content)
+                                                if (saved == null) {
+                                                    Triple(
+                                                        "Memory write failed.\n- Could not save memory item.",
+                                                        "error",
+                                                        "- memory_write: failed"
+                                                    )
+                                                } else {
+                                                    val detailText =
+                                                        buildString {
+                                                            append("Memory ")
+                                                            append(if (existed) "already exists" else "saved")
+                                                            appendLine(".")
+                                                            append("- id=")
+                                                            appendLine(saved.id)
+                                                            append("- content=")
+                                                            append(saved.content)
+                                                        }
+                                                    Triple(
+                                                        detailText,
+                                                        "success",
+                                                        if (existed) {
+                                                            "- memory_write: already exists"
+                                                        } else {
+                                                            "- memory_write: saved"
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        "delete" -> {
+                                            val idHint = anyString("id", "memory_id", "item_id", "target_id").trim()
+                                            val contentHint =
+                                                anyString(
+                                                    "content",
+                                                    "memory",
+                                                    "text",
+                                                    "item",
+                                                    "value",
+                                                    "target",
+                                                    "query"
+                                                ).trim()
+                                            val memoriesNow = repository.memoriesFlow.first()
+                                            val target =
+                                                when {
+                                                    idHint.isNotBlank() -> {
+                                                        memoriesNow.firstOrNull { item ->
+                                                            item.id.equals(idHint, ignoreCase = true)
+                                                        }
+                                                    }
+
+                                                    contentHint.isNotBlank() -> {
+                                                        memoriesNow.firstOrNull { item ->
+                                                            val itemContent = item.content.trim()
+                                                            itemContent.equals(contentHint, ignoreCase = true) ||
+                                                                itemContent.contains(contentHint, ignoreCase = true)
+                                                        }
+                                                    }
+
+                                                    else -> null
+                                                }
+
+                                            if (target == null) {
+                                                Triple(
+                                                    "Memory delete failed.\n- Target memory not found. Use memory_list to inspect available ids.",
+                                                    "error",
+                                                    "- memory_delete: target not found"
+                                                )
+                                            } else {
+                                                repository.deleteMemory(target.id)
+                                                val detailText =
+                                                    buildString {
+                                                        appendLine("Memory deleted.")
+                                                        append("- id=")
+                                                        appendLine(target.id)
+                                                        append("- content=")
+                                                        append(target.content)
+                                                    }
+                                                Triple(
+                                                    detailText,
+                                                    "success",
+                                                    "- memory_delete: deleted"
+                                                )
+                                            }
+                                        }
+
+                                        "list" -> {
+                                            val memoriesNow = repository.memoriesFlow.first()
+                                            val detailText =
+                                                if (memoriesNow.isEmpty()) {
+                                                    "No saved memories."
+                                                } else {
+                                                    buildString {
+                                                        append("Saved memories (")
+                                                        append(memoriesNow.size)
+                                                        appendLine("):")
+                                                        memoriesNow.take(20).forEach { item ->
+                                                            append("- id=")
+                                                            append(item.id)
+                                                            append(": ")
+                                                            appendLine(item.content.trim().take(220))
+                                                        }
+                                                        val more = memoriesNow.size - 20
+                                                        if (more > 0) {
+                                                            append("- ... and ")
+                                                            append(more)
+                                                            appendLine(" more")
+                                                        }
+                                                    }
+                                                }
+                                            Triple(
+                                                detailText,
+                                                "success",
+                                                "- memory_list: returned ${memoriesNow.size} item(s)"
+                                            )
+                                        }
+
+                                        else -> {
+                                            Triple(
+                                                "Unknown memory tool action.\n- Supported tools: memory_write, memory_delete, memory_list.\n- You can also provide arguments.action = write/delete/list.",
+                                                "error",
+                                                "- memory: unknown action"
+                                            )
+                                        }
+                                    }
+
+                                appendAssistantTag(
+                                    MessageTag(
+                                        kind = "memory",
+                                        title = "Memory",
+                                        content = detail,
+                                        status = status
+                                    )
+                                )
+                                roundSummary.append(summaryLine)
+                                roundSummary.append('\n')
+                                return@forEach
+                            }
 
                             if (isBuiltInAutoSoulCall(call)) {
                                 autoSoulInvokedInThisTask = true

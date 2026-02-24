@@ -90,6 +90,7 @@ import com.zionchat.app.data.HttpHeader
 import com.zionchat.app.data.Message
 import com.zionchat.app.data.MessageAttachment
 import com.zionchat.app.data.MessageTag
+import com.zionchat.app.data.MemoryItem
 import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.McpClient
 import com.zionchat.app.data.McpConfig
@@ -4913,6 +4914,33 @@ internal fun isBuiltInAutoSoulCall(call: PlannedMcpToolCall): Boolean {
     )
 }
 
+internal fun isBuiltInMemoryCall(call: PlannedMcpToolCall): Boolean {
+    val server = call.serverId.trim().lowercase()
+    val tool = call.toolName.trim().lowercase()
+    return tool in setOf(
+        "memory",
+        "memory_write",
+        "memory_add",
+        "memory_save",
+        "save_memory",
+        "remember_memory",
+        "memory_delete",
+        "memory_remove",
+        "memory_forget",
+        "delete_memory",
+        "forget_memory",
+        "memory_list",
+        "list_memory",
+        "show_memory",
+        "memory_read",
+        "memory_get"
+    ) || server in setOf(
+        "builtin_memory",
+        "memory",
+        "internal_memory"
+    )
+}
+
 internal fun resolveAutoSoulTaskPrompt(
     arguments: Map<String, Any?>,
     fallbackUserPrompt: String
@@ -6368,6 +6396,49 @@ internal fun buildAutoSoulToolInstruction(
             appendLine("- For one user task, call autosoul_agent only once with the complete goal.")
             appendLine("- Do not split one task into multiple autosoul_agent calls.")
             appendLine("- Never fabricate execution results. Wait for tool result context in next round.")
+        }
+    }.trim()
+}
+
+internal fun buildMemoryToolInstruction(
+    roundIndex: Int,
+    maxCallsPerRound: Int,
+    memories: List<MemoryItem>
+): String {
+    val shown = memories.take(12)
+    val callLimit = minOf(maxCallsPerRound.coerceAtLeast(1), 2)
+    return buildString {
+        appendLine("Built-in memory tools available: memory_write, memory_delete, memory_list.")
+        appendLine("Current round: $roundIndex")
+        appendLine("Use memory tools ONLY when the user explicitly asks to remember, forget, or show memories.")
+        appendLine("Do not call autosoul_agent for memory tasks.")
+        appendLine("First write a normal visible reply, then append tool call tags if needed.")
+        appendLine("At most $callLimit memory tool call(s) in this round.")
+        appendLine()
+        appendLine("Tool call format:")
+        appendLine("<tool_call>{\"serverId\":\"builtin_memory\",\"toolName\":\"memory_write\",\"arguments\":{\"content\":\"...\"}}</tool_call>")
+        appendLine()
+        appendLine("Memory tool arguments:")
+        appendLine("- memory_write: arguments.content (or memory/text/item).")
+        appendLine("- memory_delete: arguments.id OR arguments.content.")
+        appendLine("- memory_list: arguments can be empty object {}.")
+        appendLine()
+        appendLine("Current saved memories:")
+        if (shown.isEmpty()) {
+            appendLine("- (empty)")
+        } else {
+            shown.forEach { memory ->
+                append("- id=")
+                append(memory.id)
+                append(": ")
+                appendLine(memory.content.trim().take(180))
+            }
+            val more = memories.size - shown.size
+            if (more > 0) {
+                append("- ... and ")
+                append(more)
+                appendLine(" more")
+            }
         }
     }.trim()
 }
