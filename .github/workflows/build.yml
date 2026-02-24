@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -24,10 +28,9 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Gradle
-      uses: gradle/gradle-build-action@v2
+      uses: gradle/actions/setup-gradle@v4
       with:
         gradle-version: 9.1.0
-        cache-disabled: true
 
     - name: Configure signing (optional)
       env:
@@ -47,10 +50,11 @@ jobs:
         fi
 
     - name: Build Release APK
-      run: gradle assembleRelease --stacktrace
+      run: gradle assembleRelease --stacktrace --parallel --build-cache
 
     - name: Run tests
-      run: gradle test
+      if: github.event_name == 'pull_request'
+      run: gradle test --stacktrace --parallel --build-cache
       continue-on-error: true
 
     - name: Get version from build.gradle
@@ -75,19 +79,15 @@ jobs:
         tag_name: v${{ steps.get_version.outputs.version }}
         name: ZionChat v${{ steps.get_version.outputs.version }}
         body: |
-          ## ZionChat Android App v${{ steps.get_version.outputs.version }}
+          ## ZionChat Android 版本 v${{ steps.get_version.outputs.version }}
 
-          ### Features
-          - Complete ChatGPT-style UI
-          - Settings page with user profile
-          - Model Services management
-          - Add Provider with preset configurations
-          - Models configuration with custom headers
+          ### 发布说明
+          - 本次版本包含功能更新与稳定性修复。
+          - 详细变更请查看对应提交记录与 PR 说明。
 
-          ### Installation
-          Download the APK file below and install on your Android device.
-
-          **Note**: You may need to enable "Install from unknown sources" in your device settings.
+          ### 安装说明
+          - 下载下方 APK 并安装到 Android 设备。
+          - 如系统提示，请开启“允许安装未知来源应用”。
         files: |
           app/build/outputs/apk/release/*.apk
         draft: false

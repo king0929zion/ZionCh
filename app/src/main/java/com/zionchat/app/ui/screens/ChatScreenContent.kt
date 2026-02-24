@@ -266,6 +266,7 @@ internal fun ChatScreenContent(navController: NavController) {
         }
 
     val conversations by repository.conversationsFlow.collectAsState(initial = emptyList())
+    val groupChats by repository.groupChatsFlow.collectAsState(initial = emptyList())
     val currentConversationId by repository.currentConversationIdFlow.collectAsState(initial = null)
     val providers by repository.providersFlow.collectAsState(initial = emptyList())
     val models by repository.modelsFlow.collectAsState(initial = emptyList())
@@ -328,6 +329,43 @@ internal fun ChatScreenContent(navController: NavController) {
         val cid = effectiveConversationId?.trim().orEmpty()
         if (cid.isBlank()) null else conversations.firstOrNull { it.id == cid }
     }
+    val activeGroupChatConfig = remember(groupChats, effectiveConversationId) {
+        val cid = effectiveConversationId?.trim().orEmpty()
+        if (cid.isBlank()) null else groupChats.firstOrNull { it.conversationId == cid }
+    }
+    val mentionCandidates = remember(activeGroupChatConfig, models) {
+        val memberIds = activeGroupChatConfig?.memberModelIds.orEmpty().toSet()
+        models
+            .asSequence()
+            .filter { it.enabled && memberIds.contains(it.id) }
+            .map { model ->
+                val token = buildGroupMentionToken(model)
+                MentionCandidate(
+                    key = model.id,
+                    label = model.displayName,
+                    token = "@$token"
+                )
+            }
+            .toList()
+    }
+    val mentionQuery = remember(activeGroupChatConfig?.id, messageText) {
+        if (activeGroupChatConfig == null) null else extractTrailingMentionQuery(messageText)
+    }
+    val visibleMentionCandidates = remember(mentionQuery, mentionCandidates) {
+        val query = mentionQuery?.trim().orEmpty()
+        if (query.isBlank()) {
+            mentionCandidates.take(6)
+        } else {
+            val key = normalizeMentionLookup(query)
+            mentionCandidates
+                .filter { candidate ->
+                    normalizeMentionLookup(candidate.label).contains(key) ||
+                        normalizeMentionLookup(candidate.token).contains(key)
+                }
+                .take(6)
+        }
+    }
+    val showMentionPicker = activeGroupChatConfig != null && mentionQuery != null && visibleMentionCandidates.isNotEmpty()
     val activeAutoBrowserSession = effectiveConversationId?.let { cid -> autoBrowserSessions[cid] }
     val hasActiveAutoBrowserSession = activeAutoBrowserSession?.isActive == true
 
@@ -1388,6 +1426,50 @@ internal fun ChatScreenContent(navController: NavController) {
                 }
             }
 
+            val activeGroupChat =
+                repository.groupChatsFlow.first().firstOrNull { it.conversationId == safeConversationId }
+            if (activeGroupChat != null && selectedToolSnapshot == null) {
+                val allModelsSnapshot = repository.modelsFlow.first()
+                val providerListSnapshot = repository.providersFlow.first()
+                val conversationMessagesSnapshot =
+                    repository.conversationsFlow.first()
+                        .firstOrNull { it.id == safeConversationId }
+                        ?.messages
+                        .orEmpty()
+                val customInstructionSnapshot = repository.customInstructionsFlow.first().trim()
+                val groupDispatch =
+                    runGroupChatDispatch(
+                        chatApiClient = chatApiClient,
+                        providerAuthManager = providerAuthManager,
+                        group = activeGroupChat,
+                        userMessage = userMessage,
+                        conversationMessages = conversationMessagesSnapshot,
+                        allModels = allModelsSnapshot,
+                        providers = providerListSnapshot,
+                        customInstructions = customInstructionSnapshot,
+                        systemTimeText = buildCurrentSystemTimeText()
+                    )
+                groupDispatch.nextRoundRobinCursor?.let { cursor ->
+                    repository.updateGroupChatRoundRobinCursor(activeGroupChat.id, cursor)
+                }
+                val replies =
+                    if (groupDispatch.replies.isEmpty()) {
+                        listOf(
+                            Message(
+                                role = "assistant",
+                                content = groupDispatch.warning ?: "群聊暂无可用回复模型。"
+                            )
+                        )
+                    } else {
+                        groupDispatch.replies
+                    }
+                replies.forEach { reply ->
+                    repository.appendMessage(safeConversationId, reply)
+                }
+                selectedTool = null
+                return@launch
+            }
+
             val latestDefaultChatModelId = repository.defaultChatModelIdFlow.first()
             if (latestDefaultChatModelId.isNullOrBlank()) {
                 if (explicitAutoSoulRequest) {
@@ -1489,6 +1571,13 @@ internal fun ChatScreenContent(navController: NavController) {
                             append('\n')
                         }
                     }
+                    if (isNotEmpty()) append("\n\n")
+                    val currentTimeText = buildCurrentSystemTimeText()
+                    append("Current system time: ")
+                    append(currentTimeText)
+                    append('\n')
+                    append("当前系统时间：")
+                    append(currentTimeText)
                     if (isNotEmpty()) append("\n\n")
                     append("Memory policy:\n")
                     append("- Only store memory when the user explicitly states stable preference/profile or long-term requirements.\n")
@@ -2250,6 +2339,321 @@ internal fun ChatScreenContent(navController: NavController) {
                         val autoBrowserRoundHistory = mutableListOf<String>()
                         var autoBrowserCallCountInRound = 0
 
+                        suspend fun handleAutoBrowserCall(
+                            call: PlannedMcpToolCall,
+                            args: Map<String, Any>,
+                            argsJson: String
+                        ): Boolean {
+                            if (!isBuiltInAutoBrowserCall(call)) return false
+                            autoBrowserCallCountInRound += 1
+
+                            fun argString(vararg keys: String): String {
+                                return keys
+                                    .asSequence()
+                                    .mapNotNull { key ->
+                                        val raw = args.entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value ?: return@mapNotNull null
+                                        when (raw) {
+                                            is String -> raw.trim().takeIf { it.isNotBlank() }
+                                            is Number, is Boolean -> raw.toString()
+                                            else -> raw.toString().trim().takeIf { it.isNotBlank() }
+                                        }
+                                    }
+                                    .firstOrNull()
+                                    .orEmpty()
+                            }
+
+                            fun argDouble(vararg keys: String): Double? {
+                                return keys.asSequence().mapNotNull { key ->
+                                    val raw = args.entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value ?: return@mapNotNull null
+                                    when (raw) {
+                                        is Number -> raw.toDouble()
+                                        is String -> raw.trim().toDoubleOrNull()
+                                        else -> null
+                                    }
+                                }.firstOrNull()
+                            }
+
+                            val toolLower = call.toolName.trim().lowercase()
+                            val actionHint = argString("action", "op", "operation", "type", "intent").lowercase()
+                            val action =
+                                when {
+                                    toolLower in setOf("autobrowser_start_session", "browser_start_session") -> "start_session"
+                                    toolLower in setOf("autobrowser_navigate", "autobrowser_open_url", "browser_navigate") -> "navigate"
+                                    toolLower in setOf("autobrowser_click_ref", "browser_click_ref") -> "click_ref"
+                                    toolLower in setOf("autobrowser_fill_css", "browser_fill_css") -> "fill_css"
+                                    toolLower in setOf("autobrowser_exec_js", "browser_exec_js") -> "exec_js"
+                                    toolLower in setOf("autobrowser_wait", "browser_wait") -> "wait"
+                                    toolLower in setOf("autobrowser_snapshot", "browser_snapshot") -> "snapshot"
+                                    toolLower in setOf("autobrowser_upload_file", "browser_upload_file") -> "upload_file"
+                                    toolLower in setOf("autobrowser_close_session", "browser_close_session") -> "close_session"
+                                    actionHint in setOf("start", "start_session", "launch", "open_session") -> "start_session"
+                                    actionHint in setOf("navigate", "goto", "open", "open_url") -> "navigate"
+                                    actionHint in setOf("click_ref", "click", "tap") -> "click_ref"
+                                    actionHint in setOf("fill", "fill_css", "type", "input") -> "fill_css"
+                                    actionHint in setOf("exec_js", "js", "javascript", "run_js") -> "exec_js"
+                                    actionHint in setOf("wait", "sleep", "delay") -> "wait"
+                                    actionHint in setOf("snapshot", "capture") -> "snapshot"
+                                    actionHint in setOf("upload", "upload_file", "choose_file") -> "upload_file"
+                                    actionHint in setOf("close", "close_session", "stop", "end") -> "close_session"
+                                    else -> "unknown"
+                                }
+
+                            fun ensureTag(actionTitle: String): String {
+                                val existing = autoBrowserTagIdInRound
+                                if (!existing.isNullOrBlank()) return existing
+                                val pendingTag =
+                                    MessageTag(
+                                        kind = "mcp",
+                                        title = "AutoBrowser · $actionTitle",
+                                        content = buildMcpTagDetailContent(
+                                            round = roundIndex,
+                                            serverName = "AutoBrowser",
+                                            toolName = call.toolName.ifBlank { "autobrowser" },
+                                            argumentsJson = argsJson,
+                                            statusText = "Running...",
+                                            attempts = autoBrowserCallCountInRound,
+                                            elapsedMs = null,
+                                            resultText = null,
+                                            errorText = null
+                                        ),
+                                        status = "running"
+                                    )
+                                appendAssistantTag(pendingTag)
+                                autoBrowserTagIdInRound = pendingTag.id
+                                return pendingTag.id
+                            }
+
+                            fun refreshTag(
+                                actionTitle: String,
+                                statusText: String,
+                                status: String,
+                                detailLine: String,
+                                errorText: String? = null
+                            ) {
+                                val tagId = ensureTag(actionTitle)
+                                autoBrowserRoundHistory += "[${autoBrowserCallCountInRound}] ${detailLine.trim()}"
+                                val resultText = autoBrowserRoundHistory.joinToString("\n").trim().take(6000)
+                                val content =
+                                    buildMcpTagDetailContent(
+                                        round = roundIndex,
+                                        serverName = "AutoBrowser",
+                                        toolName = call.toolName.ifBlank { "autobrowser" },
+                                        argumentsJson = argsJson,
+                                        statusText = statusText,
+                                        attempts = autoBrowserCallCountInRound,
+                                        elapsedMs = null,
+                                        resultText = resultText,
+                                        errorText = errorText
+                                    )
+                                updateAssistantTag(tagId) {
+                                    it.copy(
+                                        title = "AutoBrowser · $actionTitle",
+                                        content = content,
+                                        status = status
+                                    )
+                                }
+                            }
+
+                            if (!canUseAutoBrowserTool) {
+                                refreshTag(
+                                    actionTitle = "已拒绝",
+                                    statusText = "Failed",
+                                    status = "error",
+                                    detailLine = "AutoBrowser 未启用，本轮调用已拒绝。",
+                                    errorText = "AutoBrowser is not enabled in this turn."
+                                )
+                                roundSummary.append("- autobrowser: rejected (not enabled)\n")
+                                return true
+                            }
+
+                            val session = autoBrowserSessions[safeConversationId]
+                            val startedAt = System.currentTimeMillis()
+                            var actionTitle = "执行操作"
+                            var detail = ""
+                            var status = "success"
+                            var errorText: String? = null
+
+                            when (action) {
+                                "start_session" -> {
+                                    val startUrl = normalizeAutoBrowserUrl(argString("url", "target", "start_url", "homepage"))
+                                    val targetUrl = startUrl.ifBlank { session?.currentUrl?.ifBlank { "about:blank" } ?: "about:blank" }
+                                    updateAutoBrowserSession(safeConversationId) { current ->
+                                        val base = current ?: AutoBrowserSessionState(conversationId = safeConversationId)
+                                        base.copy(
+                                            isActive = true,
+                                            currentUrl = targetUrl,
+                                            renderNonce = base.renderNonce + 1,
+                                            lastActionTitle = "启动会话",
+                                            lastError = null
+                                        )
+                                    }
+                                    val loaded = if (targetUrl == "about:blank") true else waitForAutoBrowserLoadAfter(safeConversationId, startedAt)
+                                    actionTitle = "打开 ${targetUrl.take(42)}"
+                                    detail = if (loaded) "会话已启动并打开 $targetUrl" else "会话已启动，页面加载超时：$targetUrl"
+                                }
+
+                                "navigate" -> {
+                                    val url = normalizeAutoBrowserUrl(argString("url", "target", "href", "link"))
+                                    if (url.isBlank()) {
+                                        status = "error"
+                                        errorText = "autobrowser_navigate requires arguments.url"
+                                        actionTitle = "跳转失败"
+                                        detail = "缺少 arguments.url"
+                                    } else {
+                                        updateAutoBrowserSession(safeConversationId) { current ->
+                                            val base = current ?: AutoBrowserSessionState(conversationId = safeConversationId)
+                                            base.copy(isActive = true, currentUrl = url, renderNonce = base.renderNonce + 1, lastActionTitle = "打开网页")
+                                        }
+                                        val loaded = waitForAutoBrowserLoadAfter(safeConversationId, startedAt, timeoutMs = 24_000L)
+                                        actionTitle = "打开 ${url.take(42)}"
+                                        detail = if (loaded) "已跳转到 $url" else "跳转超时（仍可能在加载）: $url"
+                                    }
+                                }
+
+                                "snapshot" -> {
+                                    if (session?.isActive != true) {
+                                        status = "error"
+                                        errorText = "No active browser session. Call autobrowser_start_session first."
+                                        actionTitle = "快照失败"
+                                        detail = "未检测到活动网页会话。"
+                                    } else {
+                                        val (snapshotText, refs) = captureAutoBrowserSnapshot(safeConversationId)
+                                        updateAutoBrowserSession(safeConversationId) {
+                                            it?.copy(snapshotRefs = refs, snapshotText = snapshotText, lastActionTitle = "抓取快照", lastError = null)
+                                        }
+                                        actionTitle = "快照 ${refs.size} 项"
+                                        detail = snapshotText.take(2600)
+                                    }
+                                }
+
+                                "click_ref" -> {
+                                    val ref = argString("ref", "snapshot_ref", "id").trim()
+                                    val selector = session?.snapshotRefs?.get(ref)
+                                    if (session?.isActive != true || ref.isBlank() || selector.isNullOrBlank()) {
+                                        status = "error"
+                                        errorText = "snapshot ref not found: $ref"
+                                        actionTitle = "点击失败"
+                                        detail = "找不到 ref=$ref，请先调用 autobrowser_snapshot。"
+                                    } else {
+                                        val (ok, message) = clickAutoBrowserSelector(safeConversationId, selector)
+                                        if (!ok) {
+                                            status = "error"
+                                            errorText = message
+                                            actionTitle = "点击失败"
+                                            detail = "点击 ref=$ref 失败：$message"
+                                        } else {
+                                            actionTitle = "点击 $ref"
+                                            detail = "已点击 ref=$ref ${message.take(90)}".trim()
+                                        }
+                                    }
+                                }
+
+                                "fill_css" -> {
+                                    val selector = argString("selector", "css", "css_selector", "target").trim()
+                                    val value = argString("value", "text", "input", "content")
+                                    if (session?.isActive != true || selector.isBlank()) {
+                                        status = "error"
+                                        errorText = "autobrowser_fill_css requires selector"
+                                        actionTitle = "填写失败"
+                                        detail = "缺少活动会话或 selector。"
+                                    } else {
+                                        val (ok, message) = fillAutoBrowserSelector(safeConversationId, selector, value)
+                                        if (!ok) {
+                                            status = "error"
+                                            errorText = message
+                                            actionTitle = "填写失败"
+                                            detail = "填写 selector=$selector 失败：$message"
+                                        } else {
+                                            actionTitle = "填写 ${selector.take(26)}"
+                                            detail = "已填写 selector=$selector"
+                                        }
+                                    }
+                                }
+
+                                "exec_js" -> {
+                                    val js = argString("script", "js", "javascript", "code")
+                                    if (session?.isActive != true || js.isBlank()) {
+                                        status = "error"
+                                        errorText = "autobrowser_exec_js requires script"
+                                        actionTitle = "JS 失败"
+                                        detail = "缺少活动会话或 script。"
+                                    } else {
+                                        val output = decodeJavascriptResult(evaluateAutoBrowserScript(safeConversationId, js, timeoutMs = 24_000L))
+                                        actionTitle = "执行 JS"
+                                        detail = "JS execution output:\n${output.take(1800).ifBlank { "(empty)" }}"
+                                    }
+                                }
+
+                                "wait" -> {
+                                    val seconds = (argDouble("seconds", "sec", "duration", "wait") ?: 1.0).coerceIn(0.1, 20.0)
+                                    delay((seconds * 1000.0).toLong())
+                                    actionTitle = "等待 ${"%.1f".format(java.util.Locale.US, seconds)}s"
+                                    detail = "已等待 ${"%.1f".format(java.util.Locale.US, seconds)} 秒"
+                                }
+
+                                "upload_file" -> {
+                                    val selector = argString("selector", "css", "css_selector", "target").trim()
+                                    val mimeType = argString("mime", "mime_type", "accept").ifBlank { "*/*" }
+                                    if (session?.isActive != true || selector.isBlank()) {
+                                        status = "error"
+                                        errorText = "autobrowser_upload_file requires selector"
+                                        actionTitle = "上传失败"
+                                        detail = "缺少活动会话或 selector。"
+                                    } else {
+                                        val (ok, message) = uploadAutoBrowserFileToSelector(safeConversationId, selector, mimeType)
+                                        if (!ok) {
+                                            status = "error"
+                                            errorText = message
+                                            actionTitle = if (message == "file_picker_cancelled") "上传取消" else "上传失败"
+                                            detail = "文件上传失败：$message"
+                                        } else {
+                                            actionTitle = "上传文件"
+                                            detail = "已上传文件：$message"
+                                        }
+                                    }
+                                }
+
+                                "close_session" -> {
+                                    updateAutoBrowserSession(safeConversationId) { null }
+                                    if (effectiveConversationId == safeConversationId) {
+                                        showAutoBrowserPreview = false
+                                    }
+                                    actionTitle = "关闭会话"
+                                    detail = "网页会话已关闭。"
+                                }
+
+                                else -> {
+                                    status = "error"
+                                    errorText = "unknown_autobrowser_action"
+                                    actionTitle = "未知操作"
+                                    detail = "无法识别 AutoBrowser 操作：${call.toolName.ifBlank { actionHint }}"
+                                }
+                            }
+
+                            if (status == "success") {
+                                appendAutoBrowserHistory(safeConversationId, detail.replace('\n', ' ').take(320))
+                                updateAutoBrowserSession(safeConversationId) { current ->
+                                    current?.copy(lastActionTitle = actionTitle, lastError = null)
+                                }
+                            } else {
+                                updateAutoBrowserSession(safeConversationId) { current ->
+                                    current?.copy(lastActionTitle = actionTitle, lastError = errorText)
+                                }
+                            }
+
+                            refreshTag(
+                                actionTitle = actionTitle,
+                                statusText = if (status == "success") "Completed" else "Failed",
+                                status = status,
+                                detailLine = detail,
+                                errorText = errorText
+                            )
+                            roundSummary.append("- autobrowser: ")
+                            roundSummary.append(detail.replace('\n', ' ').take(560))
+                            roundSummary.append('\n')
+                            return true
+                        }
+
                         parsedCalls.forEach { call ->
                             processedCallCount += 1
                             val args =
@@ -2506,314 +2910,7 @@ internal fun ChatScreenContent(navController: NavController) {
                                 roundSummary.append('\n')
                                 return@forEach
                             }
-
-                            if (isBuiltInAutoBrowserCall(call)) {
-                                autoBrowserCallCountInRound += 1
-
-                                fun argString(vararg keys: String): String {
-                                    return keys
-                                        .asSequence()
-                                        .mapNotNull { key ->
-                                            val raw = args.entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value ?: return@mapNotNull null
-                                            when (raw) {
-                                                is String -> raw.trim().takeIf { it.isNotBlank() }
-                                                is Number, is Boolean -> raw.toString()
-                                                else -> raw.toString().trim().takeIf { it.isNotBlank() }
-                                            }
-                                        }
-                                        .firstOrNull()
-                                        .orEmpty()
-                                }
-
-                                fun argDouble(vararg keys: String): Double? {
-                                    return keys.asSequence().mapNotNull { key ->
-                                        val raw = args.entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value ?: return@mapNotNull null
-                                        when (raw) {
-                                            is Number -> raw.toDouble()
-                                            is String -> raw.trim().toDoubleOrNull()
-                                            else -> null
-                                        }
-                                    }.firstOrNull()
-                                }
-
-                                val toolLower = call.toolName.trim().lowercase()
-                                val actionHint = argString("action", "op", "operation", "type", "intent").lowercase()
-                                val action =
-                                    when {
-                                        toolLower in setOf("autobrowser_start_session", "browser_start_session") -> "start_session"
-                                        toolLower in setOf("autobrowser_navigate", "autobrowser_open_url", "browser_navigate") -> "navigate"
-                                        toolLower in setOf("autobrowser_click_ref", "browser_click_ref") -> "click_ref"
-                                        toolLower in setOf("autobrowser_fill_css", "browser_fill_css") -> "fill_css"
-                                        toolLower in setOf("autobrowser_exec_js", "browser_exec_js") -> "exec_js"
-                                        toolLower in setOf("autobrowser_wait", "browser_wait") -> "wait"
-                                        toolLower in setOf("autobrowser_snapshot", "browser_snapshot") -> "snapshot"
-                                        toolLower in setOf("autobrowser_upload_file", "browser_upload_file") -> "upload_file"
-                                        toolLower in setOf("autobrowser_close_session", "browser_close_session") -> "close_session"
-                                        actionHint in setOf("start", "start_session", "launch", "open_session") -> "start_session"
-                                        actionHint in setOf("navigate", "goto", "open", "open_url") -> "navigate"
-                                        actionHint in setOf("click_ref", "click", "tap") -> "click_ref"
-                                        actionHint in setOf("fill", "fill_css", "type", "input") -> "fill_css"
-                                        actionHint in setOf("exec_js", "js", "javascript", "run_js") -> "exec_js"
-                                        actionHint in setOf("wait", "sleep", "delay") -> "wait"
-                                        actionHint in setOf("snapshot", "capture") -> "snapshot"
-                                        actionHint in setOf("upload", "upload_file", "choose_file") -> "upload_file"
-                                        actionHint in setOf("close", "close_session", "stop", "end") -> "close_session"
-                                        else -> "unknown"
-                                    }
-
-                                fun ensureTag(actionTitle: String): String {
-                                    val existing = autoBrowserTagIdInRound
-                                    if (!existing.isNullOrBlank()) return existing
-                                    val pendingTag =
-                                        MessageTag(
-                                            kind = "mcp",
-                                            title = "AutoBrowser · $actionTitle",
-                                            content = buildMcpTagDetailContent(
-                                                round = roundIndex,
-                                                serverName = "AutoBrowser",
-                                                toolName = call.toolName.ifBlank { "autobrowser" },
-                                                argumentsJson = argsJson,
-                                                statusText = "Running...",
-                                                attempts = autoBrowserCallCountInRound,
-                                                elapsedMs = null,
-                                                resultText = null,
-                                                errorText = null
-                                            ),
-                                            status = "running"
-                                        )
-                                    appendAssistantTag(pendingTag)
-                                    autoBrowserTagIdInRound = pendingTag.id
-                                    return pendingTag.id
-                                }
-
-                                fun refreshTag(
-                                    actionTitle: String,
-                                    statusText: String,
-                                    status: String,
-                                    detailLine: String,
-                                    errorText: String? = null
-                                ) {
-                                    val tagId = ensureTag(actionTitle)
-                                    autoBrowserRoundHistory += "[${autoBrowserCallCountInRound}] ${detailLine.trim()}"
-                                    val resultText = autoBrowserRoundHistory.joinToString("\n").trim().take(6000)
-                                    val content =
-                                        buildMcpTagDetailContent(
-                                            round = roundIndex,
-                                            serverName = "AutoBrowser",
-                                            toolName = call.toolName.ifBlank { "autobrowser" },
-                                            argumentsJson = argsJson,
-                                            statusText = statusText,
-                                            attempts = autoBrowserCallCountInRound,
-                                            elapsedMs = null,
-                                            resultText = resultText,
-                                            errorText = errorText
-                                        )
-                                    updateAssistantTag(tagId) {
-                                        it.copy(
-                                            title = "AutoBrowser · $actionTitle",
-                                            content = content,
-                                            status = status
-                                        )
-                                    }
-                                }
-
-                                if (!canUseAutoBrowserTool) {
-                                    refreshTag(
-                                        actionTitle = "已拒绝",
-                                        statusText = "Failed",
-                                        status = "error",
-                                        detailLine = "AutoBrowser 未启用，本轮调用已拒绝。",
-                                        errorText = "AutoBrowser is not enabled in this turn."
-                                    )
-                                    roundSummary.append("- autobrowser: rejected (not enabled)\n")
-                                    return@forEach
-                                }
-
-                                val session = autoBrowserSessions[safeConversationId]
-                                val startedAt = System.currentTimeMillis()
-                                var actionTitle = "执行操作"
-                                var detail = ""
-                                var status = "success"
-                                var errorText: String? = null
-
-                                when (action) {
-                                    "start_session" -> {
-                                        val startUrl = normalizeAutoBrowserUrl(argString("url", "target", "start_url", "homepage"))
-                                        val targetUrl = startUrl.ifBlank { session?.currentUrl?.ifBlank { "about:blank" } ?: "about:blank" }
-                                        updateAutoBrowserSession(safeConversationId) { current ->
-                                            val base = current ?: AutoBrowserSessionState(conversationId = safeConversationId)
-                                            base.copy(
-                                                isActive = true,
-                                                currentUrl = targetUrl,
-                                                renderNonce = base.renderNonce + 1,
-                                                lastActionTitle = "启动会话",
-                                                lastError = null
-                                            )
-                                        }
-                                        val loaded = if (targetUrl == "about:blank") true else waitForAutoBrowserLoadAfter(safeConversationId, startedAt)
-                                        actionTitle = "打开 ${targetUrl.take(42)}"
-                                        detail = if (loaded) "会话已启动并打开 $targetUrl" else "会话已启动，页面加载超时：$targetUrl"
-                                    }
-
-                                    "navigate" -> {
-                                        val url = normalizeAutoBrowserUrl(argString("url", "target", "href", "link"))
-                                        if (url.isBlank()) {
-                                            status = "error"
-                                            errorText = "autobrowser_navigate requires arguments.url"
-                                            actionTitle = "跳转失败"
-                                            detail = "缺少 arguments.url"
-                                        } else {
-                                            updateAutoBrowserSession(safeConversationId) { current ->
-                                                val base = current ?: AutoBrowserSessionState(conversationId = safeConversationId)
-                                                base.copy(isActive = true, currentUrl = url, renderNonce = base.renderNonce + 1, lastActionTitle = "打开网页")
-                                            }
-                                            val loaded = waitForAutoBrowserLoadAfter(safeConversationId, startedAt, timeoutMs = 24_000L)
-                                            actionTitle = "打开 ${url.take(42)}"
-                                            detail = if (loaded) "已跳转到 $url" else "跳转超时（仍可能在加载）: $url"
-                                        }
-                                    }
-
-                                    "snapshot" -> {
-                                        if (session?.isActive != true) {
-                                            status = "error"
-                                            errorText = "No active browser session. Call autobrowser_start_session first."
-                                            actionTitle = "快照失败"
-                                            detail = "未检测到活动网页会话。"
-                                        } else {
-                                            val (snapshotText, refs) = captureAutoBrowserSnapshot(safeConversationId)
-                                            updateAutoBrowserSession(safeConversationId) {
-                                                it?.copy(snapshotRefs = refs, snapshotText = snapshotText, lastActionTitle = "抓取快照", lastError = null)
-                                            }
-                                            actionTitle = "快照 ${refs.size} 项"
-                                            detail = snapshotText.take(2600)
-                                        }
-                                    }
-
-                                    "click_ref" -> {
-                                        val ref = argString("ref", "snapshot_ref", "id").trim()
-                                        val selector = session?.snapshotRefs?.get(ref)
-                                        if (session?.isActive != true || ref.isBlank() || selector.isNullOrBlank()) {
-                                            status = "error"
-                                            errorText = "snapshot ref not found: $ref"
-                                            actionTitle = "点击失败"
-                                            detail = "找不到 ref=$ref，请先调用 autobrowser_snapshot。"
-                                        } else {
-                                            val (ok, message) = clickAutoBrowserSelector(safeConversationId, selector)
-                                            if (!ok) {
-                                                status = "error"
-                                                errorText = message
-                                                actionTitle = "点击失败"
-                                                detail = "点击 ref=$ref 失败：$message"
-                                            } else {
-                                                actionTitle = "点击 $ref"
-                                                detail = "已点击 ref=$ref ${message.take(90)}".trim()
-                                            }
-                                        }
-                                    }
-
-                                    "fill_css" -> {
-                                        val selector = argString("selector", "css", "css_selector", "target").trim()
-                                        val value = argString("value", "text", "input", "content")
-                                        if (session?.isActive != true || selector.isBlank()) {
-                                            status = "error"
-                                            errorText = "autobrowser_fill_css requires selector"
-                                            actionTitle = "填写失败"
-                                            detail = "缺少活动会话或 selector。"
-                                        } else {
-                                            val (ok, message) = fillAutoBrowserSelector(safeConversationId, selector, value)
-                                            if (!ok) {
-                                                status = "error"
-                                                errorText = message
-                                                actionTitle = "填写失败"
-                                                detail = "填写 selector=$selector 失败：$message"
-                                            } else {
-                                                actionTitle = "填写 ${selector.take(26)}"
-                                                detail = "已填写 selector=$selector"
-                                            }
-                                        }
-                                    }
-
-                                    "exec_js" -> {
-                                        val js = argString("script", "js", "javascript", "code")
-                                        if (session?.isActive != true || js.isBlank()) {
-                                            status = "error"
-                                            errorText = "autobrowser_exec_js requires script"
-                                            actionTitle = "JS 失败"
-                                            detail = "缺少活动会话或 script。"
-                                        } else {
-                                            val output = decodeJavascriptResult(evaluateAutoBrowserScript(safeConversationId, js, timeoutMs = 24_000L))
-                                            actionTitle = "执行 JS"
-                                            detail = "JS execution output:\n${output.take(1800).ifBlank { "(empty)" }}"
-                                        }
-                                    }
-
-                                    "wait" -> {
-                                        val seconds = (argDouble("seconds", "sec", "duration", "wait") ?: 1.0).coerceIn(0.1, 20.0)
-                                        delay((seconds * 1000.0).toLong())
-                                        actionTitle = "等待 ${"%.1f".format(java.util.Locale.US, seconds)}s"
-                                        detail = "已等待 ${"%.1f".format(java.util.Locale.US, seconds)} 秒"
-                                    }
-
-                                    "upload_file" -> {
-                                        val selector = argString("selector", "css", "css_selector", "target").trim()
-                                        val mimeType = argString("mime", "mime_type", "accept").ifBlank { "*/*" }
-                                        if (session?.isActive != true || selector.isBlank()) {
-                                            status = "error"
-                                            errorText = "autobrowser_upload_file requires selector"
-                                            actionTitle = "上传失败"
-                                            detail = "缺少活动会话或 selector。"
-                                        } else {
-                                            val (ok, message) = uploadAutoBrowserFileToSelector(safeConversationId, selector, mimeType)
-                                            if (!ok) {
-                                                status = "error"
-                                                errorText = message
-                                                actionTitle = if (message == "file_picker_cancelled") "上传取消" else "上传失败"
-                                                detail = "文件上传失败：$message"
-                                            } else {
-                                                actionTitle = "上传文件"
-                                                detail = "已上传文件：$message"
-                                            }
-                                        }
-                                    }
-
-                                    "close_session" -> {
-                                        updateAutoBrowserSession(safeConversationId) { null }
-                                        if (effectiveConversationId == safeConversationId) {
-                                            showAutoBrowserPreview = false
-                                        }
-                                        actionTitle = "关闭会话"
-                                        detail = "网页会话已关闭。"
-                                    }
-
-                                    else -> {
-                                        status = "error"
-                                        errorText = "unknown_autobrowser_action"
-                                        actionTitle = "未知操作"
-                                        detail = "无法识别 AutoBrowser 操作：${call.toolName.ifBlank { actionHint }}"
-                                    }
-                                }
-
-                                if (status == "success") {
-                                    appendAutoBrowserHistory(safeConversationId, detail.replace('\n', ' ').take(320))
-                                    updateAutoBrowserSession(safeConversationId) { current ->
-                                        current?.copy(lastActionTitle = actionTitle, lastError = null)
-                                    }
-                                } else {
-                                    updateAutoBrowserSession(safeConversationId) { current ->
-                                        current?.copy(lastActionTitle = actionTitle, lastError = errorText)
-                                    }
-                                }
-
-                                refreshTag(
-                                    actionTitle = actionTitle,
-                                    statusText = if (status == "success") "Completed" else "Failed",
-                                    status = status,
-                                    detailLine = detail,
-                                    errorText = errorText
-                                )
-                                roundSummary.append("- autobrowser: ")
-                                roundSummary.append(detail.replace('\n', ' ').take(560))
-                                roundSummary.append('\n')
+                            if (handleAutoBrowserCall(call = call, args = args, argsJson = argsJson)) {
                                 return@forEach
                             }
 
@@ -3570,6 +3667,7 @@ internal fun ChatScreenContent(navController: NavController) {
         drawerContent = {
             SidebarContent(
                 conversations = conversations,
+                groupChats = groupChats,
                 currentConversationId = effectiveConversationId,
                 nickname = displayName,
                 avatarUri = avatarUri,
@@ -3580,6 +3678,15 @@ internal fun ChatScreenContent(navController: NavController) {
                         preferredConversationId = convo.id
                         preferredConversationSetAtMs = System.currentTimeMillis()
                         repository.setCurrentConversationId(convo.id)
+                        drawerState.close()
+                        scrollToBottomToken++
+                    }
+                },
+                onGroupConversationClick = { group ->
+                    scope.launch {
+                        preferredConversationId = group.conversationId
+                        preferredConversationSetAtMs = System.currentTimeMillis()
+                        repository.setCurrentConversationId(group.conversationId)
                         drawerState.close()
                         scrollToBottomToken++
                     }
@@ -3909,11 +4016,16 @@ internal fun ChatScreenContent(navController: NavController) {
                         mcpSelectedCount = selectedMcpServerIds.size,
                         webSearchEngine = webSearchConfig.engine,
                         attachments = imageAttachments,
+                        mentionCandidates = visibleMentionCandidates,
+                        showMentionPicker = showMentionPicker,
                         onRemoveAttachment = { index ->
                             if (index < 0 || index >= imageAttachments.size) return@BottomInputArea
                             val updated = imageAttachments.toMutableList()
                             updated.removeAt(index)
                             imageAttachments = updated.toList()
+                        },
+                        onMentionSelect = { candidate ->
+                            messageText = replaceTrailingMentionWithToken(messageText, candidate.token)
                         },
                         onToolToggle = {
                             if (showToolMenu) {
@@ -4195,4 +4307,210 @@ internal fun ChatScreenContent(navController: NavController) {
             }
         }
     }
+}
+
+private data class GroupDispatchOutcome(
+    val replies: List<Message>,
+    val nextRoundRobinCursor: Int? = null,
+    val warning: String? = null
+)
+
+private fun buildCurrentSystemTimeText(nowMs: Long = System.currentTimeMillis()): String {
+    val formatter = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+    formatter.timeZone = java.util.TimeZone.getDefault()
+    val zone = formatter.timeZone?.id?.trim().orEmpty()
+    val value = formatter.format(java.util.Date(nowMs))
+    return if (zone.isBlank()) value else "$value ($zone)"
+}
+
+private suspend fun selectDynamicGroupResponders(
+    chatApiClient: ChatApiClient,
+    providerAuthManager: com.zionchat.app.data.ProviderAuthManager,
+    group: com.zionchat.app.data.GroupChatConfig,
+    memberModels: List<ModelConfig>,
+    providers: List<ProviderConfig>,
+    userMessage: Message,
+    systemTimeText: String
+): List<ModelConfig> {
+    val coordinatorId = group.dynamicCoordinatorModelId?.trim().orEmpty()
+    val coordinator = memberModels.firstOrNull { it.id == coordinatorId } ?: return memberModels.take(1)
+    val provider = coordinator.providerId?.let { pid -> providers.firstOrNull { it.id == pid } } ?: return memberModels.take(1)
+    if (provider.apiUrl.isBlank() || provider.apiKey.isBlank()) return memberModels.take(1)
+    val resolvedProvider = runCatching { providerAuthManager.ensureValidProvider(provider) }.getOrNull() ?: return memberModels.take(1)
+
+    val optionsText =
+        memberModels.joinToString("\n") { model ->
+            val token = buildGroupMentionToken(model)
+            "- id=${model.id} | token=@$token | name=${model.displayName}"
+        }
+    val selectorPrompt =
+        buildString {
+            appendLine("你是群聊调度器，需要从候选模型中挑选最适合回复本条消息的 1~3 个。")
+            append("当前系统时间：")
+            appendLine(systemTimeText)
+            appendLine("请只返回 JSON 数组，数组元素是候选模型 id、token 或 name。")
+            appendLine("候选模型：")
+            appendLine(optionsText)
+            appendLine("用户消息：")
+            appendLine(userMessage.content.trim())
+        }.trim()
+
+    val schedulerReply =
+        chatApiClient.chatCompletions(
+            provider = resolvedProvider,
+            modelId = extractRemoteModelId(coordinator.id).ifBlank { coordinator.id },
+            messages = listOf(Message(role = "user", content = selectorPrompt)),
+            extraHeaders = coordinator.headers
+        ).getOrNull().orEmpty()
+
+    val rawCandidates = linkedSetOf<String>()
+    parseJsonStringArray(schedulerReply).forEach { rawCandidates += it }
+    extractMentionTokens(schedulerReply).forEach { token -> rawCandidates += token }
+    if (rawCandidates.isEmpty()) return memberModels.take(1)
+
+    val normalized = rawCandidates.map(::normalizeMentionLookup).toSet()
+    val selected =
+        memberModels.filter { model ->
+            val aliases =
+                setOf(
+                    normalizeMentionLookup(model.id),
+                    normalizeMentionLookup(model.displayName),
+                    normalizeMentionLookup(buildGroupMentionToken(model))
+                )
+            aliases.any { normalized.contains(it) }
+        }.take(3)
+    return if (selected.isEmpty()) memberModels.take(1) else selected
+}
+
+private suspend fun runGroupChatDispatch(
+    chatApiClient: ChatApiClient,
+    providerAuthManager: com.zionchat.app.data.ProviderAuthManager,
+    group: com.zionchat.app.data.GroupChatConfig,
+    userMessage: Message,
+    conversationMessages: List<Message>,
+    allModels: List<ModelConfig>,
+    providers: List<ProviderConfig>,
+    customInstructions: String,
+    systemTimeText: String
+): GroupDispatchOutcome {
+    val memberModels =
+        group.memberModelIds.mapNotNull { memberId ->
+            allModels.firstOrNull { it.id == memberId && it.enabled }
+        }
+    if (memberModels.isEmpty()) {
+        return GroupDispatchOutcome(
+            replies = emptyList(),
+            warning = "群聊成员模型为空，请先在 Group 设置里更新成员。"
+        )
+    }
+
+    val mentionKeys =
+        extractMentionTokens(userMessage.content)
+            .map(::normalizeMentionLookup)
+            .toSet()
+    val mentionedResponders =
+        memberModels.filter { model ->
+            val aliases =
+                setOf(
+                    normalizeMentionLookup(model.id),
+                    normalizeMentionLookup(model.displayName),
+                    normalizeMentionLookup(buildGroupMentionToken(model))
+                )
+            aliases.any { mentionKeys.contains(it) }
+        }
+
+    val scheduledResponders =
+        when (group.strategy.trim().lowercase()) {
+            "round_robin" -> {
+                val index = if (memberModels.isEmpty()) 0 else group.roundRobinCursor % memberModels.size
+                listOf(memberModels[index])
+            }
+            "random" -> listOf(memberModels.random())
+            else ->
+                selectDynamicGroupResponders(
+                    chatApiClient = chatApiClient,
+                    providerAuthManager = providerAuthManager,
+                    group = group,
+                    memberModels = memberModels,
+                    providers = providers,
+                    userMessage = userMessage,
+                    systemTimeText = systemTimeText
+                )
+        }
+
+    val ordered = LinkedHashMap<String, ModelConfig>()
+    mentionedResponders.forEach { model -> ordered[model.id] = model }
+    scheduledResponders.forEach { model -> ordered[model.id] = model }
+    if (ordered.isEmpty()) {
+        ordered[memberModels.first().id] = memberModels.first()
+    }
+    val responders = ordered.values.toList()
+
+    val cleanHistory =
+        conversationMessages.takeLast(18).mapNotNull { msg ->
+            val clean = stripMcpTagMarkers(msg.content).trim()
+            if (clean.isBlank()) {
+                null
+            } else {
+                msg.copy(content = clean, reasoning = null, tags = null, attachments = null)
+            }
+        }
+
+    val replies = mutableListOf<Message>()
+    responders.forEach { model ->
+        val provider = model.providerId?.let { pid -> providers.firstOrNull { it.id == pid } }
+        if (provider == null || provider.apiUrl.isBlank() || provider.apiKey.isBlank()) {
+            replies += Message(role = "assistant", content = "[${model.displayName}] 暂时无法回复（模型提供方未配置）。")
+            return@forEach
+        }
+        val resolvedProvider = runCatching { providerAuthManager.ensureValidProvider(provider) }.getOrElse {
+            replies += Message(role = "assistant", content = "[${model.displayName}] 暂时无法回复（鉴权失败）。")
+            return@forEach
+        }
+
+        val mustReply = mentionedResponders.any { it.id == model.id }
+        val systemPrompt =
+            buildString {
+                appendLine("你是多模型群聊中的一个成员。")
+                append("当前成员模型：")
+                appendLine(model.displayName)
+                append("当前系统时间：")
+                appendLine(systemTimeText)
+                if (customInstructions.isNotBlank()) {
+                    appendLine("用户偏好：")
+                    appendLine(customInstructions)
+                }
+                if (mustReply) {
+                    appendLine("用户本条消息明确@了你，你必须给出回复。")
+                }
+                appendLine("请直接输出你的回复正文，不要输出工具调用标签。")
+            }.trim()
+
+        val requestMessages = mutableListOf<Message>()
+        requestMessages += Message(role = "system", content = systemPrompt)
+        requestMessages += cleanHistory
+        if (cleanHistory.lastOrNull()?.id != userMessage.id) {
+            requestMessages += userMessage
+        }
+        val replyText =
+            chatApiClient.chatCompletions(
+                provider = resolvedProvider,
+                modelId = extractRemoteModelId(model.id).ifBlank { model.id },
+                messages = requestMessages,
+                extraHeaders = model.headers
+            ).getOrElse { error ->
+                "暂时无法回复：${error.message?.trim().orEmpty().ifBlank { "unknown_error" }}"
+            }.trim()
+
+        val content = "[${model.displayName}] ${replyText.ifBlank { "(empty)" }}"
+        replies += Message(role = "assistant", content = content)
+    }
+
+    val nextCursor =
+        if (group.strategy.trim().lowercase() == "round_robin" && memberModels.isNotEmpty()) {
+            (group.roundRobinCursor + 1) % memberModels.size
+        } else {
+            null
+        }
+    return GroupDispatchOutcome(replies = replies, nextRoundRobinCursor = nextCursor, warning = null)
 }

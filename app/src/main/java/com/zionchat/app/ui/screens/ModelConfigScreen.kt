@@ -47,6 +47,7 @@ import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.data.HttpHeader
 import com.zionchat.app.data.ModelConfig
+import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.data.isCodexProvider
 import com.zionchat.app.data.isGrok2ApiProvider
 import com.zionchat.app.data.isLikelyVisionModel
@@ -83,6 +84,10 @@ fun ModelConfigScreen(
     }
     val supportsThinkingDepth = remember(provider?.id, provider?.apiUrl, provider?.type, provider?.presetId) {
         provider?.isCodexProvider() == true || provider?.isGrok2ApiProvider() == true
+    }
+    val modelRemoteId = remember(existingModel?.id, modelId) {
+        val raw = existingModel?.id ?: modelId.orEmpty()
+        extractRemoteModelId(raw).ifBlank { raw }
     }
 
     var modelName by remember(existingModel?.id) { mutableStateOf(existingModel?.displayName.orEmpty()) }
@@ -162,12 +167,23 @@ fun ModelConfigScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "Model Name",
-                    fontSize = 13.sp,
-                    fontFamily = SourceSans3,
-                    color = TextSecondary
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Model Name",
+                        fontSize = 13.sp,
+                        fontFamily = SourceSans3,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = modelRemoteId,
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     color = Surface,

@@ -56,7 +56,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import com.zionchat.app.data.extractRemoteModelId
-import com.zionchat.app.data.WebHostingConfig
 import com.zionchat.app.ui.components.TopFadeScrim
 import com.zionchat.app.ui.components.liquidGlass
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
@@ -83,7 +82,6 @@ fun SettingsScreen(navController: NavController) {
     val avatarUri by repository.avatarUriFlow.collectAsState(initial = "")
     val appLanguage by repository.appLanguageFlow.collectAsState(initial = "system")
     val appAccentColor by repository.appAccentColorFlow.collectAsState(initial = "default")
-    val webHostingConfig by repository.webHostingConfigFlow.collectAsState(initial = WebHostingConfig())
 
     var showEditProfile by remember { mutableStateOf(false) }
 
@@ -219,8 +217,31 @@ fun SettingsScreen(navController: NavController) {
                     )
                 }
 
+                SettingsGroup(title = stringResource(R.string.settings_group_group), itemCount = 2) {
+                    SettingsItem(
+                        icon = {
+                            Icon(
+                                painter = rememberResourceDrawablePainter(R.drawable.ic_group_chat),
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
+                                tint = TextPrimary
+                            )
+                        },
+                        label = stringResource(R.string.settings_item_group),
+                        showChevron = true,
+                        showDivider = true,
+                        onClick = { navController.navigate("group_chats") }
+                    )
+                    SettingsItem(
+                        icon = { Icon(AppIcons.ChatGPTLogo, null, Modifier.size(22.dp), tint = TextPrimary) },
+                        label = stringResource(R.string.settings_item_bots),
+                        showChevron = true,
+                        onClick = { navController.navigate("group_bots") }
+                    )
+                }
+
                 // AI Model 分组
-                SettingsGroup(title = stringResource(R.string.settings_group_ai_model), itemCount = 6) {
+                SettingsGroup(title = stringResource(R.string.settings_group_ai_model), itemCount = 5) {
                     SettingsItem(
                         icon = {
                             Icon(
@@ -256,14 +277,6 @@ fun SettingsScreen(navController: NavController) {
                         showChevron = true,
                         showDivider = true,
                         onClick = { navController.navigate("search_settings") }
-                    )
-                    SettingsItem(
-                        icon = { Icon(AppIcons.Globe, null, Modifier.size(22.dp), tint = Color.Unspecified) },
-                        label = "Web hosting",
-                        value = if (webHostingConfig.token.isNotBlank()) "Configured" else "Not set",
-                        showChevron = true,
-                        showDivider = true,
-                        onClick = { navController.navigate("web_hosting") }
                     )
                     SettingsItem(
                         icon = { Icon(AppIcons.MCPTools, null, Modifier.size(22.dp), tint = Color.Unspecified) },

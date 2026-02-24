@@ -35,6 +35,7 @@ class AppRepository(context: Context) {
     private val providersKey = stringPreferencesKey("providers_json")
     private val modelsKey = stringPreferencesKey("models_json")
     private val conversationsKey = stringPreferencesKey("conversations_json")
+    private val groupChatsKey = stringPreferencesKey("group_chats_json")
     private val memoriesKey = stringPreferencesKey("memories_json")
     private val savedAppsKey = stringPreferencesKey("saved_apps_json")
     private val savedAppVersionsKey = stringPreferencesKey("saved_app_versions_json")
@@ -80,6 +81,7 @@ class AppRepository(context: Context) {
     private val providerListType = object : TypeToken<List<ProviderConfig>>() {}.type
     private val modelListType = object : TypeToken<List<ModelConfig>>() {}.type
     private val conversationListType = object : TypeToken<List<Conversation>>() {}.type
+    private val groupChatListType = object : TypeToken<List<GroupChatConfig>>() {}.type
     private val memoryListType = object : TypeToken<List<MemoryItem>>() {}.type
     private val savedAppListType = object : TypeToken<List<SavedApp>>() {}.type
     private val savedAppVersionListType = object : TypeToken<List<SavedAppVersion>>() {}.type
@@ -283,6 +285,49 @@ class AppRepository(context: Context) {
         )
     }
 
+    private fun sanitizeGroupChat(group: GroupChatConfig?): GroupChatConfig? {
+        if (group == null) return null
+        val id = safeTrim(group.id).ifBlank { UUID.randomUUID().toString() }
+        val name = safeTrim(group.name)
+        val conversationId = safeTrim(group.conversationId)
+        if (name.isBlank() || conversationId.isBlank()) return null
+
+        val memberIds =
+            group.memberModelIds
+                .mapNotNull { item ->
+                    val key = safeTrim(item)
+                    key.takeIf { it.isNotBlank() }
+                }
+                .distinct()
+        if (memberIds.isEmpty()) return null
+
+        val strategy =
+            when (safeTrim(group.strategy).lowercase()) {
+                "round_robin", "round-robin", "roundrobin" -> "round_robin"
+                "random", "random_trigger", "random-trigger" -> "random"
+                else -> "dynamic"
+            }
+
+        val coordinatorId =
+            safeTrim(group.dynamicCoordinatorModelId).takeIf { key ->
+                key.isNotBlank() && memberIds.contains(key)
+            }
+        val createdAt = group.createdAt.takeIf { it > 0 } ?: System.currentTimeMillis()
+        val updatedAt = group.updatedAt.takeIf { it > 0 } ?: createdAt
+
+        return GroupChatConfig(
+            id = id,
+            name = name.take(64),
+            memberModelIds = memberIds,
+            strategy = strategy,
+            dynamicCoordinatorModelId = coordinatorId,
+            conversationId = conversationId,
+            roundRobinCursor = group.roundRobinCursor.coerceAtLeast(0),
+            createdAt = createdAt,
+            updatedAt = updatedAt
+        )
+    }
+
     private fun sanitizeMemory(item: MemoryItem?): MemoryItem? {
         if (item == null) return null
         val content = safeTrim(item.content)
@@ -422,6 +467,15 @@ class AppRepository(context: Context) {
             .getOrNull()
             .orEmpty()
             .mapNotNull(::sanitizeConversation)
+            .sortedByDescending { it.updatedAt }
+    }
+
+    val groupChatsFlow: Flow<List<GroupChatConfig>> = prefsFlow.map { prefs ->
+        val json = prefs[groupChatsKey] ?: "[]"
+        runCatching { gson.fromJson<List<GroupChatConfig>>(json, groupChatListType) }
+            .getOrNull()
+            .orEmpty()
+            .mapNotNull(::sanitizeGroupChat)
             .sortedByDescending { it.updatedAt }
     }
 
@@ -924,10 +978,74 @@ class AppRepository(context: Context) {
         }
     }
 
+    suspend fun upsertGroupChat(group: GroupChatConfig): GroupChatConfig? {
+        val sanitized = sanitizeGroupChat(group) ?: return null
+        val groups = groupChatsFlow.first().toMutableList()
+        val now = System.currentTimeMillis()
+        val index = groups.indexOfFirst { it.id == sanitized.id }
+        val merged =
+            if (index >= 0) {
+                val current = groups[index]
+                current.copy(
+                    name = sanitized.name,
+                    memberModelIds = sanitized.memberModelIds,
+                    strategy = sanitized.strategy,
+                    dynamicCoordinatorModelId = sanitized.dynamicCoordinatorModelId,
+                    conversationId = sanitized.conversationId,
+                    roundRobinCursor = sanitized.roundRobinCursor.coerceAtLeast(0),
+                    updatedAt = now
+                )
+            } else {
+                sanitized.copy(
+                    createdAt = sanitized.createdAt.takeIf { it > 0 } ?: now,
+                    updatedAt = now
+                )
+            }
+        if (index >= 0) {
+            groups[index] = merged
+        } else {
+            groups.add(0, merged)
+        }
+        dataStore.edit { prefs ->
+            prefs[groupChatsKey] = gson.toJson(groups)
+        }
+        return merged
+    }
+
+    suspend fun updateGroupChatRoundRobinCursor(groupId: String, cursor: Int) {
+        val key = groupId.trim()
+        if (key.isBlank()) return
+        val groups = groupChatsFlow.first().toMutableList()
+        val index = groups.indexOfFirst { it.id == key }
+        if (index < 0) return
+        val current = groups[index]
+        val normalizedCursor = cursor.coerceAtLeast(0)
+        if (current.roundRobinCursor == normalizedCursor) return
+        groups[index] =
+            current.copy(
+                roundRobinCursor = normalizedCursor,
+                updatedAt = System.currentTimeMillis()
+            )
+        dataStore.edit { prefs ->
+            prefs[groupChatsKey] = gson.toJson(groups)
+        }
+    }
+
+    suspend fun deleteGroupChat(groupId: String) {
+        val key = groupId.trim()
+        if (key.isBlank()) return
+        val groups = groupChatsFlow.first().filterNot { it.id == key }
+        dataStore.edit { prefs ->
+            prefs[groupChatsKey] = gson.toJson(groups)
+        }
+    }
+
     suspend fun deleteConversation(conversationId: String) {
         val conversations = conversationsFlow.first().filterNot { it.id == conversationId }
+        val groups = groupChatsFlow.first().filterNot { it.conversationId == conversationId }
         dataStore.edit { prefs ->
             prefs[conversationsKey] = gson.toJson(conversations)
+            prefs[groupChatsKey] = gson.toJson(groups)
             val current = prefs[currentConversationIdKey]
             if (current == conversationId) {
                 prefs.remove(currentConversationIdKey)

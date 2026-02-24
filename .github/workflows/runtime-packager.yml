@@ -50,10 +50,9 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Gradle
-      uses: gradle/gradle-build-action@v2
+      uses: gradle/actions/setup-gradle@v4
       with:
         gradle-version: 9.1.0
-        cache-disabled: true
 
     - name: Configure signing (optional)
       env:
@@ -74,7 +73,7 @@ jobs:
 
     - name: Assemble Runtime APK
       run: >
-        gradle :runtime:assembleRelease --stacktrace
+        gradle :runtime:assembleRelease --stacktrace --parallel --build-cache
         -PRUNTIME_APP_NAME="${{ inputs.app_name }}"
         -PRUNTIME_APP_URL="${{ inputs.app_url }}"
         -PRUNTIME_PACKAGE_SUFFIX="${{ inputs.package_suffix }}"
@@ -86,4 +85,3 @@ jobs:
       with:
         name: Runtime-${{ inputs.package_suffix }}-v${{ inputs.version_name }}
         path: runtime/build/outputs/apk/release/*.apk
-

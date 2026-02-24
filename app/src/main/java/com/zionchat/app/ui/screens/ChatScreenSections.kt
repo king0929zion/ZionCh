@@ -60,10 +60,14 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.Dp
@@ -87,6 +91,7 @@ import com.zionchat.app.data.AppRepository
 import com.zionchat.app.data.AppAutomationTask
 import com.zionchat.app.data.ChatApiClient
 import com.zionchat.app.data.Conversation
+import com.zionchat.app.data.GroupChatConfig
 import com.zionchat.app.data.HttpHeader
 import com.zionchat.app.data.Message
 import com.zionchat.app.data.MessageAttachment
@@ -552,13 +557,6 @@ internal fun MessageTagRow(
             } else if (isAutoBrowserTag) {
                 Icon(
                     imageVector = AppIcons.AutoBrowserCompass,
-                    contentDescription = null,
-                    tint = ThinkingLabelColor,
-                    modifier = Modifier.size(14.dp)
-                )
-            } else {
-                Icon(
-                    imageVector = AppIcons.Tool,
                     contentDescription = null,
                     tint = ThinkingLabelColor,
                     modifier = Modifier.size(14.dp)
@@ -1579,15 +1577,18 @@ fun EmptyChatState() {
 @Composable
 fun SidebarContent(
     conversations: List<Conversation>,
+    groupChats: List<GroupChatConfig>,
     currentConversationId: String?,
     nickname: String,
     avatarUri: String,
     onClose: () -> Unit,
     onNewChat: () -> Unit,
     onConversationClick: (Conversation) -> Unit,
+    onGroupConversationClick: (GroupChatConfig) -> Unit,
     onDeleteConversation: (String) -> Unit,
     navController: NavController
 ) {
+    var groupExpanded by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxHeight()
@@ -1668,8 +1669,59 @@ fun SidebarContent(
                     )
                 },
                 label = stringResource(R.string.group_chat),
-                onClick = { }
+                onClick = { groupExpanded = !groupExpanded }
             )
+            AnimatedVisibility(
+                visible = groupExpanded,
+                enter = fadeIn(animationSpec = tween(140, easing = FastOutSlowInEasing)),
+                exit = fadeOut(animationSpec = tween(120, easing = FastOutSlowInEasing))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 18.dp, end = 8.dp, top = 4.dp, bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (groupChats.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.group_chat_sidebar_empty),
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    } else {
+                        groupChats.forEach { group ->
+                            val active = currentConversationId == group.conversationId
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (active) GrayLighter else Color.Transparent)
+                                    .pressableScale(
+                                        pressedScale = 0.98f,
+                                        onClick = { onGroupConversationClick(group) }
+                                    )
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = group.name,
+                                    fontSize = 13.sp,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = group.memberModelIds.size.toString(),
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             SidebarMenuItem(
                 icon = {
                     Icon(
@@ -1987,7 +2039,7 @@ internal fun ToolMenuPanel(
     val panelMaxHeight = screenHeightDp * 0.6f
     var panelOffsetPx by remember { mutableFloatStateOf(0f) }
     val dismissThresholdPx = remember(density) { with(density) { 120.dp.toPx() } }
-    val maxLiftPx = remember(density, screenHeightDp) { with(density) { (screenHeightDp * 0.28f).toPx() } }
+    val maxLiftPx = remember(density, screenHeightDp) { with(density) { (screenHeightDp * 0.42f).toPx() } }
     val expandSnapThresholdPx = remember(maxLiftPx) { maxLiftPx * 0.35f }
     val dragProgress = remember(panelOffsetPx, dismissThresholdPx) {
         (panelOffsetPx.coerceAtLeast(0f) / dismissThresholdPx).coerceIn(0f, 1f)
@@ -4328,6 +4380,33 @@ fun ToolListItem(
     }
 }
 
+internal data class MentionCandidate(
+    val key: String,
+    val label: String,
+    val token: String
+)
+
+private object MentionHighlightVisualTransformation : VisualTransformation {
+    private val mentionRegex = Regex("""@[\p{L}\p{N}_\-.]+""")
+
+    override fun filter(text: AnnotatedString): TransformedText {
+        if (text.isEmpty()) return TransformedText(text, OffsetMapping.Identity)
+        val styled = AnnotatedString.Builder(text.text)
+        mentionRegex.findAll(text.text).forEach { match ->
+            val start = match.range.first
+            val end = match.range.last + 1
+            if (start >= 0 && end <= text.length) {
+                styled.addStyle(
+                    style = SpanStyle(color = Color(0xFF0A84FF), fontWeight = FontWeight.Bold),
+                    start = start,
+                    end = end
+                )
+            }
+        }
+        return TransformedText(styled.toAnnotatedString(), OffsetMapping.Identity)
+    }
+}
+
 internal fun bottomInputBottomPadding(imeVisible: Boolean): Dp {
     return if (imeVisible) 14.dp else 10.dp
 }
@@ -4339,7 +4418,10 @@ internal fun BottomInputArea(
     mcpSelectedCount: Int,
     webSearchEngine: String,
     attachments: List<PendingImageAttachment>,
+    mentionCandidates: List<MentionCandidate>,
+    showMentionPicker: Boolean,
     onRemoveAttachment: (Int) -> Unit,
+    onMentionSelect: (MentionCandidate) -> Unit,
     onToolToggle: () -> Unit,
     onClearTool: () -> Unit,
     messageText: String,
@@ -4429,6 +4511,50 @@ internal fun BottomInputArea(
             .padding(horizontal = 16.dp)
             .padding(top = 6.dp, bottom = bottomPadding)
     ) {
+        AnimatedVisibility(
+            visible = showMentionPicker && mentionCandidates.isNotEmpty(),
+            enter = fadeIn(animationSpec = tween(140, easing = FastOutSlowInEasing)),
+            exit = fadeOut(animationSpec = tween(110, easing = FastOutSlowInEasing))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Surface)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+            ) {
+                mentionCandidates.take(6).forEach { candidate ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .pressableScale(
+                                pressedScale = 0.98f,
+                                onClick = { onMentionSelect(candidate) }
+                            )
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = candidate.label,
+                            color = TextPrimary,
+                            fontSize = 14.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = candidate.token,
+                            color = Color(0xFF0A84FF),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+        if (showMentionPicker && mentionCandidates.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -4600,6 +4726,7 @@ internal fun BottomInputArea(
                             lineHeight = 22.sp,
                             color = TextPrimary
                         ),
+                        visualTransformation = MentionHighlightVisualTransformation,
                         cursorBrush = SolidColor(TextPrimary),
                         keyboardOptions = KeyboardOptions.Default.copy(
                             imeAction = if (actionIsStop) ImeAction.Done else ImeAction.Send
@@ -4752,6 +4879,49 @@ internal fun scaleBitmapDown(bitmap: Bitmap, maxDimension: Int): Bitmap {
     val newWidth = (width * scale).roundToInt().coerceAtLeast(1)
     val newHeight = (height * scale).roundToInt().coerceAtLeast(1)
     return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+}
+
+internal fun normalizeMentionLookup(value: String): String {
+    return value.trim().lowercase()
+        .replace(" ", "")
+        .replace("_", "")
+        .replace("-", "")
+}
+
+internal fun buildGroupMentionToken(model: ModelConfig): String {
+    val remote = extractRemoteModelId(model.id).trim()
+    return remote.ifBlank { model.displayName.trim().replace(Regex("\\s+"), "_") }
+}
+
+internal fun extractTrailingMentionQuery(input: String): String? {
+    if (input.isEmpty()) return null
+    val atIndex = input.lastIndexOf('@')
+    if (atIndex < 0) return null
+    if (atIndex > 0 && !input[atIndex - 1].isWhitespace()) return null
+    val suffix = input.substring(atIndex + 1)
+    if (suffix.contains(' ') || suffix.contains('\n') || suffix.contains('\t')) return null
+    return suffix
+}
+
+internal fun replaceTrailingMentionWithToken(input: String, token: String): String {
+    val safeToken = token.trim().trimStart('@')
+    if (safeToken.isBlank()) return input
+    val atIndex = input.lastIndexOf('@')
+    if (atIndex >= 0 && (atIndex == 0 || input[atIndex - 1].isWhitespace())) {
+        val suffix = input.substring(atIndex + 1)
+        if (!suffix.contains(' ') && !suffix.contains('\n') && !suffix.contains('\t')) {
+            return input.substring(0, atIndex) + "@$safeToken "
+        }
+    }
+    val base = input.trimEnd()
+    return if (base.isBlank()) "@$safeToken " else "$base @$safeToken "
+}
+
+internal fun extractMentionTokens(text: String): Set<String> {
+    val regex = Regex("""@([\p{L}\p{N}_\-.]+)""")
+    return regex.findAll(text).mapNotNull { match ->
+        match.groupValues.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
+    }.toSet()
 }
 
 internal fun buildConversationTranscript(

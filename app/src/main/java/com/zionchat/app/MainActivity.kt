@@ -8,7 +8,6 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -136,6 +135,8 @@ class MainActivity : AppCompatActivity() {
                         ) {
                             composable("chat") { ChatScreen(navController) }
                             composable("settings") { SettingsScreen(navController) }
+                            composable("group_chats") { GroupChatsScreen(navController) }
+                            composable("group_bots") { GroupBotsScreen(navController) }
                             composable("apps") { AppsScreen(navController) }
                             composable("language") { LanguageScreen(navController) }
                             composable("personalization") { PersonalizationScreen(navController) }

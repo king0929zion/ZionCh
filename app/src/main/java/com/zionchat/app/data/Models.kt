@@ -56,6 +56,18 @@ data class Conversation(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+data class GroupChatConfig(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val memberModelIds: List<String> = emptyList(),
+    val strategy: String = "dynamic", // dynamic | round_robin | random
+    val dynamicCoordinatorModelId: String? = null,
+    val conversationId: String,
+    val roundRobinCursor: Int = 0,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
 data class Message(
     val id: String = UUID.randomUUID().toString(),
     val role: String,

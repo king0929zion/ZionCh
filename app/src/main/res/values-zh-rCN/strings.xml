@@ -32,8 +32,11 @@
     <string name="not_set">未设置</string>
 
     <string name="settings_group_general">通用</string>
+    <string name="settings_group_group">群组</string>
     <string name="settings_item_language">语言</string>
     <string name="settings_item_notifications">通知</string>
+    <string name="settings_item_group">群聊</string>
+    <string name="settings_item_bots">模型成员</string>
     <string name="settings_group_ai_model">模型与服务</string>
     <string name="settings_item_default_model">默认模型</string>
     <string name="settings_item_model_services">模型服务</string>
@@ -150,6 +153,7 @@
     <string name="thinking_label">思考</string>
     <string name="tool_label">工具</string>
     <string name="tool_label_with_name">%1$s · %2$s</string>
+    <string name="group_chat_sidebar_empty">暂无群聊</string>
     <string name="chat_placeholder_ask_anything">随便问点什么</string>
     <string name="chat_tool_web_search">网页搜索</string>
     <string name="chat_tool_web_search_subtitle">获取实时资讯与信息</string>

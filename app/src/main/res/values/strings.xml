@@ -32,8 +32,11 @@
     <string name="not_set">Not set</string>
 
     <string name="settings_group_general">General</string>
+    <string name="settings_group_group">Group</string>
     <string name="settings_item_language">Language</string>
     <string name="settings_item_notifications">Notifications</string>
+    <string name="settings_item_group">Group</string>
+    <string name="settings_item_bots">Bots</string>
     <string name="settings_group_ai_model">Models &amp; Services</string>
     <string name="settings_item_default_model">Default model</string>
     <string name="settings_item_model_services">Model services</string>
@@ -150,6 +153,7 @@
     <string name="thinking_label">Thinking</string>
     <string name="tool_label">Tool</string>
     <string name="tool_label_with_name">%1$s · %2$s</string>
+    <string name="group_chat_sidebar_empty">No groups yet</string>
     <string name="chat_placeholder_ask_anything">Ask anything</string>
     <string name="chat_tool_web_search">Web search</string>
     <string name="chat_tool_web_search_subtitle">Find real-time news and info</string>
