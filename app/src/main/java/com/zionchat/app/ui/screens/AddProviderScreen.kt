@@ -245,28 +245,44 @@ fun AddProviderScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
                 .padding(top = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.Start
         ) {
-            // Avatar Selection
-            Column(
-                modifier = Modifier.padding(vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(
                     modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(GrayLighter, RoundedCornerShape(16.dp))
-                        .pressableScale(pressedScale = 0.95f) { showAvatarModal = true },
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
-                    if (selectedIconAsset.isNotEmpty()) {
-                        AssetIcon(
-                            assetFileName = selectedIconAsset,
-                            contentDescription = providerName.ifBlank { "Provider" },
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                            error = {
+                    Column(
+                        modifier = Modifier.width(72.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(GrayLighter, RoundedCornerShape(16.dp))
+                                .pressableScale(pressedScale = 0.95f) { showAvatarModal = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (selectedIconAsset.isNotEmpty()) {
+                                AssetIcon(
+                                    assetFileName = selectedIconAsset,
+                                    contentDescription = providerName.ifBlank { "Provider" },
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                    error = {
+                                        Icon(
+                                            painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
+                                            contentDescription = "Select Avatar",
+                                            tint = TextSecondary,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                )
+                            } else {
                                 Icon(
                                     painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
                                     contentDescription = "Select Avatar",
@@ -274,89 +290,97 @@ fun AddProviderScreen(
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
-                        )
-                    } else {
-                        Icon(
-                            painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
-                            contentDescription = "Select Avatar",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(28.dp)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Avatar",
+                            fontSize = 12.sp,
+                            fontFamily = SourceSans3,
+                            color = TextSecondary
                         )
                     }
-                }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "Tap to change avatar",
-                    fontSize = 13.sp,
-                    fontFamily = SourceSans3,
-                    color = TextSecondary
-                )
-            }
-
-            // Form Fields
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Provider Name
-                FormField(
-                    label = "Provider Name",
-                    value = providerName,
-                    onValueChange = { providerName = it },
-                    placeholder = "Enter provider name"
-                )
-
-                if (!isGrok2ApiProvider) {
-                    // Provider Type
-                    Column {
-                        Text(
-                            text = "Provider Type",
-                            fontSize = 13.sp,
-                            fontFamily = SourceSans3,
-                            color = TextSecondary,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        FormField(
+                            label = "Provider Name",
+                            value = providerName,
+                            onValueChange = { providerName = it },
+                            placeholder = "Enter provider name"
                         )
-                        val typeBackdrop = rememberLayerBackdrop()
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .layerBackdrop(typeBackdrop)
-                                    .background(Color.White, RoundedCornerShape(20.dp))
-                                    .border(width = 1.dp, color = Color(0xFFE8E8ED), shape = RoundedCornerShape(20.dp))
-                            )
 
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        if (!isGrok2ApiProvider) {
+                            Column {
+                                Text(
+                                    text = "Provider Type",
+                                    fontSize = 13.sp,
+                                    fontFamily = SourceSans3,
+                                    color = TextSecondary,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                val typeBackdrop = rememberLayerBackdrop()
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
                                 ) {
-                                    TypeOption(
-                                        text = "OpenAI",
-                                        selected = selectedType == "openai",
-                                        onClick = { selectedType = "openai" },
-                                        modifier = Modifier.weight(1f)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .layerBackdrop(typeBackdrop)
+                                            .background(Color.White, RoundedCornerShape(20.dp))
+                                            .border(width = 1.dp, color = Color(0xFFE8E8ED), shape = RoundedCornerShape(20.dp))
                                     )
-                                    TypeOption(
-                                        text = "Anthropic",
-                                        selected = selectedType == "anthropic",
-                                        onClick = { selectedType = "anthropic" },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    TypeOption(
-                                        text = "Google",
-                                        selected = selectedType == "google",
-                                        onClick = { selectedType = "google" },
-                                        modifier = Modifier.weight(1f)
+
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            TypeOption(
+                                                text = "OpenAI",
+                                                selected = selectedType == "openai",
+                                                onClick = { selectedType = "openai" },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            TypeOption(
+                                                text = "Anthropic",
+                                                selected = selectedType == "anthropic",
+                                                onClick = { selectedType = "anthropic" },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            TypeOption(
+                                                text = "Google",
+                                                selected = selectedType == "google",
+                                                onClick = { selectedType = "google" },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                AnimatedContent(
+                                    targetState = selectedType.trim().lowercase(),
+                                    transitionSpec = {
+                                        (fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 4 })) togetherWith
+                                            (fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { -it / 4 }))
+                                    },
+                                    label = "provider_type_hint"
+                                ) { type ->
+                                    Text(
+                                        text = providerTypeHint(type),
+                                        fontSize = 12.sp,
+                                        fontFamily = SourceSans3,
+                                        color = TextSecondary,
+                                        modifier = Modifier.padding(top = 6.dp, start = 2.dp)
                                     )
                                 }
                             }
@@ -364,13 +388,21 @@ fun AddProviderScreen(
                     }
                 }
 
-                // API Key
-                FormField(
-                    label = credentialLabel,
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
-                    placeholder = credentialPlaceholder
-                )
+                AnimatedContent(
+                    targetState = credentialLabel to credentialPlaceholder,
+                    transitionSpec = {
+                        (fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 5 })) togetherWith
+                            (fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { -it / 5 }))
+                    },
+                    label = "credential_field_transition"
+                ) { ui ->
+                    FormField(
+                        label = ui.first,
+                        value = apiKey,
+                        onValueChange = { apiKey = it },
+                        placeholder = ui.second
+                    )
+                }
 
                 AnimatedVisibility(
                     visible = !isGrok2ApiProvider,
@@ -675,6 +707,15 @@ fun FormField(
                 singleLine = true
             )
         }
+    }
+}
+
+private fun providerTypeHint(type: String): String {
+    return when (type.trim().lowercase()) {
+        "openai" -> "OpenAI-compatible / Responses / Chat Completions"
+        "anthropic" -> "Claude Messages API style"
+        "google" -> "Gemini API style"
+        else -> "Custom provider type"
     }
 }
 

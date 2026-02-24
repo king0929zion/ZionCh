@@ -2,6 +2,8 @@ package com.zionchat.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -485,11 +487,17 @@ private fun ModelItem(
     onToggle: () -> Unit,
     onClick: () -> Unit
 ) {
+    val cardColor by animateColorAsState(
+        targetValue = if (model.enabled) GrayLighter else GrayLight,
+        animationSpec = tween(durationMillis = 180),
+        label = "model_item_bg"
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .background(GrayLight, RoundedCornerShape(20.dp))
+            .animateContentSize(animationSpec = tween(durationMillis = 180))
+            .background(cardColor, RoundedCornerShape(20.dp))
             .clip(RoundedCornerShape(20.dp))
             .pressableScale(pressedScale = 0.98f, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),

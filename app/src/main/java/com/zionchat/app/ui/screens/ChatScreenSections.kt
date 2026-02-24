@@ -81,6 +81,7 @@ import com.zionchat.app.LocalProviderAuthManager
 import com.zionchat.app.LocalRuntimePackagingService
 import com.zionchat.app.LocalWebHostingService
 import com.zionchat.app.autosoul.runtime.AutoSoulAutomationManager
+import com.zionchat.app.autosoul.runtime.AutoSoulAppPackages
 import com.zionchat.app.autosoul.runtime.AutoSoulScriptParser
 import com.zionchat.app.data.AppRepository
 import com.zionchat.app.data.AppAutomationTask
@@ -2854,11 +2855,30 @@ internal suspend fun executeAutoSoulTask(
                         actionRaw = decision.action?.trim().orEmpty(),
                         rawArgs = decision.args
                     )
+                val sanitizedStepResult = enforceAutoSoulLaunchWhitelist(normalizedStep)
+                if (sanitizedStepResult.isFailure) {
+                    val errorText =
+                        sanitizedStepResult.exceptionOrNull()?.message?.trim().orEmpty()
+                            .ifBlank { "Launch 参数校验失败。" }
+                    stepTraces +=
+                        AutoSoulStepTrace(
+                            stepNo = stepTraces.size + 1,
+                            action = normalizedStep.action.ifBlank { "Launch" },
+                            args = normalizedStep.args,
+                            success = false,
+                            statusText = "参数校验失败",
+                            error = errorText,
+                            logs = listOf(errorText),
+                            timedOut = false
+                        )
+                    continue
+                }
+                val sanitizedStep = sanitizedStepResult.getOrThrow()
                 val actionName =
-                    normalizedStep.action.trim().ifBlank {
+                    sanitizedStep.action.trim().ifBlank {
                         throw IllegalStateException("AutoSoul 决策缺少 action。")
                     }
-                val currentFingerprint = buildAutoSoulActionFingerprint(actionName, normalizedStep.args)
+                val currentFingerprint = buildAutoSoulActionFingerprint(actionName, sanitizedStep.args)
                 val repeatedSuccessCount =
                     stepTraces
                         .asReversed()
@@ -2871,7 +2891,7 @@ internal suspend fun executeAutoSoulTask(
                 if (repeatedSuccessCount >= repeatLimit) {
                     throw IllegalStateException("AutoSoul 检测到重复动作循环（$actionName），已自动停止。请补充更具体任务目标后重试。")
                 }
-                val singleStepScript = buildAutoSoulSingleStepScript(actionName, normalizedStep.args)
+                val singleStepScript = buildAutoSoulSingleStepScript(actionName, sanitizedStep.args)
                 val parsedStep =
                     AutoSoulScriptParser.parse(singleStepScript).getOrElse { error ->
                         throw IllegalStateException("AutoSoul 单步脚本校验失败：${error.message ?: "unknown"}")
@@ -3545,6 +3565,45 @@ internal fun normalizeAutoSoulPlannerStep(
     )
 }
 
+internal fun enforceAutoSoulLaunchWhitelist(
+    step: AutoSoulNormalizedStep
+): Result<AutoSoulNormalizedStep> {
+    if (!step.action.equals("Launch", ignoreCase = true)) {
+        return Result.success(step)
+    }
+
+    val args = LinkedHashMap(step.args)
+    val rawTarget = resolveLaunchTargetFromArgs(args, includeLoose = true)?.trim().orEmpty()
+    if (rawTarget.isBlank()) {
+        return Result.failure(IllegalStateException("Launch 缺少 app/package 参数。"))
+    }
+
+    val resolvedPackage = AutoSoulAppPackages.resolvePackage(rawTarget)
+    if (resolvedPackage.isNullOrBlank()) {
+        val examples =
+            AutoSoulAppPackages.supportedMappings
+                .take(6)
+                .joinToString(separator = "、") { (name, pkg) -> "$name($pkg)" }
+        return Result.failure(
+            IllegalStateException(
+                "Launch 目标 \"$rawTarget\" 不在 Open-AutoGLM 支持列表中。请改用受支持 app 名或 package，例如：$examples"
+            )
+        )
+    }
+
+    val filtered =
+        LinkedHashMap<String, String>().apply {
+            put("package", resolvedPackage)
+            args["app"]?.trim()?.takeIf { it.isNotBlank() }?.let { put("app", it) }
+        }
+    return Result.success(
+        step.copy(
+            action = "Launch",
+            args = filtered.toMap()
+        )
+    )
+}
+
 internal fun extractAutoSoulNestedArgs(rawArgs: Map<String, String>): Map<String, String> {
     val extracted = linkedMapOf<String, String>()
     rawArgs.values.forEach { value ->
@@ -3798,20 +3857,35 @@ internal fun looksLikeAutoSoulCoordinateValue(value: String): Boolean {
 
 internal fun buildAutoSoulPlannerSystemPrompt(): String {
     return buildString {
-        appendLine("你是 AutoSoul 执行智能体。")
-        appendLine("目标：根据任务和历史执行结果，在每一轮给出“下一步动作”，而不是一次性给出所有步骤。")
-        appendLine("输出必须是 JSON 对象，不要 Markdown，不要解释文本。")
-        appendLine("支持动作：Launch, Tap, Swipe, LongPress, Type, Wait, Back, Home, TapText。")
-        appendLine("坐标必须是 0~1 比例字符串，必须使用一对坐标（例如 \"0.50,0.72\" 或 \"[0.50,0.72]\"）。")
-        appendLine("Swipe 必须给 start 与 end，且二者都必须是坐标对；禁止只给单个数字。")
-        appendLine("Launch 只能提供 app 或 package，禁止给 start/end/point 坐标参数。")
-        appendLine("Type/TapText 使用 text。")
-        appendLine("参数必须是纯字段，不要在参数值中包含分析过程、任务复述、解释文本。")
-        appendLine("任务完成时输出：{\"status\":\"done\",\"message\":\"...\"}")
-        appendLine("需要继续时输出：{\"status\":\"continue\",\"step\":{\"action\":\"Tap\",\"x\":\"0.50\",\"y\":\"0.72\"},\"reason\":\"...\"}")
-        appendLine("只有在用户全部要求都完成后才能输出 done。")
-        appendLine("如果上一步失败，优先调整策略并继续，不要直接 done。")
-        appendLine("禁止连续重复输出相同成功动作（尤其 Home/Back/Wait），若遇到循环应切换策略或直接 done。")
+        appendLine("你是 AutoSoul 执行智能体（规则对齐 Open-AutoGLM Android Agent）。")
+        appendLine("目标：基于任务目标和历史执行结果，每一轮只输出一个“下一步动作”，直到任务完成。")
+        appendLine("输出必须是 JSON 对象，不要 Markdown，不要代码块，不要多余解释。")
+        appendLine()
+        appendLine("动作定义：")
+        appendLine("- Launch：启动目标应用。")
+        appendLine("- Tap：点击坐标点。")
+        appendLine("- Swipe：从 start 滑动到 end。")
+        appendLine("- LongPress：长按坐标点。")
+        appendLine("- Type：在当前输入框输入 text。")
+        appendLine("- TapText：点击包含指定 text 的控件。")
+        appendLine("- Back / Home / Wait。")
+        appendLine()
+        appendLine("关键规则：")
+        appendLine("1. 每轮只给一个动作，全部要求完成后才能输出 done。")
+        appendLine("2. 若当前不在目标 app，优先 Launch；若页面无关或卡死，优先 Back 或 Wait 再调整。")
+        appendLine("3. 坐标统一使用 0~1 比例，Tap/LongPress 用 point，Swipe 必须同时给 start 与 end。")
+        appendLine("4. Launch 只能使用 app/package，禁止携带 point/start/end 坐标参数。")
+        appendLine("5. Launch 必须命中白名单包名；如果输入是 app 名，先映射为 package 再输出。")
+        appendLine("6. 不要连续重复同一成功动作导致循环（尤其 Home/Back/Wait/Tap 同坐标）。")
+        appendLine("7. 如果上一步失败，先换策略重试；确实无法完成时再 done 并说明原因。")
+        appendLine()
+        appendLine("允许应用包名白名单（app => package，来自 Open-AutoGLM）：")
+        appendLine(AutoSoulAppPackages.renderWhitelistLines())
+        appendLine()
+        appendLine("输出格式：")
+        appendLine("- 完成任务：{\"status\":\"done\",\"message\":\"...\"}")
+        appendLine("- 继续执行：{\"status\":\"continue\",\"step\":{\"action\":\"Launch\",\"package\":\"com.tencent.mm\"},\"reason\":\"...\"}")
+        appendLine("- 继续执行（点击示例）：{\"status\":\"continue\",\"step\":{\"action\":\"Tap\",\"point\":\"0.50,0.72\"},\"reason\":\"...\"}")
     }.trim()
 }
 
@@ -4974,6 +5048,13 @@ internal fun resolveAutoSoulTaskPrompt(
 
     val app = anyString("app", "package", "package_name")
     val action = anyString("action", "operation", "intent")
+    val resolvedPackage = AutoSoulAppPackages.resolvePackage(app)
+    if (!resolvedPackage.isNullOrBlank() && action.isNotBlank()) {
+        return "在 Android 手机上执行自动化任务：先启动包名 $resolvedPackage，然后完成 $action。".take(2000)
+    }
+    if (!resolvedPackage.isNullOrBlank()) {
+        return "在 Android 手机上执行自动化任务：启动包名 $resolvedPackage 并完成用户请求。".take(2000)
+    }
     if (app.isNotBlank() && action.isNotBlank()) {
         return "在 Android 手机上执行自动化任务：先打开 $app，然后完成 $action。".take(2000)
     }
@@ -6375,15 +6456,15 @@ internal fun buildAutoSoulToolInstruction(
     alreadyInvoked: Boolean = false
 ): String {
     return buildString {
-        appendLine("Built-in tool available: autosoul_agent.")
+        appendLine("Built-in tool available: autosoul_agent (Android automation, Open-AutoGLM rules).")
         appendLine("Current round: $roundIndex")
         if (alreadyInvoked) {
             appendLine("autosoul_agent has already been invoked for this user task.")
             appendLine("Do NOT call autosoul_agent again in this task.")
             appendLine("Continue with a normal user-facing reply based on existing tool results.")
         } else {
-            appendLine("Use this tool only for Android phone automation tasks (open app / tap / swipe / input / back / home).")
-            appendLine("Do not call this tool for normal Q&A.")
+            appendLine("Use this tool only for Android phone automation tasks (Launch/Tap/Swipe/Type/Back/Home).")
+            appendLine("Do not call this tool for normal Q&A or memory tasks.")
             appendLine("First write a normal visible reply, then append tool call tags if needed.")
             appendLine("At most $maxCallsPerRound tool calls in this round.")
             appendLine()
@@ -6392,7 +6473,8 @@ internal fun buildAutoSoulToolInstruction(
             appendLine()
             appendLine("Arguments policy:")
             appendLine("- task: required, concise and executable Android automation goal.")
-            appendLine("- Optional: app/package for target app hint.")
+            appendLine("- Optional: app/package for app hint. If provided, use Open-AutoGLM supported app names or package names.")
+            appendLine("- Prefer package when available, e.g. com.tencent.mm / com.taobao.taobao / com.jingdong.app.mall.")
             appendLine("- For one user task, call autosoul_agent only once with the complete goal.")
             appendLine("- Do not split one task into multiple autosoul_agent calls.")
             appendLine("- Never fabricate execution results. Wait for tool result context in next round.")

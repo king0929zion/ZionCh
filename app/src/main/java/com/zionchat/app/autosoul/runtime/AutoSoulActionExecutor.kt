@@ -408,11 +408,14 @@ class AutoSoulActionExecutor(
 
     private fun resolveLaunchPackageCandidates(target: String): List<String> {
         val candidates = linkedSetOf<String>()
-        if (target.contains(".")) {
-            candidates += target
-        } else {
-            candidates += knownPackageAliases(target)
-            candidates += resolvePackagesByAppName(target)
+        AutoSoulAppPackages.canonicalPackage(target)?.let { candidates += it }
+        AutoSoulAppPackages.resolvePackage(target)?.let { candidates += it }
+
+        // Fallback to launcher label matching, but keep strict whitelist.
+        if (candidates.isEmpty() && !target.contains(".")) {
+            resolvePackagesByAppName(target).forEach { pkg ->
+                AutoSoulAppPackages.canonicalPackage(pkg)?.let { candidates += it }
+            }
         }
         return candidates.toList()
     }
@@ -455,26 +458,6 @@ class AutoSoulActionExecutor(
         val withAll = runCatching { pm.queryIntentActivities(intent, PackageManager.MATCH_ALL) }.getOrDefault(emptyList())
         if (withAll.isNotEmpty()) return withAll
         return runCatching { pm.queryIntentActivities(intent, 0) }.getOrDefault(emptyList())
-    }
-
-    private fun knownPackageAliases(appName: String): List<String> {
-        val normalized = normalizeAppName(appName)
-        return when {
-            normalized.contains("抖音极速版") -> listOf("com.ss.android.ugc.aweme.lite")
-            normalized.contains("抖音") || normalized.contains("douyin") -> listOf(
-                "com.ss.android.ugc.aweme",
-                "com.ss.android.ugc.aweme.lite",
-                "com.ss.android.ugc.trill"
-            )
-            normalized == "微信" || normalized == "weixin" || normalized == "wechat" -> listOf("com.tencent.mm")
-            normalized == "qq" -> listOf("com.tencent.mobileqq")
-            normalized.contains("支付宝") || normalized == "alipay" -> listOf("com.eg.android.AlipayGphone")
-            normalized.contains("小红书") || normalized == "xiaohongshu" || normalized == "red" -> listOf("com.xingin.xhs")
-            normalized == "淘宝" || normalized == "taobao" -> listOf("com.taobao.taobao")
-            normalized == "京东" || normalized == "jingdong" || normalized == "jd" -> listOf("com.jingdong.app.mall")
-            normalized.contains("哔哩") || normalized == "bilibili" -> listOf("tv.danmaku.bili")
-            else -> emptyList()
-        }
     }
 
     private fun normalizeAppName(raw: String): String {

@@ -989,24 +989,23 @@ internal fun ChatScreenContent(navController: NavController) {
                 }
             }
 
-            if (explicitAutoSoulRequest) {
-                val autoSoulResult =
-                    handleAutoSoulInvocation(
-                        repository = repository,
-                        chatApiClient = chatApiClient,
-                        context = context,
-                        userMessage = userMessage
-                    )
-                repository.appendMessage(
-                    safeConversationId,
-                    Message(role = "assistant", content = autoSoulResult)
-                )
-                selectedTool = null
-                return@launch
-            }
-
             val latestDefaultChatModelId = repository.defaultChatModelIdFlow.first()
             if (latestDefaultChatModelId.isNullOrBlank()) {
+                if (explicitAutoSoulRequest) {
+                    val autoSoulResult =
+                        handleAutoSoulInvocation(
+                            repository = repository,
+                            chatApiClient = chatApiClient,
+                            context = context,
+                            userMessage = userMessage
+                        )
+                    repository.appendMessage(
+                        safeConversationId,
+                        Message(role = "assistant", content = autoSoulResult)
+                    )
+                    selectedTool = null
+                    return@launch
+                }
                 repository.appendMessage(
                     safeConversationId,
                     Message(
@@ -1179,11 +1178,10 @@ internal fun ChatScreenContent(navController: NavController) {
                 } else {
                     // 普通聊天流程
                     val selectedMcpServerIdsSnapshot = selectedMcpServerIds
-                    val explicitAppBuilder = selectedTool == "app_builder"
+                    val explicitAppBuilder = selectedToolSnapshot == "app_builder"
                     val useWebSearch = explicitWebSearchRequest || weakAutoWebSearchIntent
                     val canUseAppBuilder = explicitAppBuilder
-                    // 显式 AutoSoul 模式在前面已直接执行，这里禁用隐式 AutoSoul tool 路由。
-                    val canUseAutoSoulTool = false
+                    val canUseAutoSoulTool = explicitAutoSoulRequest
                     val canUseMemoryTool = true
                     val configuredAppBuilderModel =
                         defaultAppBuilderModelId?.trim()?.takeIf { it.isNotBlank() }?.let { key ->

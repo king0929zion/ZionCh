@@ -1,6 +1,9 @@
 package com.zionchat.app.ui.components
 
 import android.os.Build
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,6 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -90,9 +95,24 @@ fun LiquidGlassSwitch(
 ) {
     val trackShape = RoundedCornerShape(14.dp)
     val trackBackdrop = rememberLayerBackdrop()
-    val knobAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
-    val knobOverlay = if (checked) Surface.copy(alpha = 0.92f) else TextSecondary.copy(alpha = 0.32f)
-    val knobFallback = if (checked) Surface else TextSecondary
+    val progress = animateFloatAsState(
+        targetValue = if (checked) 1f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "liquid_switch_progress"
+    ).value
+    val trackColor by animateColorAsState(
+        targetValue = if (checked) TextPrimary else Color.Transparent,
+        animationSpec = tween(durationMillis = 180),
+        label = "liquid_switch_track"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (checked) TextPrimary else TextSecondary,
+        animationSpec = tween(durationMillis = 180),
+        label = "liquid_switch_border"
+    )
+    val knobOverlay = lerp(TextSecondary.copy(alpha = 0.32f), Surface.copy(alpha = 0.92f), progress)
+    val knobFallback = lerp(TextSecondary, Surface, progress)
+    val knobOffset = 22.dp * progress
 
     Box(
         modifier = modifier
@@ -110,18 +130,19 @@ fun LiquidGlassSwitch(
                 .fillMaxSize()
                 .layerBackdrop(trackBackdrop)
                 .clip(trackShape)
-                .background(if (checked) TextPrimary else Color.Transparent, trackShape)
+                .background(trackColor, trackShape)
                 .border(
                     width = 1.5.dp,
-                    color = if (checked) TextPrimary else TextSecondary,
+                    color = borderColor,
                     shape = trackShape
                 )
         )
 
         Box(
             modifier = Modifier
-                .align(knobAlignment)
-                .padding(2.dp)
+                .align(Alignment.CenterStart)
+                .padding(start = 2.dp)
+                .offset(x = knobOffset)
                 .size(22.dp)
                 .liquidGlass(
                     backdrop = trackBackdrop,
