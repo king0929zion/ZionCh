@@ -2676,10 +2676,28 @@ internal fun ChatScreenContent(navController: NavController) {
 
             // Bottom fade mask: starts near the input top and fades to solid background at screen bottom.
             val bottomFadeHeightTarget = remember(imeVisible, bottomSystemPadding, bottomBarHeightDp) {
+                val baseHeight = bottomBarHeightDp + bottomSystemPadding
                 if (imeVisible) {
-                    bottomBarHeightDp + 10.dp
+                    baseHeight + 18.dp
                 } else {
-                    bottomBarHeightDp + bottomSystemPadding + 20.dp
+                    baseHeight + 20.dp
+                }
+            }
+            val bottomFadeColors = remember(imeVisible) {
+                if (imeVisible) {
+                    listOf(
+                        ChatBackground.copy(alpha = 0.06f),
+                        ChatBackground.copy(alpha = 0.34f),
+                        ChatBackground.copy(alpha = 0.68f),
+                        ChatBackground.copy(alpha = 0.96f)
+                    )
+                } else {
+                    listOf(
+                        ChatBackground.copy(alpha = 0f),
+                        ChatBackground.copy(alpha = 0.28f),
+                        ChatBackground.copy(alpha = 0.58f),
+                        ChatBackground
+                    )
                 }
             }
             val bottomFadeHeight by animateDpAsState(
@@ -2696,12 +2714,7 @@ internal fun ChatScreenContent(navController: NavController) {
                         .zIndex(3f)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(
-                                    ChatBackground.copy(alpha = 0f),
-                                    ChatBackground.copy(alpha = 0.28f),
-                                    ChatBackground.copy(alpha = 0.58f),
-                                    ChatBackground
-                                )
+                                colors = bottomFadeColors
                             )
                         )
                 )

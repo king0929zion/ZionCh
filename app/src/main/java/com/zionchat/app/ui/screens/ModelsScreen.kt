@@ -524,6 +524,13 @@ private fun ModelToggleSwitch(
     )
 }
 
+private fun deriveModelDisplayNameFromId(rawModelId: String): String {
+    val normalized = rawModelId.trim()
+    if (normalized.isBlank()) return ""
+    val slashCleaned = normalized.substringAfterLast('/').trim()
+    return if (slashCleaned.isNotBlank()) slashCleaned else normalized
+}
+
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 private fun AddModelModal(
@@ -538,11 +545,16 @@ private fun AddModelModal(
 
     var modelId by remember { mutableStateOf("") }
     var modelName by remember { mutableStateOf("") }
+    var displayNameManuallyEdited by remember { mutableStateOf(false) }
+    val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val navBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val sheetBottomInset = maxOf(imeBottomPadding, navBottomPadding)
 
     LaunchedEffect(visible) {
         if (visible) {
             modelId = ""
             modelName = ""
+            displayNameManuallyEdited = false
             dragOffsetPx = 0f
         }
     }
@@ -569,6 +581,7 @@ private fun AddModelModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
+                        .padding(bottom = sheetBottomInset)
                         .offset { IntOffset(0, dragOffsetPx.roundToInt()) }
                         .draggable(
                             orientation = Orientation.Vertical,
@@ -606,7 +619,9 @@ private fun AddModelModal(
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(24.dp),
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -629,14 +644,22 @@ private fun AddModelModal(
                         FieldBlock(
                             label = "Model ID",
                             value = modelId,
-                            onValueChange = { modelId = it },
+                            onValueChange = { value ->
+                                modelId = value
+                                if (!displayNameManuallyEdited) {
+                                    modelName = deriveModelDisplayNameFromId(value)
+                                }
+                            },
                             placeholder = "e.g. gpt-4o"
                         )
 
                         FieldBlock(
                             label = "Display Name",
                             value = modelName,
-                            onValueChange = { modelName = it },
+                            onValueChange = {
+                                displayNameManuallyEdited = true
+                                modelName = it
+                            },
                             placeholder = "e.g. GPT-4o"
                         )
 
@@ -657,8 +680,10 @@ private fun AddModelModal(
 
                             Button(
                                 onClick = {
-                                    if (modelId.isNotBlank() && modelName.isNotBlank()) {
-                                        onAdd(modelId, modelName)
+                                    val finalModelId = modelId.trim()
+                                    val finalDisplayName = modelName.trim().ifBlank { deriveModelDisplayNameFromId(finalModelId) }
+                                    if (finalModelId.isNotBlank() && finalDisplayName.isNotBlank()) {
+                                        onAdd(finalModelId, finalDisplayName)
                                     }
                                 },
                                 modifier = Modifier

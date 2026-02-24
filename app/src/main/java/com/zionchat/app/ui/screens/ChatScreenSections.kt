@@ -4225,6 +4225,39 @@ internal fun BottomInputArea(
         "app_builder" -> AppIcons.AppDeveloper
         else -> AppIcons.Globe
     }
+    val inputCapsuleShape = RoundedCornerShape(23.dp)
+    val inputContainerBrush = remember(imeVisible) {
+        Brush.verticalGradient(
+            colors =
+                if (imeVisible) {
+                    listOf(
+                        Surface.copy(alpha = 0.94f),
+                        Surface.copy(alpha = 0.88f)
+                    )
+                } else {
+                    listOf(
+                        Surface.copy(alpha = 0.98f),
+                        Surface.copy(alpha = 0.94f)
+                    )
+                }
+        )
+    }
+    val toolButtonBrush = remember(imeVisible) {
+        Brush.verticalGradient(
+            colors =
+                if (imeVisible) {
+                    listOf(
+                        Surface.copy(alpha = 0.90f),
+                        Surface.copy(alpha = 0.82f)
+                    )
+                } else {
+                    listOf(
+                        Surface.copy(alpha = 0.98f),
+                        Surface.copy(alpha = 0.92f)
+                    )
+                }
+        )
+    }
     val bottomPadding = bottomInputBottomPadding(imeVisible)
     Column(
         modifier = Modifier
@@ -4244,7 +4277,7 @@ internal fun BottomInputArea(
                     .size(46.dp)
                     .shadow(elevation = 8.dp, shape = CircleShape, clip = false, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.08f))
                     .clip(CircleShape)
-                    .background(Surface, CircleShape)
+                    .background(toolButtonBrush, CircleShape)
                     .pressableScale(pressedScale = 0.95f, onClick = onToolToggle),
                 contentAlignment = Alignment.Center
             ) {
@@ -4261,8 +4294,9 @@ internal fun BottomInputArea(
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 46.dp)
-                    .shadow(elevation = 8.dp, shape = RoundedCornerShape(23.dp), clip = false, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.08f))
-                    .background(Surface, RoundedCornerShape(23.dp)),
+                    .shadow(elevation = 8.dp, shape = inputCapsuleShape, clip = false, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.08f))
+                    .clip(inputCapsuleShape)
+                    .background(inputContainerBrush, inputCapsuleShape),
                 contentAlignment = Alignment.CenterStart
             ) {
                 Column(
