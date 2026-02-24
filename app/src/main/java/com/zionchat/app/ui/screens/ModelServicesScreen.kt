@@ -47,6 +47,7 @@ import com.zionchat.app.data.resolveProviderIconAsset
 import com.zionchat.app.ui.components.AssetIcon
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -436,7 +437,7 @@ private fun ProviderIcon(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = AppIcons.ChatGPTLogo,
+                        painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
                         contentDescription = null,
                         tint = TextSecondary,
                         modifier = Modifier.size(20.dp)
@@ -454,7 +455,7 @@ private fun ProviderIcon(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = AppIcons.ChatGPTLogo,
+            painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
             contentDescription = null,
             tint = TextSecondary,
             modifier = Modifier.size(20.dp)

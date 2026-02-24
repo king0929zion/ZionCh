@@ -4,6 +4,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,10 +22,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavController
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.zionchat.app.R
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.DEFAULT_PROVIDER_PRESETS
@@ -33,6 +38,7 @@ import com.zionchat.app.ui.components.AssetIcon
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.liquidGlass
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.flow.collect
@@ -262,7 +268,7 @@ fun AddProviderScreen(
                             contentScale = ContentScale.Crop,
                             error = {
                                 Icon(
-                                    imageVector = AppIcons.ChatGPTLogo,
+                                    painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
                                     contentDescription = "Select Avatar",
                                     tint = TextSecondary,
                                     modifier = Modifier.size(28.dp)
@@ -271,7 +277,7 @@ fun AddProviderScreen(
                         )
                     } else {
                         Icon(
-                            imageVector = AppIcons.ChatGPTLogo,
+                            painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
                             contentDescription = "Select Avatar",
                             tint = TextSecondary,
                             modifier = Modifier.size(28.dp)
@@ -435,6 +441,7 @@ fun AddProviderScreen(
 
         AvatarSelectionModal(
             visible = showAvatarModal,
+            selectedAvatarAsset = selectedIconAsset,
             onDismiss = { showAvatarModal = false },
             onSelectAvatar = { avatar ->
                 selectedIconAsset = avatar
@@ -444,45 +451,57 @@ fun AddProviderScreen(
     }
 }
 
-@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun AvatarSelectionModal(
     visible: Boolean,
+    selectedAvatarAsset: String,
     onDismiss: () -> Unit,
     onSelectAvatar: (String) -> Unit
 ) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut()
+    if (!visible) return
+
+    val avatarItems = remember { DEFAULT_PROVIDER_PRESETS.filter { !it.iconAsset.isNullOrBlank() } }
+    val avatarScrollState = rememberScrollState()
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties =
+            DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.5f))
-                .pressableScale(pressedScale = 1f, onClick = onDismiss)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                ),
+            contentAlignment = Alignment.BottomCenter
         ) {
-            Box(
+            Surface(
                 modifier = Modifier
-                    .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { }
+                    ),
+                color = Surface,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
             ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .animateEnterExit(
-                            enter = slideInVertically(initialOffsetY = { it }),
-                            exit = slideOutVertically(targetOffsetY = { it })
-                        )
-                        .pressableScale(pressedScale = 1f, onClick = { }),
-                    color = Surface,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 620.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(24.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp)
-                    ) {
-                    // Drag handle
                     Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center
@@ -506,50 +525,65 @@ fun AvatarSelectionModal(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Avatar Grid
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 200.dp)
-                            .verticalScroll(rememberScrollState()),
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(avatarScrollState),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        DEFAULT_PROVIDER_PRESETS
-                            .filter { !it.iconAsset.isNullOrBlank() }
-                            .chunked(5)
-                            .forEach { rowItems ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    rowItems.forEach { presetItem ->
+                        avatarItems.chunked(5).forEach { rowItems ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                repeat(5) { index ->
+                                    val presetItem = rowItems.getOrNull(index)
+                                    if (presetItem == null) {
+                                        Spacer(
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    } else {
+                                        val asset = presetItem.iconAsset.orEmpty()
+                                        val selected = selectedAvatarAsset == asset
                                         Box(
-                                            modifier = Modifier
-                                                .size(48.dp)
-                                                .clip(RoundedCornerShape(14.dp))
-                                                .background(GrayLighter, RoundedCornerShape(14.dp))
-                                                .pressableScale(pressedScale = 0.95f) {
-                                                    onSelectAvatar(presetItem.iconAsset.orEmpty())
-                                                },
+                                            modifier =
+                                                Modifier
+                                                    .weight(1f)
+                                                    .aspectRatio(1f)
+                                                    .clip(RoundedCornerShape(14.dp))
+                                                    .background(
+                                                        if (selected) Surface else GrayLighter,
+                                                        RoundedCornerShape(14.dp)
+                                                    )
+                                                    .border(
+                                                        width = if (selected) 1.5.dp else 0.dp,
+                                                        color = if (selected) TextPrimary else Color.Transparent,
+                                                        shape = RoundedCornerShape(14.dp)
+                                                    )
+                                                    .pressableScale(pressedScale = 0.95f) {
+                                                        onSelectAvatar(asset)
+                                                    },
                                             contentAlignment = Alignment.Center
                                         ) {
                                             AssetIcon(
-                                                assetFileName = presetItem.iconAsset.orEmpty(),
+                                                assetFileName = asset,
                                                 contentDescription = presetItem.name,
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .padding(8.dp),
+                                                modifier =
+                                                    Modifier
+                                                        .fillMaxSize()
+                                                        .padding(8.dp),
                                                 contentScale = ContentScale.Fit
                                             )
                                         }
                                     }
                                 }
                             }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Import from Gallery
                     Button(
                         onClick = { },
                         modifier = Modifier
@@ -561,7 +595,7 @@ fun AvatarSelectionModal(
                         )
                     ) {
                         Icon(
-                            imageVector = AppIcons.ChatGPTLogo,
+                            imageVector = AppIcons.Image,
                             contentDescription = "Import",
                             tint = TextPrimary,
                             modifier = Modifier.size(20.dp)
@@ -590,8 +624,6 @@ fun AvatarSelectionModal(
             }
         }
     }
-}
-
 }
 
 @Composable

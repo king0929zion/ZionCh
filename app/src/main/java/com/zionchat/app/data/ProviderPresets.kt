@@ -197,7 +197,7 @@ fun resolveProviderIconAsset(provider: ProviderConfig): String? {
     provider.presetId?.let { presetId ->
         findProviderPreset(presetId)?.iconAsset?.let { return it }
     }
-    return computeAIIconAssetByName(provider.name)
+    return null
 }
 
 private fun computeAIIconAssetByName(name: String): String? {
