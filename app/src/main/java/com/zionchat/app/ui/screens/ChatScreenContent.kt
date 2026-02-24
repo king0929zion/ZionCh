@@ -3004,8 +3004,14 @@ internal fun ChatScreenContent(navController: NavController) {
 
             // Bottom fade mask follows the input area so keyboard-up state keeps the same
             // "outside-area" gradient blur feeling as the normal bottom state.
+            val bottomFadeBottomPadding = if (imeVisible) inputBottomInset else 0.dp
             val bottomFadeHeightTarget =
-                (bottomBarHeightDp + if (imeVisible) 36.dp else 24.dp).coerceAtLeast(88.dp)
+                if (imeVisible) {
+                    (bottomBarHeightDp + 36.dp).coerceAtLeast(88.dp)
+                } else {
+                    // 键盘收起时覆盖导航条区域，并把输入框上方的渐变缩小到一小段。
+                    (bottomBarHeightDp + navBottomPadding + 10.dp).coerceAtLeast(72.dp)
+                }
             val bottomFadeColors =
                 remember(imeVisible) {
                     if (imeVisible) {
@@ -3035,7 +3041,7 @@ internal fun ChatScreenContent(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = inputBottomInset)
+                        .padding(bottom = bottomFadeBottomPadding)
                         .fillMaxWidth()
                         .height(bottomFadeHeight)
                         .zIndex(3f)
