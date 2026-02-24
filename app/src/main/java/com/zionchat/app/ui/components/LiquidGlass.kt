@@ -100,16 +100,16 @@ fun LiquidGlassSwitch(
         animationSpec = tween(durationMillis = 220),
         label = "liquid_switch_progress"
     ).value
-    val trackColor by animateColorAsState(
+    val trackColor = animateColorAsState(
         targetValue = if (checked) TextPrimary else Color.Transparent,
         animationSpec = tween(durationMillis = 180),
         label = "liquid_switch_track"
-    )
-    val borderColor by animateColorAsState(
+    ).value
+    val borderColor = animateColorAsState(
         targetValue = if (checked) TextPrimary else TextSecondary,
         animationSpec = tween(durationMillis = 180),
         label = "liquid_switch_border"
-    )
+    ).value
     val knobOverlay = lerp(TextSecondary.copy(alpha = 0.32f), Surface.copy(alpha = 0.92f), progress)
     val knobFallback = lerp(TextSecondary, Surface, progress)
     val knobOffset = 22.dp * progress
