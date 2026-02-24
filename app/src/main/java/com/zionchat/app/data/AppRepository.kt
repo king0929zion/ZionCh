@@ -902,6 +902,28 @@ class AppRepository(context: Context) {
         }
     }
 
+    suspend fun updateConversationTitle(conversationId: String, title: String) {
+        val cid = conversationId.trim()
+        val nextTitle = title.trim()
+        if (cid.isBlank() || nextTitle.isBlank()) return
+
+        val conversations = conversationsFlow.first().toMutableList()
+        val index = conversations.indexOfFirst { it.id == cid }
+        if (index < 0) return
+
+        val current = conversations[index]
+        if (current.title.trim() == nextTitle) return
+        conversations[index] =
+            current.copy(
+                title = nextTitle,
+                updatedAt = System.currentTimeMillis()
+            )
+
+        dataStore.edit { prefs ->
+            prefs[conversationsKey] = gson.toJson(conversations)
+        }
+    }
+
     suspend fun deleteConversation(conversationId: String) {
         val conversations = conversationsFlow.first().filterNot { it.id == conversationId }
         dataStore.edit { prefs ->

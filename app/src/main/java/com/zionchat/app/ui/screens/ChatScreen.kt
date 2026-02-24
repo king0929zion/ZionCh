@@ -981,7 +981,7 @@ fun ChatScreen(navController: NavController) {
                     (latestConversationForTitle.title.isBlank() || latestConversationForTitle.title == "New chat")
             ) {
                 if (provisionalTitle.isNotBlank()) {
-                    repository.updateConversation(latestConversationForTitle.copy(title = provisionalTitle))
+                    repository.updateConversationTitle(safeConversationId, provisionalTitle)
                 }
             }
 
@@ -2386,7 +2386,7 @@ fun ChatScreen(navController: NavController) {
                                 val finalTitle = generatedTitle.trim().trim('"', '\'').take(48)
                                 if (finalTitle.isBlank()) return@runCatching
 
-                                repository.updateConversation(convo.copy(title = finalTitle))
+                                repository.updateConversationTitle(safeConversationId, finalTitle)
                             }
                         }
                     }
