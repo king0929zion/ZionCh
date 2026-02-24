@@ -5015,6 +5015,37 @@ internal fun isBuiltInMemoryCall(call: PlannedMcpToolCall): Boolean {
     )
 }
 
+internal fun deriveMemoryIntentActions(userPrompt: String): Set<String> {
+    val text = userPrompt.trim()
+    if (text.isBlank()) return emptySet()
+    val lower = text.lowercase()
+    val actions = linkedSetOf<String>()
+
+    val writeSignal =
+        listOf("记住", "记一下", "帮我记", "请记住", "保存记忆", "存入记忆", "加入记忆", "写入记忆", "add to memory")
+            .any { token -> text.contains(token, ignoreCase = true) } ||
+            Regex("(?i)\\bremember\\b").containsMatchIn(lower) ||
+            Regex("(?i)\\b(save|store|add|write)\\b.{0,24}\\bmemory\\b").containsMatchIn(lower) ||
+            Regex("(保存|存入|加入|写入|添加).{0,8}(记忆|memory)").containsMatchIn(text)
+
+    val deleteSignal =
+        listOf("忘记", "删除记忆", "移除记忆", "清空记忆")
+            .any { token -> text.contains(token, ignoreCase = true) } ||
+            Regex("(?i)\\b(forget|delete|remove|clear)\\b.{0,24}\\bmemory\\b").containsMatchIn(lower) ||
+            Regex("(忘记|删除|移除|清空).{0,8}(记忆|memory)").containsMatchIn(text)
+
+    val listSignal =
+        listOf("查看记忆", "列出记忆", "显示记忆", "我的记忆", "记忆列表")
+            .any { token -> text.contains(token, ignoreCase = true) } ||
+            Regex("(?i)\\b(show|list|view|read|display)\\b.{0,24}\\bmemories?\\b").containsMatchIn(lower) ||
+            Regex("(查看|列出|显示|读取).{0,8}(记忆|memory)").containsMatchIn(text)
+
+    if (writeSignal) actions += "write"
+    if (deleteSignal) actions += "delete"
+    if (listSignal) actions += "list"
+    return actions
+}
+
 internal fun resolveAutoSoulTaskPrompt(
     arguments: Map<String, Any?>,
     fallbackUserPrompt: String
@@ -6485,14 +6516,27 @@ internal fun buildAutoSoulToolInstruction(
 internal fun buildMemoryToolInstruction(
     roundIndex: Int,
     maxCallsPerRound: Int,
-    memories: List<MemoryItem>
+    memories: List<MemoryItem>,
+    allowedActions: Set<String>
 ): String {
     val shown = memories.take(12)
     val callLimit = minOf(maxCallsPerRound.coerceAtLeast(1), 2)
+    val normalizedAllowed =
+        allowedActions
+            .map { it.trim().lowercase() }
+            .filter { it in setOf("write", "delete", "list") }
+            .toSet()
+    val allowedSummary =
+        if (normalizedAllowed.isEmpty()) {
+            "none"
+        } else {
+            normalizedAllowed.sorted().joinToString(", ")
+        }
     return buildString {
         appendLine("Built-in memory tools available: memory_write, memory_delete, memory_list.")
         appendLine("Current round: $roundIndex")
         appendLine("Use memory tools ONLY when the user explicitly asks to remember, forget, or show memories.")
+        appendLine("Allowed memory actions in this user turn: $allowedSummary")
         appendLine("Do not call autosoul_agent for memory tasks.")
         appendLine("First write a normal visible reply, then append tool call tags if needed.")
         appendLine("At most $callLimit memory tool call(s) in this round.")

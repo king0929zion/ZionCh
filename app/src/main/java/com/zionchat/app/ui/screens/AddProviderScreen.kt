@@ -277,7 +277,7 @@ fun AddProviderScreen(
                                         Icon(
                                             painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
                                             contentDescription = "Select Avatar",
-                                            tint = TextSecondary,
+                                            tint = TextPrimary,
                                             modifier = Modifier.size(28.dp)
                                         )
                                     }
@@ -286,7 +286,7 @@ fun AddProviderScreen(
                                 Icon(
                                     painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
                                     contentDescription = "Select Avatar",
-                                    tint = TextSecondary,
+                                    tint = TextPrimary,
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
@@ -310,77 +310,60 @@ fun AddProviderScreen(
                             onValueChange = { providerName = it },
                             placeholder = "Enter provider name"
                         )
+                    }
+                }
 
-                        if (!isGrok2ApiProvider) {
-                            Column {
-                                Text(
-                                    text = "Provider Type",
-                                    fontSize = 13.sp,
-                                    fontFamily = SourceSans3,
-                                    color = TextSecondary,
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                )
-                                val typeBackdrop = rememberLayerBackdrop()
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = 48.dp)
+                if (!isGrok2ApiProvider) {
+                    Column {
+                        Text(
+                            text = "Provider Type",
+                            fontSize = 13.sp,
+                            fontFamily = SourceSans3,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        val typeBackdrop = rememberLayerBackdrop()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .layerBackdrop(typeBackdrop)
+                                    .background(Color.White, RoundedCornerShape(20.dp))
+                                    .border(width = 1.dp, color = Color(0xFFE8E8ED), shape = RoundedCornerShape(20.dp))
+                            )
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(20.dp))
-                                            .layerBackdrop(typeBackdrop)
-                                            .background(Color.White, RoundedCornerShape(20.dp))
-                                            .border(width = 1.dp, color = Color(0xFFE8E8ED), shape = RoundedCornerShape(20.dp))
+                                    TypeOption(
+                                        text = "OpenAI",
+                                        selected = selectedType == "openai",
+                                        onClick = { selectedType = "openai" },
+                                        modifier = Modifier.weight(1f)
                                     )
-
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(6.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            TypeOption(
-                                                text = "OpenAI",
-                                                selected = selectedType == "openai",
-                                                onClick = { selectedType = "openai" },
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            TypeOption(
-                                                text = "Anthropic",
-                                                selected = selectedType == "anthropic",
-                                                onClick = { selectedType = "anthropic" },
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            TypeOption(
-                                                text = "Google",
-                                                selected = selectedType == "google",
-                                                onClick = { selectedType = "google" },
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                AnimatedContent(
-                                    targetState = selectedType.trim().lowercase(),
-                                    transitionSpec = {
-                                        (fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 4 })) togetherWith
-                                            (fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { -it / 4 }))
-                                    },
-                                    label = "provider_type_hint"
-                                ) { type ->
-                                    Text(
-                                        text = providerTypeHint(type),
-                                        fontSize = 12.sp,
-                                        fontFamily = SourceSans3,
-                                        color = TextSecondary,
-                                        modifier = Modifier.padding(top = 6.dp, start = 2.dp)
+                                    TypeOption(
+                                        text = "Anthropic",
+                                        selected = selectedType == "anthropic",
+                                        onClick = { selectedType = "anthropic" },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TypeOption(
+                                        text = "Google",
+                                        selected = selectedType == "google",
+                                        onClick = { selectedType = "google" },
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
                             }
@@ -707,15 +690,6 @@ fun FormField(
                 singleLine = true
             )
         }
-    }
-}
-
-private fun providerTypeHint(type: String): String {
-    return when (type.trim().lowercase()) {
-        "openai" -> "OpenAI-compatible / Responses / Chat Completions"
-        "anthropic" -> "Claude Messages API style"
-        "google" -> "Gemini API style"
-        else -> "Custom provider type"
     }
 }
 

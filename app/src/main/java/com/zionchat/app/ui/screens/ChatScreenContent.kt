@@ -1182,7 +1182,8 @@ internal fun ChatScreenContent(navController: NavController) {
                     val useWebSearch = explicitWebSearchRequest || weakAutoWebSearchIntent
                     val canUseAppBuilder = explicitAppBuilder
                     val canUseAutoSoulTool = explicitAutoSoulRequest
-                    val canUseMemoryTool = true
+                    val memoryIntentActions = deriveMemoryIntentActions(trimmed)
+                    val canUseMemoryTool = memoryIntentActions.isNotEmpty()
                     val configuredAppBuilderModel =
                         defaultAppBuilderModelId?.trim()?.takeIf { it.isNotBlank() }?.let { key ->
                             allModels.firstOrNull { it.id == key }
@@ -1368,7 +1369,8 @@ internal fun ChatScreenContent(navController: NavController) {
                                 buildMemoryToolInstruction(
                                     roundIndex = roundIndex,
                                     maxCallsPerRound = maxCallsPerRound,
-                                    memories = memoriesSnapshot
+                                    memories = memoriesSnapshot,
+                                    allowedActions = memoryIntentActions
                                 )
                             } else {
                                 null
@@ -1892,6 +1894,35 @@ internal fun ChatScreenContent(navController: NavController) {
                                         actionHint in setOf("list", "show", "read", "get", "view") -> "list"
                                         else -> "unknown"
                                     }
+
+                                if (!canUseMemoryTool) {
+                                    appendAssistantTag(
+                                        MessageTag(
+                                            kind = "memory",
+                                            title = "Memory",
+                                            content =
+                                                "Memory call rejected.\n- This user message does not explicitly request memory operations.\n- Allowed only when user clearly asks remember/forget/list memories.",
+                                            status = "error"
+                                        )
+                                    )
+                                    roundSummary.append("- memory: rejected (no explicit user memory intent)\n")
+                                    return@forEach
+                                }
+                                if (action != "unknown" && action !in memoryIntentActions) {
+                                    appendAssistantTag(
+                                        MessageTag(
+                                            kind = "memory",
+                                            title = "Memory",
+                                            content =
+                                                "Memory call rejected.\n- Requested action: $action\n- Allowed actions for this turn: ${
+                                                    memoryIntentActions.sorted().joinToString(", ")
+                                                }",
+                                            status = "error"
+                                        )
+                                    )
+                                    roundSummary.append("- memory: rejected (action not allowed in this turn)\n")
+                                    return@forEach
+                                }
 
                                 val (detail, status, summaryLine) =
                                     when (action) {
