@@ -99,6 +99,8 @@ import com.zionchat.app.data.RuntimeShellPlugin
 import com.zionchat.app.data.SavedApp
 import com.zionchat.app.data.WebSearchConfig
 import com.zionchat.app.data.extractRemoteModelId
+import com.zionchat.app.data.isCodexProvider
+import com.zionchat.app.data.isGrok2ApiProvider
 import com.zionchat.app.data.isLikelyVisionModel
 import com.zionchat.app.ui.components.TopFadeScrim
 import com.zionchat.app.ui.components.AppSheetDragHandle
@@ -1095,6 +1097,10 @@ internal fun ChatScreenContent(navController: NavController) {
                     append("- Never store one-off task instructions or temporary requests.\n")
                     append("- 仅在用户明确表达稳定偏好、个人画像或长期要求时写入记忆。\n")
                     append("- 不要保存一次性任务、临时指令或当前会话动作。")
+                    append("\n\nTool policy:\n")
+                    append("- 仅使用后续 system 消息里明确列出的工具。\n")
+                    append("- 如果本轮没有工具清单，直接回答，不要输出 <tool_call>/<mcp_call> 标签。\n")
+                    append("- 除非用户明确选择 AutoSoul 工具，否则不要调用 autosoul_agent。")
                 }.trim()
                 if (content.isBlank()) null else Message(role = "system", content = content)
             }
@@ -1172,14 +1178,11 @@ internal fun ChatScreenContent(navController: NavController) {
                 } else {
                     // 普通聊天流程
                     val selectedMcpServerIdsSnapshot = selectedMcpServerIds
-                    val mcpAutoEnabled = selectedMcpServerIdsSnapshot.isNotEmpty()
                     val explicitAppBuilder = selectedTool == "app_builder"
                     val useWebSearch = explicitWebSearchRequest || weakAutoWebSearchIntent
                     val canUseAppBuilder = explicitAppBuilder
-                    val canUseAutoSoulTool =
-                        repository.defaultAutoSoulModelIdFlow.first()
-                            ?.trim()
-                            ?.isNotBlank() == true
+                    // 显式 AutoSoul 模式在前面已直接执行，这里禁用隐式 AutoSoul tool 路由。
+                    val canUseAutoSoulTool = false
                     val configuredAppBuilderModel =
                         defaultAppBuilderModelId?.trim()?.takeIf { it.isNotBlank() }?.let { key ->
                             allModels.firstOrNull { it.id == key }
@@ -1248,8 +1251,20 @@ internal fun ChatScreenContent(navController: NavController) {
                         } else {
                             repository.mcpListFlow.first().filter { it.enabled }
                         }
+                    val enabledServerIds = enabledServers.map { it.id }.toSet()
+                    val effectiveSelectedMcpServerIds =
+                        when {
+                            enabledServerIds.isEmpty() -> emptySet()
+                            selectedMcpServerIdsSnapshot.isEmpty() -> enabledServerIds
+                            else -> selectedMcpServerIdsSnapshot.filter { it in enabledServerIds }.toSet()
+                        }
+                    val mcpAutoEnabled = effectiveSelectedMcpServerIds.isNotEmpty()
 
-                    if (mcpAutoEnabled && enabledServers.isEmpty()) {
+                    if (selectedMcpServerIdsSnapshot.isEmpty() && effectiveSelectedMcpServerIds.isNotEmpty()) {
+                        selectedMcpServerIds = effectiveSelectedMcpServerIds
+                    }
+
+                    if (selectedMcpServerIdsSnapshot.isNotEmpty() && enabledServers.isEmpty()) {
                         val msg = "No MCP servers enabled. Configure one in Settings → MCP Tools."
                         updateAssistantContent(msg, null)
                         repository.appendMessage(
@@ -1271,7 +1286,7 @@ internal fun ChatScreenContent(navController: NavController) {
                     val scopedMcpServers =
                         if (mcpAutoEnabled) {
                             serversWithTools.filter { server ->
-                                selectedMcpServerIdsSnapshot.contains(server.id)
+                                effectiveSelectedMcpServerIds.contains(server.id)
                             }
                         } else {
                             emptyList()
@@ -1282,7 +1297,7 @@ internal fun ChatScreenContent(navController: NavController) {
 
                     if (mcpAutoEnabled && !canUseMcp) {
                         val msg =
-                            if (selectedMcpServerIdsSnapshot.isNotEmpty()) {
+                            if (effectiveSelectedMcpServerIds.isNotEmpty()) {
                                 "No selected MCP servers available. Re-select MCP providers."
                             } else {
                                 "No MCP tools available. Sync tools in MCP Tools first."
@@ -1572,12 +1587,35 @@ internal fun ChatScreenContent(navController: NavController) {
                             }
                         }
 
+                        val normalizedReasoningEffort =
+                            selectedModel.reasoningEffort
+                                ?.trim()
+                                ?.lowercase()
+                                ?.takeIf {
+                                    it == "none" ||
+                                        it == "minimal" ||
+                                        it == "low" ||
+                                        it == "medium" ||
+                                        it == "high" ||
+                                        it == "xhigh"
+                                }
+                        val providerSupportsThinkingParam =
+                            resolvedProvider.isCodexProvider() ||
+                                resolvedProvider.isGrok2ApiProvider()
+                        val effectiveReasoningEffort =
+                            when {
+                                !chatThinkingEnabled -> "none"
+                                normalizedReasoningEffort != null -> normalizedReasoningEffort
+                                providerSupportsThinkingParam -> "medium"
+                                else -> null
+                            }
+
                         chatApiClient.chatCompletionsStream(
                             provider = resolvedProvider,
                             modelId = modelId,
                             messages = requestMessages,
                             extraHeaders = selectedModel.headers,
-                            reasoningEffort = if (chatThinkingEnabled) selectedModel.reasoningEffort else "none",
+                            reasoningEffort = effectiveReasoningEffort,
                             conversationId = safeConversationId
                         ).takeWhile { delta ->
                             val now = System.currentTimeMillis()
@@ -1675,19 +1713,31 @@ internal fun ChatScreenContent(navController: NavController) {
                                     roundSeenSignatures.add(buildMcpCallSignature(call))
                                 }
                                 .take(maxCallsPerRound)
-                        var droppedAutoSoulCallByPolicy = false
+                        var droppedAutoSoulCallSummary: String? = null
                         var keptAutoSoulInRound = false
                         val parsedCalls =
                             parsedCallsRaw.filter { call ->
                                 if (!isBuiltInAutoSoulCall(call)) {
                                     return@filter true
                                 }
+                                if (!canUseAutoSoulTool) {
+                                    droppedAutoSoulCallSummary =
+                                        "- autosoul_agent is disabled in this turn.\n" +
+                                            "- Do NOT call autosoul_agent unless the user explicitly selected AutoSoul.\n" +
+                                            "- Continue with a direct user-facing answer."
+                                    return@filter false
+                                }
                                 if (autoSoulInvokedInThisTask) {
-                                    droppedAutoSoulCallByPolicy = true
+                                    droppedAutoSoulCallSummary =
+                                        "- autosoul_agent was already invoked for this user task.\n" +
+                                            "- Do NOT call autosoul_agent again.\n" +
+                                            "- Continue with direct user-facing answer based on existing AutoSoul result."
                                     return@filter false
                                 }
                                 if (keptAutoSoulInRound) {
-                                    droppedAutoSoulCallByPolicy = true
+                                    droppedAutoSoulCallSummary =
+                                        "- autosoul_agent should be called at most once in one round.\n" +
+                                            "- Keep one call only and continue with a direct user-facing answer."
                                     return@filter false
                                 }
                                 keptAutoSoulInRound = true
@@ -1727,16 +1777,13 @@ internal fun ChatScreenContent(navController: NavController) {
                             break
                         }
                         if (parsedCalls.isEmpty()) {
-                            if (droppedAutoSoulCallByPolicy && roundIndex < maxRounds) {
+                            if (!droppedAutoSoulCallSummary.isNullOrBlank() && roundIndex < maxRounds) {
                                 baseMessages.add(
                                     Message(
                                         role = "system",
                                         content = buildMcpRoundResultContext(
                                             roundIndex = roundIndex,
-                                            summary =
-                                                "- autosoul_agent was already invoked for this user task.\n" +
-                                                    "- Do NOT call autosoul_agent again.\n" +
-                                                    "- Continue with direct user-facing answer based on existing AutoSoul result."
+                                            summary = droppedAutoSoulCallSummary.orEmpty()
                                         )
                                     )
                                 )
@@ -2693,18 +2740,28 @@ internal fun ChatScreenContent(navController: NavController) {
 
             // Bottom fade mask follows the input area so keyboard-up state keeps the same
             // "outside-area" gradient blur feeling as the normal bottom state.
-            val bottomFadeHeightTarget = remember(bottomBarHeightDp) {
-                (bottomBarHeightDp + 24.dp).coerceAtLeast(88.dp)
-            }
-            val bottomFadeColors = remember {
-                listOf(
-                    ChatBackground.copy(alpha = 0f),
-                    ChatBackground.copy(alpha = 0.24f),
-                    ChatBackground.copy(alpha = 0.56f),
-                    ChatBackground.copy(alpha = 0.9f),
-                    ChatBackground
-                )
-            }
+            val bottomFadeHeightTarget =
+                (bottomBarHeightDp + if (imeVisible) 36.dp else 24.dp).coerceAtLeast(88.dp)
+            val bottomFadeColors =
+                remember(imeVisible) {
+                    if (imeVisible) {
+                        listOf(
+                            ChatBackground.copy(alpha = 0f),
+                            ChatBackground.copy(alpha = 0.3f),
+                            ChatBackground.copy(alpha = 0.62f),
+                            ChatBackground.copy(alpha = 0.92f),
+                            ChatBackground
+                        )
+                    } else {
+                        listOf(
+                            ChatBackground.copy(alpha = 0f),
+                            ChatBackground.copy(alpha = 0.24f),
+                            ChatBackground.copy(alpha = 0.56f),
+                            ChatBackground.copy(alpha = 0.9f),
+                            ChatBackground
+                        )
+                    }
+                }
             val bottomFadeHeight by animateDpAsState(
                 targetValue = bottomFadeHeightTarget,
                 animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),

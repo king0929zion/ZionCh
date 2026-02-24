@@ -4245,22 +4245,7 @@ internal fun BottomInputArea(
         else -> AppIcons.Globe
     }
     val inputCapsuleShape = RoundedCornerShape(23.dp)
-    val inputContainerBrush = remember(imeVisible) {
-        Brush.verticalGradient(
-            colors =
-                if (imeVisible) {
-                    listOf(
-                        Surface.copy(alpha = 0.995f),
-                        Surface.copy(alpha = 0.97f)
-                    )
-                } else {
-                    listOf(
-                        Surface.copy(alpha = 0.995f),
-                        Surface.copy(alpha = 0.965f)
-                    )
-                }
-        )
-    }
+    val inputContainerColor = Surface
     val toolButtonBrush = remember(imeVisible) {
         Brush.verticalGradient(
             colors =
@@ -4315,7 +4300,7 @@ internal fun BottomInputArea(
                     .heightIn(min = 46.dp)
                     .shadow(elevation = 8.dp, shape = inputCapsuleShape, clip = false, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.08f))
                     .clip(inputCapsuleShape)
-                    .background(inputContainerBrush, inputCapsuleShape),
+                    .background(inputContainerColor, inputCapsuleShape),
                 contentAlignment = Alignment.CenterStart
             ) {
                 Column(
