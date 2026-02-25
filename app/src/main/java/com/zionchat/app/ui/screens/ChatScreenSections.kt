@@ -1713,7 +1713,7 @@ fun SidebarContent(
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(
-                                    text = group.memberModelIds.size.toString(),
+                                    text = group.memberBotIds.size.toString(),
                                     fontSize = 11.sp,
                                     color = TextSecondary
                                 )

@@ -333,17 +333,17 @@ internal fun ChatScreenContent(navController: NavController) {
         val cid = effectiveConversationId?.trim().orEmpty()
         if (cid.isBlank()) null else groupChats.firstOrNull { it.conversationId == cid }
     }
-    val mentionCandidates = remember(activeGroupChatConfig, models) {
-        val memberIds = activeGroupChatConfig?.memberModelIds.orEmpty().toSet()
-        models
+    val bots by repository.botsFlow.collectAsState(initial = emptyList())
+    val mentionCandidates = remember(activeGroupChatConfig, bots) {
+        val memberBotIds = activeGroupChatConfig?.memberBotIds.orEmpty().toSet()
+        bots
             .asSequence()
-            .filter { it.enabled && memberIds.contains(it.id) }
-            .map { model ->
-                val token = buildGroupMentionToken(model)
+            .filter { memberBotIds.contains(it.id) }
+            .map { bot ->
                 MentionCandidate(
-                    key = model.id,
-                    label = model.displayName,
-                    token = "@$token"
+                    key = bot.id,
+                    label = bot.name,
+                    token = "@${bot.name}"
                 )
             }
             .toList()
@@ -1437,6 +1437,7 @@ internal fun ChatScreenContent(navController: NavController) {
                         ?.messages
                         .orEmpty()
                 val customInstructionSnapshot = repository.customInstructionsFlow.first().trim()
+                val botsSnapshot = repository.botsFlow.first()
                 val groupDispatch =
                     runGroupChatDispatch(
                         chatApiClient = chatApiClient,
@@ -1444,6 +1445,7 @@ internal fun ChatScreenContent(navController: NavController) {
                         group = activeGroupChat,
                         userMessage = userMessage,
                         conversationMessages = conversationMessagesSnapshot,
+                        allBots = botsSnapshot,
                         allModels = allModelsSnapshot,
                         providers = providerListSnapshot,
                         customInstructions = customInstructionSnapshot,
@@ -4392,19 +4394,35 @@ private suspend fun runGroupChatDispatch(
     group: com.zionchat.app.data.GroupChatConfig,
     userMessage: Message,
     conversationMessages: List<Message>,
+    allBots: List<com.zionchat.app.data.BotConfig>,
     allModels: List<ModelConfig>,
     providers: List<ProviderConfig>,
     customInstructions: String,
     systemTimeText: String
 ): GroupDispatchOutcome {
-    val memberModels =
-        group.memberModelIds.mapNotNull { memberId ->
-            allModels.firstOrNull { it.id == memberId && it.enabled }
+    // 获取成员bots
+    val memberBots =
+        group.memberBotIds.mapNotNull { botId ->
+            allBots.firstOrNull { it.id == botId }
         }
+    if (memberBots.isEmpty()) {
+        return GroupDispatchOutcome(
+            replies = emptyList(),
+            warning = "群聊成员为空，请先在 Group 设置里添加 Bot 好友。"
+        )
+    }
+    
+    // 根据bots获取对应的models
+    val memberModels = memberBots.mapNotNull { bot ->
+        bot.defaultModelId?.let { modelId ->
+            allModels.firstOrNull { it.id == modelId && it.enabled }
+        }
+    }.distinctBy { it.id }
+    
     if (memberModels.isEmpty()) {
         return GroupDispatchOutcome(
             replies = emptyList(),
-            warning = "群聊成员模型为空，请先在 Group 设置里更新成员。"
+            warning = "群聊成员模型未配置，请为 Bot 好友设置默认模型。"
         )
     }
 
@@ -4417,8 +4435,7 @@ private suspend fun runGroupChatDispatch(
             val aliases =
                 setOf(
                     normalizeMentionLookup(model.id),
-                    normalizeMentionLookup(model.displayName),
-                    normalizeMentionLookup(buildGroupMentionToken(model))
+                    normalizeMentionLookup(model.displayName)
                 )
             aliases.any { mentionKeys.contains(it) }
         }
@@ -4429,7 +4446,6 @@ private suspend fun runGroupChatDispatch(
                 val index = if (memberModels.isEmpty()) 0 else group.roundRobinCursor % memberModels.size
                 listOf(memberModels[index])
             }
-            "random" -> listOf(memberModels.random())
             else ->
                 selectDynamicGroupResponders(
                     chatApiClient = chatApiClient,
