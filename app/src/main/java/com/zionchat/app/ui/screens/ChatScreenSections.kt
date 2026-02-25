@@ -1869,7 +1869,8 @@ fun TopNavBar(
     onChatModelClick: () -> Unit,
     onNewChatClick: () -> Unit,
     showAutoBrowserButton: Boolean = false,
-    onAutoBrowserClick: () -> Unit = {}
+    onAutoBrowserClick: () -> Unit = {},
+    avatarUri: String? = null
 ) {
     Row(
         modifier = Modifier
@@ -1983,12 +1984,21 @@ fun TopNavBar(
                     .pressableScale(pressedScale = 0.95f, onClick = onNewChatClick),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = AppIcons.NewChat,
-                    contentDescription = "New Chat",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(22.dp)
-                )
+                if (!avatarUri.isNullOrBlank()) {
+                    AsyncImage(
+                        model = avatarUri,
+                        contentDescription = "New Chat",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = AppIcons.User,
+                        contentDescription = "New Chat",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
     }
@@ -4524,7 +4534,7 @@ internal fun BottomInputArea(
                     .padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
                 mentionCandidates.take(6).forEach { candidate ->
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
@@ -4532,20 +4542,13 @@ internal fun BottomInputArea(
                                 pressedScale = 0.98f,
                                 onClick = { onMentionSelect(candidate) }
                             )
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                        contentAlignment = Alignment.CenterStart
                     ) {
                         Text(
                             text = candidate.label,
-                            color = TextPrimary,
-                            fontSize = 14.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = candidate.token,
                             color = Color(0xFF0A84FF),
-                            fontSize = 12.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }

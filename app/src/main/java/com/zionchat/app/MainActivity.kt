@@ -133,9 +133,10 @@ class MainActivity : AppCompatActivity() {
                                 ) + fadeOut(animationSpec = tween(durationMillis = 220))
                             }
                         ) {
-                            composable("chat") { ChatScreen(navController) }
+composable("chat") { ChatScreen(navController) }
                             composable("settings") { SettingsScreen(navController) }
                             composable("group_chats") { GroupChatsScreen(navController) }
+                            composable("create_group_chat") { CreateGroupChatScreen(navController) }
                             composable("group_bots") { GroupBotsScreen(navController) }
                             composable("apps") { AppsScreen(navController) }
                             composable("language") { LanguageScreen(navController) }
