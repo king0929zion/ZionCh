@@ -5062,7 +5062,6 @@ internal fun BottomInputArea(
             androidx.compose.animation.AnimatedVisibility(
                 visible = showMentionPicker && mentionCandidates.isNotEmpty(),
                 modifier = Modifier
-                    .align(Alignment.TopStart)
                     .offset(y = -mentionPopupLift)
                     .fillMaxWidth()
                     .padding(end = 58.dp),
