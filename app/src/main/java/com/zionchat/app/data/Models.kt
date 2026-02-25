@@ -65,7 +65,8 @@ data class GroupChatConfig(
     val conversationId: String,
     val roundRobinCursor: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    @Deprecated("Use memberBotIds instead") val memberModelIds: List<String> = emptyList() // 向后兼容
 )
 
 data class Message(
