@@ -59,9 +59,9 @@ data class Conversation(
 data class GroupChatConfig(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
-    val memberModelIds: List<String> = emptyList(),
-    val strategy: String = "dynamic", // dynamic | round_robin | random
-    val dynamicCoordinatorModelId: String? = null,
+    val memberBotIds: List<String> = emptyList(), // 群成员是Bot好友
+    val strategy: String = "dynamic", // dynamic | round_robin
+    val dynamicCoordinatorModelId: String? = null, // 调度模型（单独选择）
     val conversationId: String,
     val roundRobinCursor: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),

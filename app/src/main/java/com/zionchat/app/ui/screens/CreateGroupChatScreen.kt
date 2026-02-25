@@ -28,12 +28,15 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import coil3.compose.AsyncImage
 import com.zionchat.app.LocalAppRepository
+import com.zionchat.app.data.BotConfig
 import com.zionchat.app.data.GroupChatConfig
 import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.ProviderConfig
@@ -51,17 +54,20 @@ private const val GROUP_STRATEGY_ROUND_ROBIN = "round_robin"
 fun CreateGroupChatScreen(navController: NavController) {
     val repository = LocalAppRepository.current
     val scope = rememberCoroutineScope()
+    
+    // Bots和Models数据
+    val bots by repository.botsFlow.collectAsState(initial = emptyList())
     val providers by repository.providersFlow.collectAsState(initial = emptyList())
     val models by repository.modelsFlow.collectAsState(initial = emptyList())
     val enabledModels = remember(models) { models.filter { it.enabled } }
 
     var name by remember { mutableStateOf("") }
     var strategy by remember { mutableStateOf(GROUP_STRATEGY_DYNAMIC) }
-    var selectedMembers by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedBotIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var coordinatorModelId by remember { mutableStateOf<String?>(null) }
     var showCoordinatorSelector by remember { mutableStateOf(false) }
 
-    val canCreate = name.trim().isNotBlank() && selectedMembers.size >= 2
+    val canCreate = name.trim().isNotBlank() && selectedBotIds.size >= 2
 
     Column(
         modifier = Modifier
@@ -82,7 +88,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                                 if (!canCreate) return@pressableScale
                                 scope.launch {
                                     val finalName = name.trim()
-                                    val sortedMembers = selectedMembers.toList()
+                                    val sortedBotIds = selectedBotIds.toList()
                                     val coordinator =
                                         if (strategy == GROUP_STRATEGY_DYNAMIC) coordinatorModelId
                                         else null
@@ -90,7 +96,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                                     repository.upsertGroupChat(
                                         GroupChatConfig(
                                             name = finalName,
-                                            memberModelIds = sortedMembers,
+                                            memberBotIds = sortedBotIds,
                                             strategy = strategy,
                                             dynamicCoordinatorModelId = coordinator,
                                             conversationId = conversation.id
@@ -123,7 +129,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Group Name - 简约小输入框
+            // Group Name
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -169,7 +175,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                 }
             }
 
-            // Response Strategy - 两段式横向胶囊
+            // Response Strategy
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -183,7 +189,6 @@ fun CreateGroupChatScreen(navController: NavController) {
                     modifier = Modifier.padding(start = 8.dp)
                 )
                 
-                // 两段式胶囊选择器
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -207,7 +212,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                 }
             }
 
-            // Coordinator Model - 只在Dynamic模式下显示
+            // Coordinator Model - 只在Dynamic模式下显示，从所有可用模型中选择
             AnimatedVisibility(
                 visible = strategy == GROUP_STRATEGY_DYNAMIC,
                 enter = fadeIn(),
@@ -226,7 +231,6 @@ fun CreateGroupChatScreen(navController: NavController) {
                         modifier = Modifier.padding(start = 8.dp)
                     )
                     
-                    // 使用DefaultModel样式
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -248,7 +252,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                             }
                             val isEmpty = display.isNullOrBlank()
                             Text(
-                                text = if (isEmpty) "Select coordinator" else display.orEmpty(),
+                                text = if (isEmpty) "Select coordinator model" else display.orEmpty(),
                                 fontSize = 16.sp,
                                 color = if (isEmpty) Color(0xFFC7C7CC) else TextPrimary,
                                 modifier = Modifier.weight(1f)
@@ -264,7 +268,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                 }
             }
 
-            // Members Selection - 使用DefaultModel样式
+            // Bot Members Selection - 选择Bot好友
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -276,7 +280,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "MEMBERS",
+                        text = "BOT MEMBERS",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         fontFamily = SourceSans3,
@@ -284,58 +288,45 @@ fun CreateGroupChatScreen(navController: NavController) {
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "${selectedMembers.size} selected",
+                        text = "${selectedBotIds.size} selected",
                         fontSize = 13.sp,
-                        color = if (selectedMembers.size >= 2) TextPrimary else TextSecondary
+                        color = if (selectedBotIds.size >= 2) TextPrimary else TextSecondary
                     )
                 }
                 
-                val grouped = remember(providers, enabledModels) { 
-                    groupModelsByProvider(providers, enabledModels) 
-                }
-                
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Surface)
                 ) {
-                    grouped.forEach { (providerName, providerModels) ->
+                    if (bots.isEmpty()) {
+                        Text(
+                            text = "No bots yet. Create bots in Bots section first.",
+                            fontSize = 14.sp,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    } else {
                         Column {
-                            Text(
-                                text = providerName.uppercase(),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
-                            )
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = CardDefaults.cardColors(containerColor = GrayLighter)
-                            ) {
-                                providerModels.forEachIndexed { index, model ->
-                                    val isSelected = selectedMembers.contains(model.id)
-                                    MemberOptionRow(
-                                        model = model,
-                                        selected = isSelected,
-                                        onClick = {
-                                            selectedMembers =
-                                                if (isSelected) selectedMembers - model.id 
-                                                else selectedMembers + model.id
-                                        }
-                                    )
-                                    if (index != providerModels.lastIndex) {
-                                        Divider(color = GrayLight)
+                            bots.forEachIndexed { index, bot ->
+                                val isSelected = selectedBotIds.contains(bot.id)
+                                BotSelectionRow(
+                                    bot = bot,
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedBotIds =
+                                            if (isSelected) selectedBotIds - bot.id 
+                                            else selectedBotIds + bot.id
                                     }
+                                )
+                                if (index != bots.lastIndex) {
+                                    Divider(
+                                        color = GrayLight,
+                                        modifier = Modifier.padding(horizontal = 16.dp)
+                                    )
                                 }
                             }
                         }
-                    }
-                    if (enabledModels.isEmpty()) {
-                        Text(
-                            text = "No enabled models. Enable models in Settings first.",
-                            fontSize = 13.sp,
-                            color = TextSecondary,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)
-                        )
                     }
                 }
             }
@@ -344,11 +335,11 @@ fun CreateGroupChatScreen(navController: NavController) {
         }
     }
 
-    // Coordinator Model Selector Modal
+    // Coordinator Model Selector Modal - 从所有可用模型中选择
     CoordinatorModelSelectorModal(
         visible = showCoordinatorSelector,
         providers = providers,
-        models = enabledModels.filter { selectedMembers.contains(it.id) },
+        models = enabledModels,
         selectedModelId = coordinatorModelId,
         onSelect = { 
             coordinatorModelId = it
@@ -387,8 +378,8 @@ private fun StrategyCapsule(
 }
 
 @Composable
-private fun MemberOptionRow(
-    model: ModelConfig,
+private fun BotSelectionRow(
+    bot: BotConfig,
     selected: Boolean,
     onClick: () -> Unit
 ) {
@@ -402,23 +393,61 @@ private fun MemberOptionRow(
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Bot Avatar
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(GrayLighter),
+            contentAlignment = Alignment.Center
+        ) {
+            if (bot.avatarUri != null) {
+                AsyncImage(
+                    model = bot.avatarUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else if (bot.avatarAssetName != null) {
+                AsyncImage(
+                    model = "file:///android_asset/avatars/${bot.avatarAssetName}",
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = AppIcons.Bot,
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+        
+        // Bot Info
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
-                text = model.displayName,
+                text = bot.name,
                 fontSize = 16.sp,
                 color = TextPrimary
             )
-            Text(
-                text = extractRemoteModelId(model.id),
-                fontSize = 12.sp,
-                color = TextSecondary
-            )
+            if (bot.defaultModelId != null) {
+                Text(
+                    text = "Model: ${bot.defaultModelId}",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    maxLines = 1
+                )
+            }
         }
+        
+        // Check mark
         Icon(
             imageVector = AppIcons.Check,
             contentDescription = null,
@@ -491,7 +520,7 @@ private fun CoordinatorModelSelectorModal(
                     }
 
                     Text(
-                        text = "Select Coordinator",
+                        text = "Select Coordinator Model",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary,
@@ -500,8 +529,18 @@ private fun CoordinatorModelSelectorModal(
                             .padding(bottom = 16.dp),
                     )
 
-                    val grouped = remember(providers, models) { 
-                        groupModelsByProvider(providers, models) 
+                    val providerNameById = remember(providers) {
+                        providers.associateBy({ it.id }, { it.name })
+                    }
+                    
+                    val grouped = remember(models, providerNameById) {
+                        models
+                            .filter { it.enabled }
+                            .groupBy { model ->
+                                model.providerId?.let { providerNameById[it] } ?: "Other"
+                            }
+                            .toList()
+                            .sortedBy { it.first }
                     }
 
                     Column(
@@ -512,7 +551,7 @@ private fun CoordinatorModelSelectorModal(
                     ) {
                         if (models.isEmpty()) {
                             Text(
-                                text = "Select at least 2 members first",
+                                text = "No enabled models available",
                                 fontSize = 15.sp,
                                 color = TextSecondary,
                                 modifier = Modifier.padding(16.dp)
@@ -547,11 +586,21 @@ private fun CoordinatorModelSelectorModal(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Text(
-                                                text = model.displayName,
-                                                fontSize = 16.sp,
-                                                color = TextPrimary
-                                            )
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                Text(
+                                                    text = model.displayName,
+                                                    fontSize = 16.sp,
+                                                    color = TextPrimary
+                                                )
+                                                Text(
+                                                    text = extractRemoteModelId(model.id),
+                                                    fontSize = 12.sp,
+                                                    color = TextSecondary
+                                                )
+                                            }
                                             Icon(
                                                 imageVector = AppIcons.Check,
                                                 contentDescription = null,
@@ -575,19 +624,4 @@ private fun CoordinatorModelSelectorModal(
             }
         }
     }
-}
-
-private fun groupModelsByProvider(
-    providers: List<ProviderConfig>,
-    models: List<ModelConfig>
-): List<Pair<String, List<ModelConfig>>> {
-    val providerNameById = providers.associateBy({ it.id }, { it.name })
-    return models
-        .filter { it.enabled }
-        .groupBy { model ->
-            model.providerId?.let { providerNameById[it] } ?: "Other"
-        }
-        .toList()
-        .sortedBy { it.first }
-        .map { (name, list) -> name to list.sortedBy { it.displayName.lowercase() } }
 }

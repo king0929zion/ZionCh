@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.zionchat.app.LocalAppRepository
+import com.zionchat.app.data.BotConfig
 import com.zionchat.app.data.GroupChatConfig
 import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.ui.components.PageTopBar
@@ -50,6 +51,7 @@ fun GroupChatsScreen(navController: NavController) {
     val repository = LocalAppRepository.current
     val scope = rememberCoroutineScope()
     val groups by repository.groupChatsFlow.collectAsState(initial = emptyList())
+    val bots by repository.botsFlow.collectAsState(initial = emptyList())
     val models by repository.modelsFlow.collectAsState(initial = emptyList())
     val avatarUri by repository.avatarUriFlow.collectAsState(initial = "")
 
@@ -135,6 +137,7 @@ fun GroupChatsScreen(navController: NavController) {
                 groups.forEach { group ->
                     GroupChatCard(
                         group = group,
+                        allBots = bots,
                         allModels = models,
                         onOpen = {
                             scope.launch {
@@ -159,6 +162,7 @@ fun GroupChatsScreen(navController: NavController) {
 @Composable
 private fun GroupChatCard(
     group: GroupChatConfig,
+    allBots: List<BotConfig>,
     allModels: List<ModelConfig>,
     onOpen: () -> Unit,
     onDelete: () -> Unit
@@ -166,13 +170,21 @@ private fun GroupChatCard(
     val strategyLabel =
         when (group.strategy) {
             "round_robin" -> "轮流发言"
-            "random" -> "随机触发"
             else -> "动态调配"
         }
-    val memberNames =
-        group.memberModelIds.mapNotNull { memberId ->
-            allModels.firstOrNull { it.id == memberId }?.displayName
-        }
+    
+    // 获取群成员bots的名称
+    val memberBots = group.memberBotIds.mapNotNull { botId ->
+        allBots.firstOrNull { it.id == botId }
+    }
+    
+    // 获取协调者模型名称
+    val coordinatorModelName = group.dynamicCoordinatorModelId?.let { modelId ->
+        allModels.firstOrNull { it.id == modelId }?.displayName
+            ?: allModels.firstOrNull { extractRemoteModelId(it.id) == modelId }?.displayName
+    }
+    
+    val memberNames = memberBots.map { it.name }
     val summary = memberNames.joinToString(" · ").ifBlank { "无成员" }
 
     Row(
@@ -185,19 +197,50 @@ private fun GroupChatCard(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // 显示第一个成员的头像，如果没有则显示默认图标
+        val firstBot = memberBots.firstOrNull()
         Box(
             modifier = Modifier
-                .size(34.dp)
+                .size(40.dp)
                 .clip(CircleShape)
                 .background(GrayLighter),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = AppIcons.ChatGPTLogo,
-                contentDescription = null,
-                tint = TextPrimary,
-                modifier = Modifier.size(18.dp)
-            )
+            if (firstBot != null) {
+                when {
+                    firstBot.avatarUri != null -> {
+                        AsyncImage(
+                            model = firstBot.avatarUri,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    firstBot.avatarAssetName != null -> {
+                        AsyncImage(
+                            model = "file:///android_asset/avatars/${firstBot.avatarAssetName}",
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    else -> {
+                        Icon(
+                            imageVector = AppIcons.Bot,
+                            contentDescription = null,
+                            tint = TextPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            } else {
+                Icon(
+                    imageVector = AppIcons.ChatGPTLogo,
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
         Column(
             modifier = Modifier.weight(1f),
@@ -209,11 +252,21 @@ private fun GroupChatCard(
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold
             )
+            // 显示成员数量和策略
             Text(
-                text = "${memberNames.size} 个模型 · $strategyLabel",
+                text = "${memberBots.size} 个Bot · $strategyLabel",
                 color = TextSecondary,
                 fontSize = 12.sp
             )
+            // 如果有协调者模型，显示它
+            if (group.strategy == "dynamic" && coordinatorModelName != null) {
+                Text(
+                    text = "Coordinator: $coordinatorModelName",
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1
+                )
+            }
             Text(
                 text = summary,
                 color = TextSecondary,
@@ -237,4 +290,8 @@ private fun GroupChatCard(
             )
         }
     }
+}
+
+private fun extractRemoteModelId(storageId: String): String {
+    return storageId.substringAfter("::", storageId).trim()
 }

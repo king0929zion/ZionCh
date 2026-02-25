@@ -294,33 +294,32 @@ class AppRepository(context: Context) {
         val conversationId = safeTrim(group.conversationId)
         if (name.isBlank() || conversationId.isBlank()) return null
 
-        val memberIds =
-            group.memberModelIds
+        // 支持旧的memberModelIds字段迁移到新的memberBotIds
+        val botIds =
+            (group.memberBotIds.takeIf { it.isNotEmpty() } 
+                ?: group.memberModelIds) // 向后兼容
                 .mapNotNull { item ->
                     val key = safeTrim(item)
                     key.takeIf { it.isNotBlank() }
                 }
                 .distinct()
-        if (memberIds.isEmpty()) return null
+        if (botIds.isEmpty()) return null
 
         val strategy =
             when (safeTrim(group.strategy).lowercase()) {
                 "round_robin", "round-robin", "roundrobin" -> "round_robin"
-                "random", "random_trigger", "random-trigger" -> "random"
                 else -> "dynamic"
             }
 
-        val coordinatorId =
-            safeTrim(group.dynamicCoordinatorModelId).takeIf { key ->
-                key.isNotBlank() && memberIds.contains(key)
-            }
+        // 协调者模型不再需要从成员中选择，独立选择
+        val coordinatorId = safeTrim(group.dynamicCoordinatorModelId).takeIf { it.isNotBlank() }
         val createdAt = group.createdAt.takeIf { it > 0 } ?: System.currentTimeMillis()
         val updatedAt = group.updatedAt.takeIf { it > 0 } ?: createdAt
 
         return GroupChatConfig(
             id = id,
             name = name.take(64),
-            memberModelIds = memberIds,
+            memberBotIds = botIds,
             strategy = strategy,
             dynamicCoordinatorModelId = coordinatorId,
             conversationId = conversationId,
@@ -1002,7 +1001,7 @@ class AppRepository(context: Context) {
                 val current = groups[index]
                 current.copy(
                     name = sanitized.name,
-                    memberModelIds = sanitized.memberModelIds,
+                    memberBotIds = sanitized.memberBotIds,
                     strategy = sanitized.strategy,
                     dynamicCoordinatorModelId = sanitized.dynamicCoordinatorModelId,
                     conversationId = sanitized.conversationId,
