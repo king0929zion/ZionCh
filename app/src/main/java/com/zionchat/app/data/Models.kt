@@ -170,3 +170,14 @@ data class RuntimePackagingConfig(
     val localBridgeToken: String = "",
     val requestTimeoutMs: Long = 30_000L
 )
+
+data class BotConfig(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val avatarUri: String? = null, // 头像URI（用户上传或预设）
+    val avatarAssetName: String? = null, // 预设头像资源名
+    val defaultModelId: String? = null,
+    val systemPrompt: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)

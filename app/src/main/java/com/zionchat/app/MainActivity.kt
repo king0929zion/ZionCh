@@ -138,6 +138,14 @@ composable("chat") { ChatScreen(navController) }
                             composable("group_chats") { GroupChatsScreen(navController) }
                             composable("create_group_chat") { CreateGroupChatScreen(navController) }
                             composable("group_bots") { GroupBotsScreen(navController) }
+                            composable("add_bot") { AddBotScreen(navController) }
+                            composable(
+                                route = "edit_bot/{botId}",
+                                arguments = listOf(navArgument("botId") { defaultValue = "" })
+                            ) { backStackEntry ->
+                                val botId = backStackEntry.arguments?.getString("botId")
+                                AddBotScreen(navController, botId)
+                            }
                             composable("apps") { AppsScreen(navController) }
                             composable("language") { LanguageScreen(navController) }
                             composable("personalization") { PersonalizationScreen(navController) }

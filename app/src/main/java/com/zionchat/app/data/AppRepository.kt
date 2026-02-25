@@ -36,6 +36,7 @@ class AppRepository(context: Context) {
     private val modelsKey = stringPreferencesKey("models_json")
     private val conversationsKey = stringPreferencesKey("conversations_json")
     private val groupChatsKey = stringPreferencesKey("group_chats_json")
+    private val botsKey = stringPreferencesKey("bots_json")
     private val memoriesKey = stringPreferencesKey("memories_json")
     private val savedAppsKey = stringPreferencesKey("saved_apps_json")
     private val savedAppVersionsKey = stringPreferencesKey("saved_app_versions_json")
@@ -82,6 +83,7 @@ class AppRepository(context: Context) {
     private val modelListType = object : TypeToken<List<ModelConfig>>() {}.type
     private val conversationListType = object : TypeToken<List<Conversation>>() {}.type
     private val groupChatListType = object : TypeToken<List<GroupChatConfig>>() {}.type
+    private val botListType = object : TypeToken<List<BotConfig>>() {}.type
     private val memoryListType = object : TypeToken<List<MemoryItem>>() {}.type
     private val savedAppListType = object : TypeToken<List<SavedApp>>() {}.type
     private val savedAppVersionListType = object : TypeToken<List<SavedAppVersion>>() {}.type
@@ -477,6 +479,18 @@ class AppRepository(context: Context) {
             .orEmpty()
             .mapNotNull(::sanitizeGroupChat)
             .sortedByDescending { it.updatedAt }
+    }
+
+    val botsFlow: Flow<List<BotConfig>> = prefsFlow.map { prefs ->
+        val json = prefs[botsKey] ?: "[]"
+        runCatching { gson.fromJson<List<BotConfig>>(json, botListType) }
+            .getOrNull()
+            .orEmpty()
+            .sortedByDescending { it.updatedAt }
+    }
+
+    fun getBotById(botId: String): Flow<BotConfig?> = botsFlow.map { bots ->
+        bots.firstOrNull { it.id == botId }
     }
 
     val memoriesFlow: Flow<List<MemoryItem>> = prefsFlow.map { prefs ->
@@ -1037,6 +1051,33 @@ class AppRepository(context: Context) {
         val groups = groupChatsFlow.first().filterNot { it.id == key }
         dataStore.edit { prefs ->
             prefs[groupChatsKey] = gson.toJson(groups)
+        }
+    }
+
+    // Bot operations
+    suspend fun addBot(bot: BotConfig) {
+        val bots = botsFlow.first().toMutableList()
+        bots.add(0, bot)
+        dataStore.edit { prefs ->
+            prefs[botsKey] = gson.toJson(bots)
+        }
+    }
+
+    suspend fun updateBot(bot: BotConfig) {
+        val bots = botsFlow.first().toMutableList()
+        val index = bots.indexOfFirst { it.id == bot.id }
+        if (index >= 0) {
+            bots[index] = bot
+            dataStore.edit { prefs ->
+                prefs[botsKey] = gson.toJson(bots)
+            }
+        }
+    }
+
+    suspend fun deleteBot(botId: String) {
+        val bots = botsFlow.first().filterNot { it.id == botId }
+        dataStore.edit { prefs ->
+            prefs[botsKey] = gson.toJson(bots)
         }
     }
 
