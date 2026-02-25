@@ -24,10 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.zionchat.app.LocalAppRepository
+import com.zionchat.app.R
 import com.zionchat.app.data.BotConfig
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.extractRemoteModelId
@@ -106,7 +110,7 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
             .background(Background)
     ) {
         PageTopBar(
-            title = if (botId != null) "Edit Bot" else "Add Bot",
+            title = if (botId != null) stringResource(R.string.group_bot_edit_title) else stringResource(R.string.group_bot_add_title),
             onBack = { navController.popBackStack() },
             trailing = {
                 Box(
@@ -140,7 +144,7 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Save",
+                        text = stringResource(R.string.common_save),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = if (canSave) Color.White else TextSecondary
@@ -222,7 +226,7 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "BOT NAME",
+                        text = stringResource(R.string.group_bot_name_label),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         fontFamily = SourceSans3,
@@ -249,7 +253,7 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                                 Box {
                                     if (name.isEmpty()) {
                                         Text(
-                                            text = "Enter bot name",
+                                            text = stringResource(R.string.group_bot_name_placeholder),
                                             fontSize = 15.sp,
                                             color = Color(0xFFC7C7CC)
                                         )
@@ -268,7 +272,7 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "DEFAULT MODEL",
+                    text = stringResource(R.string.group_bot_default_model_label),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     fontFamily = SourceSans3,
@@ -296,7 +300,7 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                         }
                         val isEmpty = display.isNullOrBlank()
                         Text(
-                            text = if (isEmpty) "Select model" else display.orEmpty(),
+                            text = if (isEmpty) stringResource(R.string.group_bot_default_model_placeholder) else display.orEmpty(),
                             fontSize = 16.sp,
                             color = if (isEmpty) Color(0xFFC7C7CC) else TextPrimary,
                             modifier = Modifier.weight(1f)
@@ -317,7 +321,7 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "SYSTEM PROMPT",
+                    text = stringResource(R.string.group_bot_system_prompt_label),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     fontFamily = SourceSans3,
@@ -347,7 +351,7 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                             Box {
                                 if (systemPrompt.isEmpty()) {
                                     Text(
-                                        text = "Enter system prompt (optional)",
+                                        text = stringResource(R.string.group_bot_system_prompt_placeholder),
                                         fontSize = 15.sp,
                                         color = Color(0xFFC7C7CC)
                                     )
@@ -431,7 +435,7 @@ private fun AvatarPickerDialog(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = "Choose Avatar",
+                        text = stringResource(R.string.group_bot_avatar_picker_title),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
@@ -440,7 +444,7 @@ private fun AvatarPickerDialog(
                     // Preset avatars grid
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
-                            text = "Preset",
+                            text = stringResource(R.string.group_bot_avatar_preset),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             color = TextSecondary
@@ -522,7 +526,7 @@ private fun AvatarPickerDialog(
                                 modifier = Modifier.size(24.dp)
                             )
                             Text(
-                                text = "Upload Custom Photo",
+                                text = stringResource(R.string.group_bot_avatar_upload_custom),
                                 fontSize = 15.sp,
                                 color = TextPrimary
                             )
@@ -543,6 +547,7 @@ private fun BotModelSelectorModal(
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(),
@@ -568,7 +573,7 @@ private fun BotModelSelectorModal(
                 Column(
                     modifier = Modifier
                         .padding(horizontal = 20.dp, vertical = 16.dp)
-                        .heightIn(max = 480.dp)
+                        .heightIn(max = screenHeight * 0.78f)
                 ) {
                     // Handle
                     Box(
@@ -586,12 +591,27 @@ private fun BotModelSelectorModal(
                     }
                     
                     Text(
-                        text = "Select Model",
+                        text = stringResource(R.string.group_bot_select_model_title),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Surface.copy(alpha = 0.88f),
+                                        Surface.copy(alpha = 0.18f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     
                     val providerNameById = remember(providers) {
                         providers.associateBy({ it.id }, { it.name })

@@ -243,6 +243,11 @@ class AppRepository(context: Context) {
         val tags = message.tags.orEmpty().mapNotNull(::sanitizeTag).takeIf { it.isNotEmpty() }
         val reasoning = message.reasoning?.takeIf { it.isNotBlank() }
         val attachments = message.attachments.orEmpty().mapNotNull(::sanitizeAttachment).takeIf { it.isNotEmpty() }
+        val speakerBotId = safeTrimOrNull(message.speakerBotId)
+        val speakerName = safeTrimOrNull(message.speakerName)
+        val speakerAvatarUri = safeTrimOrNull(message.speakerAvatarUri)
+        val speakerAvatarAssetName = safeTrimOrNull(message.speakerAvatarAssetName)
+        val speakerBatchId = safeTrimOrNull(message.speakerBatchId)
         return Message(
             id = id,
             role = role,
@@ -250,6 +255,11 @@ class AppRepository(context: Context) {
             reasoning = reasoning,
             tags = tags,
             attachments = attachments,
+            speakerBotId = speakerBotId,
+            speakerName = speakerName,
+            speakerAvatarUri = speakerAvatarUri,
+            speakerAvatarAssetName = speakerAvatarAssetName,
+            speakerBatchId = speakerBatchId,
             timestamp = timestamp
         )
     }
@@ -308,6 +318,7 @@ class AppRepository(context: Context) {
         val strategy =
             when (safeTrim(group.strategy).lowercase()) {
                 "round_robin", "round-robin", "roundrobin" -> "round_robin"
+                "random", "rand" -> "random"
                 else -> "dynamic"
             }
 
@@ -478,6 +489,10 @@ class AppRepository(context: Context) {
             .orEmpty()
             .mapNotNull(::sanitizeGroupChat)
             .sortedByDescending { it.updatedAt }
+    }
+
+    fun getGroupChatById(groupId: String): Flow<GroupChatConfig?> = groupChatsFlow.map { groups ->
+        groups.firstOrNull { it.id == groupId }
     }
 
     val botsFlow: Flow<List<BotConfig>> = prefsFlow.map { prefs ->

@@ -183,7 +183,10 @@ private data class AutoBrowserFilePickRequest(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ChatScreenContent(navController: NavController) {
+internal fun ChatScreenContent(
+    navController: NavController,
+    forcedGroupId: String? = null
+) {
     val repository = LocalAppRepository.current
     val chatApiClient = LocalChatApiClient.current
     val providerAuthManager = LocalProviderAuthManager.current
@@ -297,6 +300,22 @@ internal fun ChatScreenContent(navController: NavController) {
     var preferredConversationId by remember { mutableStateOf<String?>(null) }
     var preferredConversationSetAtMs by remember { mutableStateOf(0L) }
 
+    val forcedGroupIdKey = forcedGroupId?.trim().orEmpty().takeIf { it.isNotBlank() }
+    val forcedGroupConfig = remember(groupChats, forcedGroupIdKey) {
+        val key = forcedGroupIdKey ?: return@remember null
+        groupChats.firstOrNull { it.id == key }
+    }
+
+    LaunchedEffect(forcedGroupConfig?.id, forcedGroupConfig?.conversationId) {
+        val targetConversationId = forcedGroupConfig?.conversationId?.trim().orEmpty()
+        if (targetConversationId.isBlank()) return@LaunchedEffect
+        if (currentConversationId != targetConversationId) {
+            repository.setCurrentConversationId(targetConversationId)
+        }
+        preferredConversationId = targetConversationId
+        preferredConversationSetAtMs = System.currentTimeMillis()
+    }
+
     LaunchedEffect(currentConversationId) {
         if (preferredConversationId.isNullOrBlank() && !currentConversationId.isNullOrBlank()) {
             preferredConversationId = currentConversationId
@@ -308,8 +327,13 @@ internal fun ChatScreenContent(navController: NavController) {
         conversations,
         currentConversationId,
         preferredConversationId,
-        preferredConversationSetAtMs
+        preferredConversationSetAtMs,
+        forcedGroupConfig?.conversationId
     ) {
+        val forcedConversationId = forcedGroupConfig?.conversationId?.trim().orEmpty().takeIf { !it.isNullOrBlank() }
+        if (!forcedConversationId.isNullOrBlank()) {
+            return@remember forcedConversationId
+        }
         val preferred = preferredConversationId?.trim().takeIf { !it.isNullOrBlank() }
         val fromStore = currentConversationId?.trim().takeIf { !it.isNullOrBlank() }
         if (preferred == null) {
@@ -333,6 +357,7 @@ internal fun ChatScreenContent(navController: NavController) {
         val cid = effectiveConversationId?.trim().orEmpty()
         if (cid.isBlank()) null else groupChats.firstOrNull { it.conversationId == cid }
     }
+    val groupChatPageMode = !forcedGroupIdKey.isNullOrBlank()
     val bots by repository.botsFlow.collectAsState(initial = emptyList())
     val mentionCandidates = remember(activeGroupChatConfig, bots) {
         val memberBotIds = activeGroupChatConfig?.memberBotIds.orEmpty().toSet()
@@ -341,9 +366,9 @@ internal fun ChatScreenContent(navController: NavController) {
             .filter { memberBotIds.contains(it.id) }
             .map { bot ->
                 MentionCandidate(
-                    key = bot.id,
+                    key = normalizeMentionLookup(bot.name),
                     label = bot.name,
-                    token = "@${bot.name}"
+                    token = "@${buildBotMentionToken(bot)}"
                 )
             }
             .toList()
@@ -843,7 +868,22 @@ internal fun ChatScreenContent(navController: NavController) {
 
     fun startNewChat() {
         scope.launch {
-            val created = repository.createConversation()
+            val activeGroup = activeGroupChatConfig
+            val created =
+                if (groupChatPageMode && activeGroup != null) {
+                    repository.createConversation(title = activeGroup.name)
+                } else {
+                    repository.createConversation()
+                }
+            if (groupChatPageMode && activeGroup != null) {
+                repository.upsertGroupChat(
+                    activeGroup.copy(
+                        conversationId = created.id,
+                        roundRobinCursor = 0,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
             preferredConversationId = created.id
             preferredConversationSetAtMs = System.currentTimeMillis()
             selectedTool = null
@@ -3687,15 +3727,15 @@ internal fun ChatScreenContent(navController: NavController) {
                         drawerState.close()
                         scrollToBottomToken++
                     }
+                    if (groupChatPageMode) {
+                        navController.navigate("chat")
+                    }
                 },
                 onGroupConversationClick = { group ->
                     scope.launch {
-                        preferredConversationId = group.conversationId
-                        preferredConversationSetAtMs = System.currentTimeMillis()
-                        repository.setCurrentConversationId(group.conversationId)
                         drawerState.close()
-                        scrollToBottomToken++
                     }
+                    navController.navigate("group_chat/${group.id}")
                 },
                 onDeleteConversation = { id ->
                     scope.launch {
@@ -3747,6 +3787,15 @@ internal fun ChatScreenContent(navController: NavController) {
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     itemsIndexed(localMessages, key = { _, item -> item.id }) { index, message ->
+                        val previousMessage = if (index > 0) localMessages[index - 1] else null
+                        val showGroupSpeakerHeader =
+                            if (activeGroupChatConfig == null || message.role != "assistant") {
+                                false
+                            } else {
+                                val currentBatch = message.speakerBatchId?.trim().orEmpty()
+                                val previousBatch = previousMessage?.speakerBatchId?.trim().orEmpty()
+                                currentBatch.isBlank() || currentBatch != previousBatch
+                            }
                         val showToolbar =
                             message.role == "assistant" && latestAssistantToolbarIds.contains(message.id)
                         MessageItem(
@@ -3760,6 +3809,8 @@ internal fun ChatScreenContent(navController: NavController) {
                                 && message.id == streamingMessageId
                                 && streamingThinkingActive,
                             showToolbar = showToolbar,
+                            groupMode = activeGroupChatConfig != null,
+                            showGroupSpeaker = showGroupSpeakerHeader,
                             onShowReasoning = { reasoning ->
                                 hideKeyboardIfNeeded(force = true)
                                 showToolMenu = false
@@ -3902,17 +3953,30 @@ internal fun ChatScreenContent(navController: NavController) {
                     .zIndex(2f)
             ) {
                 Box(modifier = Modifier.onSizeChanged { topBarHeightPx = it.height }) {
-                    TopNavBar(
-                        onMenuClick = {
-                            if (!appWorkspaceActive) {
-                                scope.launch { drawerState.open() }
-                            }
-                        },
-                        onChatModelClick = { showChatModelPicker = true },
-                        onNewChatClick = ::startNewChat,
-                        showAutoBrowserButton = hasActiveAutoBrowserSession,
-                        onAutoBrowserClick = { showAutoBrowserPreview = !showAutoBrowserPreview }
-                    )
+                    if (groupChatPageMode && activeGroupChatConfig != null) {
+                        GroupTopNavBar(
+                            onMenuClick = {
+                                if (!appWorkspaceActive) {
+                                    scope.launch { drawerState.open() }
+                                }
+                            },
+                            onNewThreadClick = ::startNewChat,
+                            avatarUri = avatarUri,
+                            onAvatarClick = { navController.navigate("personalization") }
+                        )
+                    } else {
+                        TopNavBar(
+                            onMenuClick = {
+                                if (!appWorkspaceActive) {
+                                    scope.launch { drawerState.open() }
+                                }
+                            },
+                            onChatModelClick = { showChatModelPicker = true },
+                            onNewChatClick = ::startNewChat,
+                            showAutoBrowserButton = hasActiveAutoBrowserSession,
+                            onAutoBrowserClick = { showAutoBrowserPreview = !showAutoBrowserPreview }
+                        )
+                    }
                 }
             }
 
@@ -4056,7 +4120,7 @@ internal fun ChatScreenContent(navController: NavController) {
                         onMessageChange = { messageText = it },
                         onSend = ::sendMessage,
                         onStopStreaming = ::stopStreaming,
-                        sendAllowed = selectedTool == "autosoul" || !defaultChatModelId.isNullOrBlank(),
+                        sendAllowed = activeGroupChatConfig != null || selectedTool == "autosoul" || !defaultChatModelId.isNullOrBlank(),
                         sendBusy = sendInFlight,
                         isStreaming = isStreaming,
                         imeVisible = imeVisible,
@@ -4329,33 +4393,67 @@ private fun buildCurrentSystemTimeText(nowMs: Long = System.currentTimeMillis())
     return if (zone.isBlank()) value else "$value ($zone)"
 }
 
+private data class GroupResponder(
+    val bot: com.zionchat.app.data.BotConfig,
+    val model: ModelConfig
+)
+
+private fun resolveEnabledModelForBot(
+    bot: com.zionchat.app.data.BotConfig,
+    allModels: List<ModelConfig>
+): ModelConfig? {
+    val key = bot.defaultModelId?.trim().orEmpty()
+    if (key.isBlank()) return null
+    return allModels.firstOrNull { it.enabled && it.id == key }
+        ?: allModels.firstOrNull { it.enabled && extractRemoteModelId(it.id) == key }
+}
+
+private fun buildBotMentionToken(bot: com.zionchat.app.data.BotConfig): String {
+    return bot.name.trim().replace(Regex("\\s+"), "_")
+}
+
+private fun splitGroupReplySegments(raw: String): List<String> {
+    return raw.split('¦')
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+}
+
 private suspend fun selectDynamicGroupResponders(
     chatApiClient: ChatApiClient,
     providerAuthManager: com.zionchat.app.data.ProviderAuthManager,
     group: com.zionchat.app.data.GroupChatConfig,
-    memberModels: List<ModelConfig>,
+    responders: List<GroupResponder>,
+    allModels: List<ModelConfig>,
     providers: List<ProviderConfig>,
     userMessage: Message,
     systemTimeText: String
-): List<ModelConfig> {
+): List<GroupResponder> {
+    if (responders.isEmpty()) return emptyList()
     val coordinatorId = group.dynamicCoordinatorModelId?.trim().orEmpty()
-    val coordinator = memberModels.firstOrNull { it.id == coordinatorId } ?: return memberModels.take(1)
-    val provider = coordinator.providerId?.let { pid -> providers.firstOrNull { it.id == pid } } ?: return memberModels.take(1)
-    if (provider.apiUrl.isBlank() || provider.apiKey.isBlank()) return memberModels.take(1)
-    val resolvedProvider = runCatching { providerAuthManager.ensureValidProvider(provider) }.getOrNull() ?: return memberModels.take(1)
+    if (coordinatorId.isBlank()) return responders.take(1)
+
+    val coordinatorModel =
+        allModels.firstOrNull { it.enabled && it.id == coordinatorId }
+            ?: allModels.firstOrNull { it.enabled && extractRemoteModelId(it.id) == coordinatorId }
+            ?: return responders.take(1)
+    val provider =
+        coordinatorModel.providerId?.let { pid -> providers.firstOrNull { it.id == pid } }
+            ?: return responders.take(1)
+    if (provider.apiUrl.isBlank() || provider.apiKey.isBlank()) return responders.take(1)
+    val resolvedProvider = runCatching { providerAuthManager.ensureValidProvider(provider) }.getOrNull() ?: return responders.take(1)
 
     val optionsText =
-        memberModels.joinToString("\n") { model ->
-            val token = buildGroupMentionToken(model)
-            "- id=${model.id} | token=@$token | name=${model.displayName}"
+        responders.joinToString("\n") { responder ->
+            val token = buildBotMentionToken(responder.bot)
+            "- bot_id=${responder.bot.id} | token=@$token | bot_name=${responder.bot.name} | model_name=${responder.model.displayName}"
         }
     val selectorPrompt =
         buildString {
-            appendLine("你是群聊调度器，需要从候选模型中挑选最适合回复本条消息的 1~3 个。")
+            appendLine("你是群聊调度器，需要从候选 Bot 中选择最适合回复本条消息的 1~3 个。")
             append("当前系统时间：")
             appendLine(systemTimeText)
-            appendLine("请只返回 JSON 数组，数组元素是候选模型 id、token 或 name。")
-            appendLine("候选模型：")
+            appendLine("请只返回 JSON 数组，数组元素必须是 bot_id、token 或 bot_name。")
+            appendLine("候选 Bot：")
             appendLine(optionsText)
             appendLine("用户消息：")
             appendLine(userMessage.content.trim())
@@ -4364,28 +4462,28 @@ private suspend fun selectDynamicGroupResponders(
     val schedulerReply =
         chatApiClient.chatCompletions(
             provider = resolvedProvider,
-            modelId = extractRemoteModelId(coordinator.id).ifBlank { coordinator.id },
+            modelId = extractRemoteModelId(coordinatorModel.id).ifBlank { coordinatorModel.id },
             messages = listOf(Message(role = "user", content = selectorPrompt)),
-            extraHeaders = coordinator.headers
+            extraHeaders = coordinatorModel.headers
         ).getOrNull().orEmpty()
 
     val rawCandidates = linkedSetOf<String>()
     parseJsonStringArray(schedulerReply).forEach { rawCandidates += it }
     extractMentionTokens(schedulerReply).forEach { token -> rawCandidates += token }
-    if (rawCandidates.isEmpty()) return memberModels.take(1)
+    if (rawCandidates.isEmpty()) return responders.take(1)
 
     val normalized = rawCandidates.map(::normalizeMentionLookup).toSet()
     val selected =
-        memberModels.filter { model ->
+        responders.filter { responder ->
             val aliases =
                 setOf(
-                    normalizeMentionLookup(model.id),
-                    normalizeMentionLookup(model.displayName),
-                    normalizeMentionLookup(buildGroupMentionToken(model))
+                    normalizeMentionLookup(responder.bot.id),
+                    normalizeMentionLookup(responder.bot.name),
+                    normalizeMentionLookup(buildBotMentionToken(responder.bot))
                 )
             aliases.any { normalized.contains(it) }
         }.take(3)
-    return if (selected.isEmpty()) memberModels.take(1) else selected
+    return if (selected.isEmpty()) responders.take(1) else selected
 }
 
 private suspend fun runGroupChatDispatch(
@@ -4400,7 +4498,6 @@ private suspend fun runGroupChatDispatch(
     customInstructions: String,
     systemTimeText: String
 ): GroupDispatchOutcome {
-    // 获取成员bots
     val memberBots =
         group.memberBotIds.mapNotNull { botId ->
             allBots.firstOrNull { it.id == botId }
@@ -4411,15 +4508,14 @@ private suspend fun runGroupChatDispatch(
             warning = "群聊成员为空，请先在 Group 设置里添加 Bot 好友。"
         )
     }
-    
-    // 根据bots获取对应的models
-    val memberModels = memberBots.mapNotNull { bot ->
-        bot.defaultModelId?.let { modelId ->
-            allModels.firstOrNull { it.id == modelId && it.enabled }
+
+    val responders =
+        memberBots.mapNotNull { bot ->
+            val model = resolveEnabledModelForBot(bot, allModels) ?: return@mapNotNull null
+            GroupResponder(bot = bot, model = model)
         }
-    }.distinctBy { it.id }
-    
-    if (memberModels.isEmpty()) {
+
+    if (responders.isEmpty()) {
         return GroupDispatchOutcome(
             replies = emptyList(),
             warning = "群聊成员模型未配置，请为 Bot 好友设置默认模型。"
@@ -4431,11 +4527,12 @@ private suspend fun runGroupChatDispatch(
             .map(::normalizeMentionLookup)
             .toSet()
     val mentionedResponders =
-        memberModels.filter { model ->
+        responders.filter { responder ->
             val aliases =
                 setOf(
-                    normalizeMentionLookup(model.id),
-                    normalizeMentionLookup(model.displayName)
+                    normalizeMentionLookup(responder.bot.id),
+                    normalizeMentionLookup(responder.bot.name),
+                    normalizeMentionLookup(buildBotMentionToken(responder.bot))
                 )
             aliases.any { mentionKeys.contains(it) }
         }
@@ -4443,31 +4540,38 @@ private suspend fun runGroupChatDispatch(
     val scheduledResponders =
         when (group.strategy.trim().lowercase()) {
             "round_robin" -> {
-                val index = if (memberModels.isEmpty()) 0 else group.roundRobinCursor % memberModels.size
-                listOf(memberModels[index])
+                val index = if (responders.isEmpty()) 0 else group.roundRobinCursor % responders.size
+                listOf(responders[index])
             }
-            else ->
+            "random" -> {
+                val picked = responders.randomOrNull()
+                if (picked == null) emptyList() else listOf(picked)
+            }
+            else -> {
                 selectDynamicGroupResponders(
                     chatApiClient = chatApiClient,
                     providerAuthManager = providerAuthManager,
                     group = group,
-                    memberModels = memberModels,
+                    responders = responders,
+                    allModels = allModels,
                     providers = providers,
                     userMessage = userMessage,
                     systemTimeText = systemTimeText
                 )
+            }
         }
 
-    val ordered = LinkedHashMap<String, ModelConfig>()
-    mentionedResponders.forEach { model -> ordered[model.id] = model }
-    scheduledResponders.forEach { model -> ordered[model.id] = model }
+    val ordered = LinkedHashMap<String, GroupResponder>()
+    mentionedResponders.forEach { responder -> ordered[responder.bot.id] = responder }
+    scheduledResponders.forEach { responder -> ordered[responder.bot.id] = responder }
     if (ordered.isEmpty()) {
-        ordered[memberModels.first().id] = memberModels.first()
+        val first = responders.first()
+        ordered[first.bot.id] = first
     }
-    val responders = ordered.values.toList()
+    val selectedResponders = ordered.values.toList()
 
     val cleanHistory =
-        conversationMessages.takeLast(18).mapNotNull { msg ->
+        conversationMessages.takeLast(24).mapNotNull { msg ->
             val clean = stripMcpTagMarkers(msg.content).trim()
             if (clean.isBlank()) {
                 null
@@ -4475,24 +4579,49 @@ private suspend fun runGroupChatDispatch(
                 msg.copy(content = clean, reasoning = null, tags = null, attachments = null)
             }
         }
+    val rollingHistory = cleanHistory.toMutableList()
 
     val replies = mutableListOf<Message>()
-    responders.forEach { model ->
+    selectedResponders.forEach { responder ->
+        val bot = responder.bot
+        val model = responder.model
         val provider = model.providerId?.let { pid -> providers.firstOrNull { it.id == pid } }
         if (provider == null || provider.apiUrl.isBlank() || provider.apiKey.isBlank()) {
-            replies += Message(role = "assistant", content = "[${model.displayName}] 暂时无法回复（模型提供方未配置）。")
+            val fallbackText = "暂时无法回复（模型提供方未配置）。"
+            val batchId = java.util.UUID.randomUUID().toString()
+            replies += Message(
+                role = "assistant",
+                content = fallbackText,
+                speakerBotId = bot.id,
+                speakerName = bot.name,
+                speakerAvatarUri = bot.avatarUri,
+                speakerAvatarAssetName = bot.avatarAssetName,
+                speakerBatchId = batchId
+            )
             return@forEach
         }
         val resolvedProvider = runCatching { providerAuthManager.ensureValidProvider(provider) }.getOrElse {
-            replies += Message(role = "assistant", content = "[${model.displayName}] 暂时无法回复（鉴权失败）。")
+            val fallbackText = "暂时无法回复（鉴权失败）。"
+            val batchId = java.util.UUID.randomUUID().toString()
+            replies += Message(
+                role = "assistant",
+                content = fallbackText,
+                speakerBotId = bot.id,
+                speakerName = bot.name,
+                speakerAvatarUri = bot.avatarUri,
+                speakerAvatarAssetName = bot.avatarAssetName,
+                speakerBatchId = batchId
+            )
             return@forEach
         }
 
-        val mustReply = mentionedResponders.any { it.id == model.id }
+        val mustReply = mentionedResponders.any { it.bot.id == bot.id }
         val systemPrompt =
             buildString {
-                appendLine("你是多模型群聊中的一个成员。")
-                append("当前成员模型：")
+                appendLine("你是群聊中的 Bot 成员。")
+                append("你的 Bot 名称：")
+                appendLine(bot.name)
+                append("你的模型：")
                 appendLine(model.displayName)
                 append("当前系统时间：")
                 appendLine(systemTimeText)
@@ -4503,13 +4632,15 @@ private suspend fun runGroupChatDispatch(
                 if (mustReply) {
                     appendLine("用户本条消息明确@了你，你必须给出回复。")
                 }
-                appendLine("请直接输出你的回复正文，不要输出工具调用标签。")
+                appendLine("请分句回答，并使用字符 ¦ 作为分割。")
+                appendLine("示例：第一句¦第二句¦第三句")
+                appendLine("不要输出工具调用标签。")
             }.trim()
 
         val requestMessages = mutableListOf<Message>()
         requestMessages += Message(role = "system", content = systemPrompt)
-        requestMessages += cleanHistory
-        if (cleanHistory.lastOrNull()?.id != userMessage.id) {
+        requestMessages += rollingHistory
+        if (rollingHistory.lastOrNull()?.id != userMessage.id) {
             requestMessages += userMessage
         }
         val replyText =
@@ -4522,13 +4653,27 @@ private suspend fun runGroupChatDispatch(
                 "暂时无法回复：${error.message?.trim().orEmpty().ifBlank { "unknown_error" }}"
             }.trim()
 
-        val content = "[${model.displayName}] ${replyText.ifBlank { "(empty)" }}"
-        replies += Message(role = "assistant", content = content)
+        val segments = splitGroupReplySegments(replyText).ifEmpty { listOf(replyText.ifBlank { "(empty)" }) }
+        val batchId = java.util.UUID.randomUUID().toString()
+        segments.forEach { segment ->
+            val reply =
+                Message(
+                    role = "assistant",
+                    content = segment,
+                    speakerBotId = bot.id,
+                    speakerName = bot.name,
+                    speakerAvatarUri = bot.avatarUri,
+                    speakerAvatarAssetName = bot.avatarAssetName,
+                    speakerBatchId = batchId
+                )
+            replies += reply
+            rollingHistory += reply.copy(reasoning = null, tags = null, attachments = null)
+        }
     }
 
     val nextCursor =
-        if (group.strategy.trim().lowercase() == "round_robin" && memberModels.isNotEmpty()) {
-            (group.roundRobinCursor + 1) % memberModels.size
+        if (group.strategy.trim().lowercase() == "round_robin" && responders.isNotEmpty()) {
+            (group.roundRobinCursor + 1) % responders.size
         } else {
             null
         }

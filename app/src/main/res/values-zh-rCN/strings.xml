@@ -5,6 +5,7 @@
     <string name="search">搜索</string>
     <string name="images">图片</string>
     <string name="group_chat">群聊</string>
+    <string name="group_chats">群聊</string>
     <string name="apps">应用</string>
     <string name="settings">设置</string>
     <string name="model_services">模型服务</string>
@@ -73,6 +74,42 @@
     <string name="common_save">保存</string>
     <string name="common_cancel">取消</string>
     <string name="common_continue">继续</string>
+    <string name="common_delete">删除</string>
+
+    <string name="group_chats_title">群聊</string>
+    <string name="group_chat_create">创建</string>
+    <string name="group_chat_create_title">创建群聊</string>
+    <string name="group_chat_edit_title">编辑群聊</string>
+    <string name="group_chat_empty_hint">还没有群聊，点击右上角创建。</string>
+    <string name="group_chat_name_label">群聊名称</string>
+    <string name="group_chat_name_placeholder">输入群聊名称</string>
+    <string name="group_chat_strategy_label">回复策略</string>
+    <string name="group_chat_strategy_dynamic">动态调配</string>
+    <string name="group_chat_strategy_round_robin">轮流发言</string>
+    <string name="group_chat_strategy_random">随机触发</string>
+    <string name="group_chat_coordinator_label">调度模型</string>
+    <string name="group_chat_coordinator_placeholder">选择调度模型</string>
+    <string name="group_chat_members_label">群成员 Bots</string>
+    <string name="group_chat_selected_count">已选择 %1$d 个</string>
+    <string name="group_chat_members_empty">暂无 Bot，请先到 Bots 页面创建。</string>
+    <string name="group_chat_coordinator_select_title">选择调度模型</string>
+    <string name="group_chat_coordinator_empty">暂无可用模型</string>
+
+    <string name="group_bots_title">Bots</string>
+    <string name="group_bots_empty_hint">还没有 Bot，点击右上角创建。</string>
+    <string name="group_bot_add_title">添加 Bot</string>
+    <string name="group_bot_edit_title">编辑 Bot</string>
+    <string name="group_bot_model_value">模型：%1$s</string>
+    <string name="group_bot_name_label">Bot 名称</string>
+    <string name="group_bot_name_placeholder">输入 Bot 名称</string>
+    <string name="group_bot_default_model_label">默认模型</string>
+    <string name="group_bot_default_model_placeholder">选择模型</string>
+    <string name="group_bot_system_prompt_label">系统提示词</string>
+    <string name="group_bot_system_prompt_placeholder">输入系统提示词（可选）</string>
+    <string name="group_bot_avatar_picker_title">选择头像</string>
+    <string name="group_bot_avatar_preset">预设头像</string>
+    <string name="group_bot_avatar_upload_custom">上传自定义头像</string>
+    <string name="group_bot_select_model_title">选择模型</string>
 
     <string name="accent_color_default">默认</string>
     <string name="accent_color_blue">蓝色</string>

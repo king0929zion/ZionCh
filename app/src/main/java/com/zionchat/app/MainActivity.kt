@@ -133,10 +133,24 @@ class MainActivity : AppCompatActivity() {
                                 ) + fadeOut(animationSpec = tween(durationMillis = 220))
                             }
                         ) {
-composable("chat") { ChatScreen(navController) }
+                            composable("chat") { ChatScreen(navController) }
+                            composable(
+                                route = "group_chat/{groupId}",
+                                arguments = listOf(navArgument("groupId") { defaultValue = "" })
+                            ) { backStackEntry ->
+                                val groupId = backStackEntry.arguments?.getString("groupId")
+                                GroupChatScreen(navController, groupId)
+                            }
                             composable("settings") { SettingsScreen(navController) }
                             composable("group_chats") { GroupChatsScreen(navController) }
                             composable("create_group_chat") { CreateGroupChatScreen(navController) }
+                            composable(
+                                route = "edit_group_chat/{groupId}",
+                                arguments = listOf(navArgument("groupId") { defaultValue = "" })
+                            ) { backStackEntry ->
+                                val groupId = backStackEntry.arguments?.getString("groupId")
+                                CreateGroupChatScreen(navController, groupId)
+                            }
                             composable("group_bots") { GroupBotsScreen(navController) }
                             composable("add_bot") { AddBotScreen(navController) }
                             composable(

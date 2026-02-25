@@ -1,6 +1,8 @@
 package com.zionchat.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,40 +13,53 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.FractionalThreshold
+import androidx.compose.material.rememberSwipeableState
+import androidx.compose.material.swipeable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.zionchat.app.LocalAppRepository
+import com.zionchat.app.R
 import com.zionchat.app.data.BotConfig
 import com.zionchat.app.data.GroupChatConfig
-import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
+import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.Surface
 import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun GroupChatsScreen(navController: NavController) {
@@ -52,8 +67,7 @@ fun GroupChatsScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
     val groups by repository.groupChatsFlow.collectAsState(initial = emptyList())
     val bots by repository.botsFlow.collectAsState(initial = emptyList())
-    val models by repository.modelsFlow.collectAsState(initial = emptyList())
-    val avatarUri by repository.avatarUriFlow.collectAsState(initial = "")
+    var openedSwipeId by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -61,56 +75,23 @@ fun GroupChatsScreen(navController: NavController) {
             .background(Background)
     ) {
         PageTopBar(
-            title = "群聊",
+            title = stringResource(R.string.group_chats_title),
             onBack = { navController.popBackStack() },
             trailing = {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Surface, CircleShape)
+                        .pressableScale(pressedScale = 0.95f, onClick = { navController.navigate("create_group_chat") }),
+                    contentAlignment = Alignment.Center
                 ) {
-                    // 创建群聊按钮
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(Surface, CircleShape)
-                            .pressableScale(pressedScale = 0.95f, onClick = { navController.navigate("create_group_chat") }),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.Plus,
-                            contentDescription = "创建群聊",
-                            tint = TextPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    // 用户头像按钮
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(Surface, CircleShape)
-                            .pressableScale(pressedScale = 0.95f, onClick = { navController.navigate("personalization") }),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (!avatarUri.isNullOrBlank()) {
-                            AsyncImage(
-                                model = avatarUri,
-                                contentDescription = "个人设置",
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Icon(
-                                imageVector = AppIcons.User,
-                                contentDescription = "个人设置",
-                                tint = TextPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
+                    Icon(
+                        imageVector = AppIcons.Plus,
+                        contentDescription = stringResource(R.string.group_chat_create),
+                        tint = TextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         )
@@ -121,7 +102,7 @@ fun GroupChatsScreen(navController: NavController) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "还没有群聊，点击右上角创建",
+                    text = stringResource(R.string.group_chat_empty_hint),
                     fontSize = 15.sp,
                     color = TextSecondary
                 )
@@ -135,16 +116,14 @@ fun GroupChatsScreen(navController: NavController) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 groups.forEach { group ->
-                    GroupChatCard(
+                    SwipeableGroupCard(
                         group = group,
                         allBots = bots,
-                        allModels = models,
-                        onOpen = {
-                            scope.launch {
-                                repository.setCurrentConversationId(group.conversationId)
-                                navController.navigate("chat")
-                            }
+                        isOpened = openedSwipeId == group.id,
+                        onOpenChanged = { opened ->
+                            openedSwipeId = if (opened) group.id else null
                         },
+                        onOpen = { navController.navigate("edit_group_chat/${group.id}") },
                         onDelete = {
                             scope.launch {
                                 repository.deleteGroupChat(group.id)
@@ -159,139 +138,161 @@ fun GroupChatsScreen(navController: NavController) {
     }
 }
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
-private fun GroupChatCard(
+private fun SwipeableGroupCard(
     group: GroupChatConfig,
     allBots: List<BotConfig>,
-    allModels: List<ModelConfig>,
+    isOpened: Boolean,
+    onOpenChanged: (Boolean) -> Unit,
     onOpen: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val strategyLabel =
-        when (group.strategy) {
-            "round_robin" -> "轮流发言"
-            else -> "动态调配"
+    val itemScope = rememberCoroutineScope()
+    val actionWidth = 72.dp
+    val actionWidthPx = with(LocalDensity.current) { actionWidth.toPx() }
+    val swipeableState = rememberSwipeableState(
+        initialValue = if (isOpened) 1 else 0,
+        confirmStateChange = { target ->
+            onOpenChanged(target != 0)
+            true
         }
-    
-    // 获取群成员bots的名称
-    val memberBots = group.memberBotIds.mapNotNull { botId ->
-        allBots.firstOrNull { it.id == botId }
-    }
-    
-    // 获取协调者模型名称
-    val coordinatorModelName = group.dynamicCoordinatorModelId?.let { modelId ->
-        allModels.firstOrNull { it.id == modelId }?.displayName
-            ?: allModels.firstOrNull { extractRemoteModelId(it.id) == modelId }?.displayName
-    }
-    
-    val memberNames = memberBots.map { it.name }
-    val summary = memberNames.joinToString(" · ").ifBlank { "无成员" }
+    )
+    val anchors = remember(actionWidthPx) { mapOf(0f to 0, -actionWidthPx to 1) }
 
-    Row(
+    LaunchedEffect(isOpened) {
+        val target = if (isOpened) 1 else 0
+        if (swipeableState.currentValue != target) {
+            swipeableState.animateTo(target)
+        }
+    }
+
+    val memberBots = remember(group.memberBotIds, allBots) {
+        group.memberBotIds.mapNotNull { botId -> allBots.firstOrNull { it.id == botId } }
+    }
+    val firstBot = memberBots.firstOrNull()
+    val summaryText = remember(memberBots) {
+        memberBots.joinToString(" · ") { it.name }.ifBlank { "" }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Surface)
-            .pressableScale(pressedScale = 0.98f, onClick = onOpen)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .height(72.dp)
+            .clip(RoundedCornerShape(16.dp))
     ) {
-        // 显示第一个成员的头像，如果没有则显示默认图标
-        val firstBot = memberBots.firstOrNull()
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(GrayLighter),
+                .fillMaxHeight()
+                .padding(end = 4.dp)
+                .size(actionWidth)
+                .align(Alignment.CenterEnd),
             contentAlignment = Alignment.Center
         ) {
-            if (firstBot != null) {
-                when {
-                    firstBot.avatarUri != null -> {
-                        AsyncImage(
-                            model = firstBot.avatarUri,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                    firstBot.avatarAssetName != null -> {
-                        AsyncImage(
-                            model = "file:///android_asset/avatars/${firstBot.avatarAssetName}",
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                    else -> {
-                        Icon(
-                            imageVector = AppIcons.Bot,
-                            contentDescription = null,
-                            tint = TextPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF3B30))
+                    .clickable {
+                        onOpenChanged(false)
+                        onDelete()
+                        itemScope.launch { swipeableState.animateTo(0) }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Trash,
+                    contentDescription = stringResource(R.string.common_delete),
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset(swipeableState.offset.value.roundToInt(), 0) }
+                .background(Surface, RoundedCornerShape(16.dp))
+                .swipeable(
+                    state = swipeableState,
+                    anchors = anchors,
+                    thresholds = { _, _ -> FractionalThreshold(0.3f) },
+                    orientation = Orientation.Horizontal
+                )
+                .clickable {
+                    if (swipeableState.currentValue != 0) {
+                        itemScope.launch { swipeableState.animateTo(0) }
+                    } else {
+                        onOpen()
                     }
                 }
-            } else {
-                Icon(
-                    imageVector = AppIcons.ChatGPTLogo,
-                    contentDescription = null,
-                    tint = TextPrimary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = group.name,
-                color = TextPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            // 显示成员数量和策略
-            Text(
-                text = "${memberBots.size} 个Bot · $strategyLabel",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
-            // 如果有协调者模型，显示它
-            if (group.strategy == "dynamic" && coordinatorModelName != null) {
+            BotAvatar(firstBot = firstBot)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
-                    text = "Coordinator: $coordinatorModelName",
-                    color = TextSecondary,
-                    fontSize = 12.sp,
+                    text = group.name,
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1
                 )
+                if (summaryText.isNotBlank()) {
+                    Text(
+                        text = summaryText,
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 1
+                    )
+                }
             }
-            Text(
-                text = summary,
-                color = TextSecondary,
-                fontSize = 12.sp,
-                maxLines = 2
-            )
-        }
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFFCECEC), CircleShape)
-                .pressableScale(pressedScale = 0.93f, onClick = onDelete),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = AppIcons.Trash,
-                contentDescription = null,
-                tint = Color(0xFFFF3B30),
-                modifier = Modifier.size(16.dp)
-            )
         }
     }
 }
 
-private fun extractRemoteModelId(storageId: String): String {
-    return storageId.substringAfter("::", storageId).trim()
+@Composable
+private fun BotAvatar(firstBot: BotConfig?) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(GrayLighter),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            firstBot?.avatarUri?.isNotBlank() == true -> {
+                AsyncImage(
+                    model = firstBot.avatarUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            firstBot?.avatarAssetName?.isNotBlank() == true -> {
+                AsyncImage(
+                    model = "file:///android_asset/avatars/${firstBot.avatarAssetName}",
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            else -> {
+                Icon(
+                    imageVector = AppIcons.Bot,
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
 }

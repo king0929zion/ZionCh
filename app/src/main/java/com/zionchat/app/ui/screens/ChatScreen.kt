@@ -5,5 +5,10 @@ import androidx.navigation.NavController
 
 @Composable
 fun ChatScreen(navController: NavController) {
-    ChatScreenContent(navController)
+    ChatScreenContent(navController = navController, forcedGroupId = null)
+}
+
+@Composable
+fun GroupChatScreen(navController: NavController, groupId: String?) {
+    ChatScreenContent(navController = navController, forcedGroupId = groupId)
 }

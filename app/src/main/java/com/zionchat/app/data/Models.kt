@@ -76,6 +76,11 @@ data class Message(
     val reasoning: String? = null,
     val tags: List<MessageTag>? = null,
     val attachments: List<MessageAttachment>? = null,
+    val speakerBotId: String? = null,
+    val speakerName: String? = null,
+    val speakerAvatarUri: String? = null,
+    val speakerAvatarAssetName: String? = null,
+    val speakerBatchId: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 

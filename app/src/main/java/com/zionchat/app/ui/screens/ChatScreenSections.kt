@@ -221,6 +221,8 @@ fun MessageItem(
     isStreaming: Boolean = false,
     isThinkingActive: Boolean = false,
     showToolbar: Boolean = true,
+    groupMode: Boolean = false,
+    showGroupSpeaker: Boolean = false,
     onShowReasoning: (String) -> Unit,
     onShowTag: (messageId: String, tagId: String) -> Unit,
     onDownloadAppDevTag: (messageId: String, tag: MessageTag) -> Unit = { _, _ -> },
@@ -290,19 +292,31 @@ fun MessageItem(
                         )
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
-                    MarkdownText(
-                        markdown = message.content,
+                    MentionAwareMessageText(
+                        content = message.content,
                         textStyle = TextStyle(
                             fontSize = 16.sp,
                             lineHeight = 24.sp,
                             color = userBubbleTextColor
-                        )
+                        ),
+                        mentionColor = Color(0xFF007AFF)
                     )
                 }
             }
         }
     } else {
         // Assistant message (left aligned)
+        val legacySpeaker = remember(message.content) { parseLegacyGroupSpeaker(message.content) }
+        val resolvedSpeakerName = message.speakerName?.trim()?.takeIf { it.isNotBlank() } ?: legacySpeaker?.first
+        val resolvedSpeakerAvatarUri = message.speakerAvatarUri?.trim()?.takeIf { it.isNotBlank() }
+        val resolvedSpeakerAvatarAsset = message.speakerAvatarAssetName?.trim()?.takeIf { it.isNotBlank() }
+        val displayAssistantContent =
+            if (message.speakerName.isNullOrBlank() && legacySpeaker != null) {
+                legacySpeaker.second
+            } else {
+                message.content
+            }
+        val groupSpeakerEnabled = groupMode && !resolvedSpeakerName.isNullOrBlank()
         val assistantContentModifier =
             if (isStreaming) {
                 Modifier
@@ -311,7 +325,7 @@ fun MessageItem(
                     animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
                 )
             }
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(assistantContentModifier)
@@ -322,6 +336,30 @@ fun MessageItem(
                     onLongClick = { showMenu = true }
                 )
         ) {
+            if (groupSpeakerEnabled && showGroupSpeaker) {
+                GroupSpeakerAvatar(
+                    avatarUri = resolvedSpeakerAvatarUri,
+                    avatarAssetName = resolvedSpeakerAvatarAsset,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = 2.dp)
+                )
+            }
+            val assistantColumnPaddingStart = if (groupSpeakerEnabled) 44.dp else 0.dp
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = assistantColumnPaddingStart)
+            ) {
+            if (groupSpeakerEnabled && showGroupSpeaker) {
+                Text(
+                    text = resolvedSpeakerName.orEmpty(),
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
             val reasoningText = message.reasoning?.trim().orEmpty()
             if (reasoningText.isNotBlank()) {
                 val thinkingTint =
@@ -365,7 +403,7 @@ fun MessageItem(
                 }
             }
 
-            val contentSegments = remember(message.content) { splitContentByMcpTagMarkers(message.content) }
+            val contentSegments = remember(displayAssistantContent) { splitContentByMcpTagMarkers(displayAssistantContent) }
             val tagsById = remember(message.tags) { message.tags.orEmpty().associateBy { it.id } }
             val inlineTagIds = remember(contentSegments) {
                 contentSegments.mapNotNull { it.tagId }.toSet()
@@ -403,36 +441,43 @@ fun MessageItem(
             }
 
             if (contentSegments.isEmpty()) {
-                MarkdownText(
-                    markdown = stripMcpTagMarkers(message.content),
-                    textStyle = TextStyle(
-                        fontSize = 16.sp,
-                        lineHeight = 24.sp,
-                        color = TextPrimary
-                    )
+                AssistantContentBlock(
+                    groupMode = groupSpeakerEnabled,
+                    markdown = stripMcpTagMarkers(displayAssistantContent)
                 )
             } else {
-                contentSegments.forEach { segment ->
-                    val text = segment.text
-                    val tagId = segment.tagId
-                    if (!text.isNullOrBlank()) {
-                        MarkdownText(
-                            markdown = text,
-                            textStyle = TextStyle(
-                                fontSize = 16.sp,
-                                lineHeight = 24.sp,
-                                color = TextPrimary
+                val bodyModifier =
+                    if (groupSpeakerEnabled) {
+                        Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Surface)
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    } else {
+                        Modifier
+                    }
+                Column(modifier = bodyModifier) {
+                    contentSegments.forEach { segment ->
+                        val text = segment.text
+                        val tagId = segment.tagId
+                        if (!text.isNullOrBlank()) {
+                            MarkdownText(
+                                markdown = text,
+                                textStyle = TextStyle(
+                                    fontSize = 16.sp,
+                                    lineHeight = 24.sp,
+                                    color = TextPrimary
+                                )
                             )
-                        )
-                    } else if (!tagId.isNullOrBlank()) {
-                        val tag = tagsById[tagId]
-                        if (tag != null) {
-                            MessageTagRow(
-                                tag = tag,
-                                messageId = message.id,
-                                onShowTag = onShowTag,
-                                onDownloadAppDevTag = onDownloadAppDevTag
-                            )
+                        } else if (!tagId.isNullOrBlank()) {
+                            val tag = tagsById[tagId]
+                            if (tag != null) {
+                                MessageTagRow(
+                                    tag = tag,
+                                    messageId = message.id,
+                                    onShowTag = onShowTag,
+                                    onDownloadAppDevTag = onDownloadAppDevTag
+                                )
+                            }
                         }
                     }
                 }
@@ -460,7 +505,7 @@ fun MessageItem(
                     ActionButton(
                         icon = AppIcons.Copy,
                         onClick = {
-                            clipboardManager.setText(AnnotatedString(stripMcpTagMarkers(message.content)))
+                            clipboardManager.setText(AnnotatedString(stripMcpTagMarkers(displayAssistantContent)))
                         }
                     )
                     ActionButton(icon = AppIcons.Edit, onClick = onEdit)
@@ -497,6 +542,112 @@ fun MessageItem(
             onDismiss = { showMenu = false }
         )
     }
+}
+
+@Composable
+private fun MentionAwareMessageText(
+    content: String,
+    textStyle: TextStyle,
+    mentionColor: Color
+) {
+    val mentionRegex = remember { Regex("""@[\p{L}\p{N}_\-.]+""") }
+    val parsed = remember(content, mentionColor) {
+        val builder = AnnotatedString.Builder(content)
+        mentionRegex.findAll(content).forEach { match ->
+            val start = match.range.first
+            val end = match.range.last + 1
+            if (start in 0 until end && end <= content.length) {
+                builder.addStyle(
+                    SpanStyle(color = mentionColor, fontWeight = FontWeight.Bold),
+                    start = start,
+                    end = end
+                )
+            }
+        }
+        builder.toAnnotatedString()
+    }
+    Text(text = parsed, style = textStyle)
+}
+
+@Composable
+private fun GroupSpeakerAvatar(
+    avatarUri: String?,
+    avatarAssetName: String?,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(GrayLighter),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            !avatarUri.isNullOrBlank() -> {
+                AsyncImage(
+                    model = avatarUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            !avatarAssetName.isNullOrBlank() -> {
+                AsyncImage(
+                    model = "file:///android_asset/avatars/$avatarAssetName",
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            else -> {
+                Icon(
+                    imageVector = AppIcons.Bot,
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistantContentBlock(
+    groupMode: Boolean,
+    markdown: String
+) {
+    val contentModifier =
+        if (groupMode) {
+            Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Surface)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        } else {
+            Modifier
+        }
+    Box(modifier = contentModifier) {
+        MarkdownText(
+            markdown = markdown,
+            textStyle = TextStyle(
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                color = TextPrimary
+            )
+        )
+    }
+}
+
+private fun parseLegacyGroupSpeaker(raw: String): Pair<String, String>? {
+    val content = raw.trimStart()
+    if (!content.startsWith("[")) return null
+    val end = content.indexOf(']')
+    if (end <= 1) return null
+    val speaker = content.substring(1, end).trim()
+    if (speaker.isBlank()) return null
+    val body = content.substring(end + 1).trimStart()
+    return speaker to body
 }
 
 @Composable
@@ -1668,13 +1819,17 @@ fun SidebarContent(
                         tint = TextPrimary
                     )
                 },
-                label = stringResource(R.string.group_chat),
+                label = stringResource(R.string.group_chats),
                 onClick = { groupExpanded = !groupExpanded }
             )
             AnimatedVisibility(
                 visible = groupExpanded,
-                enter = fadeIn(animationSpec = tween(140, easing = FastOutSlowInEasing)),
-                exit = fadeOut(animationSpec = tween(120, easing = FastOutSlowInEasing))
+                enter =
+                    fadeIn(animationSpec = tween(170, easing = FastOutSlowInEasing)) +
+                        expandVertically(animationSpec = tween(220, easing = FastOutSlowInEasing)),
+                exit =
+                    fadeOut(animationSpec = tween(110, easing = FastOutSlowInEasing)) +
+                        shrinkVertically(animationSpec = tween(160, easing = FastOutSlowInEasing))
             ) {
                 Column(
                     modifier = Modifier
@@ -1989,6 +2144,140 @@ fun TopNavBar(
                     tint = TextPrimary,
                     modifier = Modifier.size(22.dp)
                 )
+            }
+        }
+        }
+    }
+}
+
+@Composable
+fun GroupTopNavBar(
+    onMenuClick: () -> Unit,
+    onNewThreadClick: () -> Unit,
+    avatarUri: String,
+    onAvatarClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .shadow(
+                        elevation = 8.dp,
+                        shape = CircleShape,
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.08f),
+                        spotColor = Color.Black.copy(alpha = 0.08f)
+                    )
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(pressedScale = 0.95f, onClick = onMenuClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(20.dp)
+                            .height(2.dp)
+                            .background(TextPrimary, RoundedCornerShape(1.dp))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(12.dp)
+                            .height(2.dp)
+                            .background(TextPrimary, RoundedCornerShape(1.dp))
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .height(42.dp)
+                    .shadow(
+                        elevation = 8.dp,
+                        shape = RoundedCornerShape(21.dp),
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.08f),
+                        spotColor = Color.Black.copy(alpha = 0.08f)
+                    )
+                    .clip(RoundedCornerShape(21.dp))
+                    .background(Surface, RoundedCornerShape(21.dp))
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.group_chats),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .height(42.dp)
+                .shadow(
+                    elevation = 8.dp,
+                    shape = RoundedCornerShape(21.dp),
+                    clip = false,
+                    ambientColor = Color.Black.copy(alpha = 0.08f),
+                    spotColor = Color.Black.copy(alpha = 0.08f)
+                )
+                .clip(RoundedCornerShape(21.dp))
+                .background(Surface, RoundedCornerShape(21.dp))
+                .padding(horizontal = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .pressableScale(pressedScale = 0.95f, onClick = onNewThreadClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.NewChat,
+                    contentDescription = stringResource(R.string.new_chat),
+                    tint = TextPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(GrayLighter, CircleShape)
+                    .pressableScale(pressedScale = 0.95f, onClick = onAvatarClick),
+                contentAlignment = Alignment.Center
+            ) {
+                if (avatarUri.isNotBlank()) {
+                    AsyncImage(
+                        model = avatarUri,
+                        contentDescription = stringResource(R.string.settings_item_personalization),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = AppIcons.User,
+                        contentDescription = stringResource(R.string.settings_item_personalization),
+                        tint = TextPrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }
@@ -4397,7 +4686,7 @@ private object MentionHighlightVisualTransformation : VisualTransformation {
             val end = match.range.last + 1
             if (start >= 0 && end <= text.length) {
                 styled.addStyle(
-                    style = SpanStyle(color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold),
+                    style = SpanStyle(color = Color(0xFF007AFF), fontWeight = FontWeight.Bold),
                     start = start,
                     end = end
                 )
@@ -4504,55 +4793,21 @@ internal fun BottomInputArea(
         )
     }
     val bottomPadding = bottomInputBottomPadding(imeVisible)
+    val mentionPopupLift = remember(mentionCandidates, showMentionPicker) {
+        (((mentionCandidates.take(6).size * 46) + 22).coerceAtLeast(112)).dp
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize(animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing))
             .padding(horizontal = 16.dp)
             .padding(top = 6.dp, bottom = bottomPadding)
     ) {
-        AnimatedVisibility(
-            visible = showMentionPicker && mentionCandidates.isNotEmpty(),
-            enter = fadeIn(animationSpec = tween(140, easing = FastOutSlowInEasing)),
-            exit = fadeOut(animationSpec = tween(110, easing = FastOutSlowInEasing))
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Surface)
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
-                mentionCandidates.take(6).forEach { candidate ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .pressableScale(
-                                pressedScale = 0.98f,
-                                onClick = { onMentionSelect(candidate) }
-                            )
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            text = candidate.label,
-                            color = Color(0xFF1C1C1E),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-        }
-        if (showMentionPicker && mentionCandidates.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Bottom
-        ) {
             // 工具图标按钮 - 46dp，与输入框等高
             Box(
                 modifier = Modifier
@@ -4799,6 +5054,52 @@ internal fun BottomInputArea(
                                 contentDescription = "Send",
                                 tint = actionIconTint,
                                 modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+            AnimatedVisibility(
+                visible = showMentionPicker && mentionCandidates.isNotEmpty(),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(y = -mentionPopupLift)
+                    .fillMaxWidth()
+                    .padding(end = 58.dp),
+                enter = fadeIn(animationSpec = tween(150, easing = FastOutSlowInEasing)),
+                exit = fadeOut(animationSpec = tween(110, easing = FastOutSlowInEasing))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Surface)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(16.dp),
+                            ambientColor = Color.Black.copy(alpha = 0.1f),
+                            spotColor = Color.Black.copy(alpha = 0.1f)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    mentionCandidates.take(6).forEach { candidate ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .pressableScale(
+                                    pressedScale = 0.98f,
+                                    onClick = { onMentionSelect(candidate) }
+                                )
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Text(
+                                text = candidate.label,
+                                color = Color(0xFF007AFF),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
