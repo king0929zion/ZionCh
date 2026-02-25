@@ -23,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -64,13 +65,7 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
     val enabledModels = remember(models) { models.filter { it.enabled } }
     
     // 如果是编辑模式，加载现有bot数据
-    val existingBot by remember(botId) {
-        if (botId != null) {
-            repository.getBotById(botId)
-        } else {
-            mutableStateOf(null)
-        }
-    }.collectAsState(initial = null)
+    val existingBot by repository.getBotById(botId ?: "").collectAsState(initial = null)
     
     var name by remember { mutableStateOf("") }
     var avatarUri by remember { mutableStateOf<String?>(null) }
@@ -684,7 +679,7 @@ private fun copyImageToApp(context: android.content.Context, uri: Uri): String {
     file.parentFile?.mkdirs()
     
     inputStream?.use { input ->
-        FileOutputStream(file).use { output -
+        FileOutputStream(file).use { output ->
             input.copyTo(output)
         }
     }
