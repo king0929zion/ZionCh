@@ -519,6 +519,7 @@ fun MessageItem(
             }
         }
     }
+    }
 
     // Long-press menu
     if (showMenu) {
