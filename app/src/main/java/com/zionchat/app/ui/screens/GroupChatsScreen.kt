@@ -26,10 +26,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import coil3.compose.AsyncImage
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.data.GroupChatConfig
 import com.zionchat.app.data.ModelConfig
@@ -49,6 +51,7 @@ fun GroupChatsScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
     val groups by repository.groupChatsFlow.collectAsState(initial = emptyList())
     val models by repository.modelsFlow.collectAsState(initial = emptyList())
+    val avatarUri by repository.avatarUriFlow.collectAsState(initial = "")
 
     Column(
         modifier = Modifier
@@ -59,20 +62,53 @@ fun GroupChatsScreen(navController: NavController) {
             title = "群聊",
             onBack = { navController.popBackStack() },
             trailing = {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Surface, CircleShape)
-                        .pressableScale(pressedScale = 0.95f, onClick = { navController.navigate("create_group_chat") }),
-                    contentAlignment = Alignment.Center
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = AppIcons.Plus,
-                        contentDescription = "创建群聊",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    // 创建群聊按钮
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Surface, CircleShape)
+                            .pressableScale(pressedScale = 0.95f, onClick = { navController.navigate("create_group_chat") }),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = AppIcons.Plus,
+                            contentDescription = "创建群聊",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    // 用户头像按钮
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Surface, CircleShape)
+                            .pressableScale(pressedScale = 0.95f, onClick = { navController.navigate("personalization") }),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!avatarUri.isNullOrBlank()) {
+                            AsyncImage(
+                                model = avatarUri,
+                                contentDescription = "个人设置",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = AppIcons.User,
+                                contentDescription = "个人设置",
+                                tint = TextPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                 }
             }
         )

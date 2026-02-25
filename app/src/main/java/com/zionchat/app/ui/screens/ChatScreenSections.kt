@@ -1869,8 +1869,7 @@ fun TopNavBar(
     onChatModelClick: () -> Unit,
     onNewChatClick: () -> Unit,
     showAutoBrowserButton: Boolean = false,
-    onAutoBrowserClick: () -> Unit = {},
-    avatarUri: String? = null
+    onAutoBrowserClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -1984,21 +1983,12 @@ fun TopNavBar(
                     .pressableScale(pressedScale = 0.95f, onClick = onNewChatClick),
                 contentAlignment = Alignment.Center
             ) {
-                if (!avatarUri.isNullOrBlank()) {
-                    AsyncImage(
-                        model = avatarUri,
-                        contentDescription = "New Chat",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Icon(
-                        imageVector = AppIcons.User,
-                        contentDescription = "New Chat",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                Icon(
+                    imageVector = AppIcons.NewChat,
+                    contentDescription = "New Chat",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }

@@ -3909,8 +3909,7 @@ internal fun ChatScreenContent(navController: NavController) {
                         onChatModelClick = { showChatModelPicker = true },
                         onNewChatClick = ::startNewChat,
                         showAutoBrowserButton = hasActiveAutoBrowserSession,
-                        onAutoBrowserClick = { showAutoBrowserPreview = !showAutoBrowserPreview },
-                        avatarUri = avatarUri
+                        onAutoBrowserClick = { showAutoBrowserPreview = !showAutoBrowserPreview }
                     )
                 }
             }
