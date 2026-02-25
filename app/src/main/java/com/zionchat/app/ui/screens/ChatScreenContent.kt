@@ -1849,10 +1849,10 @@ internal fun ChatScreenContent(
                     val maxRounds =
                         when {
                             !canUseAnyTool -> 1
-                            canUseMcp -> 6
-                            canUseAppBuilder || canUseAutoSoulTool || canUseAutoBrowserTool -> 4
-                            canUseMemoryTool -> 3
-                            else -> 4
+                            canUseMcp -> 8
+                            canUseAppBuilder || canUseAutoSoulTool || canUseAutoBrowserTool -> 6
+                            canUseMemoryTool -> 4
+                            else -> 6
                         }
                     val maxCallsPerRound =
                         when {
@@ -2251,10 +2251,33 @@ internal fun ChatScreenContent(
 
                         val allRawCallBlocks = streamedCallBlocks + visibleCallBlocks.blocks + thinkingCallBlocks.blocks
                         val hadRawCallBlocks = allRawCallBlocks.any { it.isNotBlank() }
+                        val combinedRoundReplyText =
+                            buildString {
+                                if (roundVisible.isNotBlank()) {
+                                    append(roundVisible)
+                                }
+                                if (roundThinking.isNotBlank()) {
+                                    if (isNotEmpty()) append('\n')
+                                    append(roundThinking)
+                                }
+                            }.trim()
+                        val looksLikeDirectToolPayload =
+                            combinedRoundReplyText.isNotBlank() &&
+                                Regex(
+                                    "(?is)<(?:mcp_call|tool_call)\\b|\\b(?:mcp_call|tool_call)\\b|\"(?:toolName|tool_name|tool|serverId|server_id|arguments|args|calls)\"\\s*:"
+                                ).containsMatchIn(combinedRoundReplyText)
+                        val callPayloadBlocks =
+                            buildList {
+                                addAll(allRawCallBlocks.filter { it.isNotBlank() })
+                                if (isEmpty() && looksLikeDirectToolPayload) {
+                                    add(combinedRoundReplyText)
+                                }
+                            }
+                        val hadAnyToolPayloadCandidate = callPayloadBlocks.isNotEmpty()
                         val parseFailedBlocks = mutableListOf<String>()
                         val roundSeenSignatures = linkedSetOf<String>()
                         val parsedCallsRaw =
-                            allRawCallBlocks
+                            callPayloadBlocks
                                 .flatMap { block ->
                                     val parsed = parseMcpToolCallsPayload(block)
                                     if (parsed.isEmpty()) {
@@ -2356,7 +2379,7 @@ internal fun ChatScreenContent(
                                 roundIndex += 1
                                 continue
                             }
-                            if (hadRawCallBlocks && roundIndex < maxRounds) {
+                            if (hadAnyToolPayloadCandidate && roundIndex < maxRounds) {
                                 baseMessages.add(
                                     Message(
                                         role = "system",

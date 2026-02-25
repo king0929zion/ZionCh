@@ -5108,6 +5108,8 @@ internal fun BottomInputArea(
     }
 }
 
+}
+
 internal suspend fun encodeImageAttachmentToDataUrl(
     context: Context,
     attachment: PendingImageAttachment,
