@@ -1,84 +1,67 @@
 package com.zionchat.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
-import com.zionchat.app.R
 import com.zionchat.app.data.GroupChatConfig
 import com.zionchat.app.data.ModelConfig
+import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
-import com.zionchat.app.ui.theme.Background
-import com.zionchat.app.ui.theme.GrayLight
-import com.zionchat.app.ui.theme.GrayLighter
-import com.zionchat.app.ui.theme.SourceSans3
-import com.zionchat.app.ui.theme.Surface
-import com.zionchat.app.ui.theme.TextPrimary
-import com.zionchat.app.ui.theme.TextSecondary
+import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.launch
 
 private const val GROUP_STRATEGY_DYNAMIC = "dynamic"
 private const val GROUP_STRATEGY_ROUND_ROBIN = "round_robin"
-private const val GROUP_STRATEGY_RANDOM = "random"
 
 @Composable
 fun CreateGroupChatScreen(navController: NavController) {
     val repository = LocalAppRepository.current
     val scope = rememberCoroutineScope()
+    val providers by repository.providersFlow.collectAsState(initial = emptyList())
     val models by repository.modelsFlow.collectAsState(initial = emptyList())
     val enabledModels = remember(models) { models.filter { it.enabled } }
 
     var name by remember { mutableStateOf("") }
     var strategy by remember { mutableStateOf(GROUP_STRATEGY_DYNAMIC) }
     var selectedMembers by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var dynamicCoordinatorId by remember { mutableStateOf<String?>(null) }
+    var coordinatorModelId by remember { mutableStateOf<String?>(null) }
+    var showCoordinatorSelector by remember { mutableStateOf(false) }
 
-    val canCreate =
-        name.trim().isNotBlank() &&
-            selectedMembers.size >= 2 &&
-            (
-                strategy != GROUP_STRATEGY_DYNAMIC ||
-                    (!dynamicCoordinatorId.isNullOrBlank() && selectedMembers.contains(dynamicCoordinatorId))
-                )
+    val canCreate = name.trim().isNotBlank() && selectedMembers.size >= 2
 
     Column(
         modifier = Modifier
@@ -86,7 +69,7 @@ fun CreateGroupChatScreen(navController: NavController) {
             .background(Background)
     ) {
         PageTopBar(
-            title = "创建群聊",
+            title = "Create Group",
             onBack = { navController.popBackStack() },
             trailing = {
                 Box(
@@ -101,12 +84,8 @@ fun CreateGroupChatScreen(navController: NavController) {
                                     val finalName = name.trim()
                                     val sortedMembers = selectedMembers.toList()
                                     val coordinator =
-                                        if (strategy == GROUP_STRATEGY_DYNAMIC) {
-                                            dynamicCoordinatorId?.takeIf { sortedMembers.contains(it) }
-                                                ?: sortedMembers.firstOrNull()
-                                        } else {
-                                            null
-                                        }
+                                        if (strategy == GROUP_STRATEGY_DYNAMIC) coordinatorModelId
+                                        else null
                                     val conversation = repository.createConversation(title = finalName)
                                     repository.upsertGroupChat(
                                         GroupChatConfig(
@@ -128,7 +107,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "创建",
+                        text = "Create",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = if (canCreate) Color.White else TextSecondary
@@ -144,82 +123,91 @@ fun CreateGroupChatScreen(navController: NavController) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // 群聊名称
+            // Group Name - 简约小输入框
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "群聊名称",
+                    text = "GROUP NAME",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontFamily = SourceSans3,
                     color = TextSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
+                    modifier = Modifier.padding(start = 8.dp)
                 )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Surface)
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Surface)
                 ) {
-                    TextField(
+                    BasicTextField(
                         value = name,
                         onValueChange = { name = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
                         singleLine = true,
-                        textStyle = TextStyle(fontSize = 16.sp, color = TextPrimary),
-                        placeholder = { Text(text = "输入群聊名称") },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
+                        textStyle = TextStyle(
+                            fontSize = 15.sp,
+                            color = TextPrimary
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        cursorBrush = SolidColor(TextPrimary),
+                        decorationBox = { innerTextField ->
+                            Box {
+                                if (name.isEmpty()) {
+                                    Text(
+                                        text = "Enter group name",
+                                        fontSize = 15.sp,
+                                        color = Color(0xFFC7C7CC)
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        }
                     )
                 }
             }
 
-            // 响应策略
+            // Response Strategy - 两段式横向胶囊
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "响应策略",
+                    text = "RESPONSE STRATEGY",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontFamily = SourceSans3,
                     color = TextSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
+                    modifier = Modifier.padding(start = 8.dp)
                 )
-                Column(
+                
+                // 两段式胶囊选择器
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Surface)
-                        .padding(vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(GrayLighter)
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    StrategyRow(
-                        title = "动态调配",
-                        subtitle = "由协调者模型决定谁发言",
+                    StrategyCapsule(
+                        text = "Dynamic",
                         selected = strategy == GROUP_STRATEGY_DYNAMIC,
-                        onClick = { strategy = GROUP_STRATEGY_DYNAMIC }
+                        onClick = { strategy = GROUP_STRATEGY_DYNAMIC },
+                        modifier = Modifier.weight(1f)
                     )
-                    StrategyRow(
-                        title = "轮流发言",
-                        subtitle = "成员按顺序依次发言",
+                    StrategyCapsule(
+                        text = "Round Robin",
                         selected = strategy == GROUP_STRATEGY_ROUND_ROBIN,
-                        onClick = { strategy = GROUP_STRATEGY_ROUND_ROBIN }
-                    )
-                    StrategyRow(
-                        title = "随机触发",
-                        subtitle = "随机选择成员发言",
-                        selected = strategy == GROUP_STRATEGY_RANDOM,
-                        onClick = { strategy = GROUP_STRATEGY_RANDOM }
+                        onClick = { strategy = GROUP_STRATEGY_ROUND_ROBIN },
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
 
-            // 动态调配模型选择
+            // Coordinator Model - 只在Dynamic模式下显示
             AnimatedVisibility(
                 visible = strategy == GROUP_STRATEGY_DYNAMIC,
                 enter = fadeIn(),
@@ -227,168 +215,126 @@ fun CreateGroupChatScreen(navController: NavController) {
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "协调者模型",
+                        text = "COORDINATOR MODEL",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = SourceSans3,
                         color = TextSecondary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
+                        modifier = Modifier.padding(start = 8.dp)
                     )
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Surface)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    
+                    // 使用DefaultModel样式
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Surface)
                     ) {
-                        enabledModels.filter { selectedMembers.contains(it.id) }.forEach { model ->
-                            val selected = dynamicCoordinatorId == model.id
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (selected) Color(0xFFE8F2FF) else Color.Transparent)
-                                    .pressableScale(
-                                        pressedScale = 0.98f,
-                                        onClick = { dynamicCoordinatorId = model.id }
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                                ) {
-                                    Text(
-                                        text = model.displayName,
-                                        fontSize = 14.sp,
-                                        color = TextPrimary,
-                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                                    )
-                                    Text(
-                                        text = extractRemoteModelId(model.id),
-                                        fontSize = 12.sp,
-                                        color = TextSecondary
-                                    )
-                                }
-                                if (selected) {
-                                    Icon(
-                                        imageVector = AppIcons.Check,
-                                        contentDescription = null,
-                                        tint = Color(0xFF0A84FF),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { showCoordinatorSelector = true }
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val display = coordinatorModelId?.let { id ->
+                                models.firstOrNull { it.id == id }?.displayName
+                                    ?: models.firstOrNull { extractRemoteModelId(it.id) == id }?.displayName
                             }
-                        }
-                        if (enabledModels.none { selectedMembers.contains(it.id) }) {
+                            val isEmpty = display.isNullOrBlank()
                             Text(
-                                text = "请先选择至少2个成员",
-                                fontSize = 13.sp,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+                                text = if (isEmpty) "Select coordinator" else display.orEmpty(),
+                                fontSize = 16.sp,
+                                color = if (isEmpty) Color(0xFFC7C7CC) else TextPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = AppIcons.ChevronRight,
+                                contentDescription = null,
+                                tint = TextSecondary,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
                 }
             }
 
-            // 成员选择
+            // Members Selection - 使用DefaultModel样式
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "选择成员（至少2个）",
-                    color = TextSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "已选择 ${selectedMembers.size} 个模型",
-                    fontSize = 12.sp,
-                    color = if (selectedMembers.size >= 2) Color(0xFF0A84FF) else TextSecondary
-                )
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Surface)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .padding(start = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    enabledModels.forEach { model ->
-                        val checked = selectedMembers.contains(model.id)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (checked) Color(0xFFE8F2FF) else Color.Transparent)
-                                .pressableScale(
-                                    pressedScale = 0.98f,
-                                    onClick = {
-                                        selectedMembers =
-                                            if (checked) selectedMembers - model.id else selectedMembers + model.id
-                                    }
-                                )
-                                .padding(horizontal = 12.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                    Text(
+                        text = "MEMBERS",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = SourceSans3,
+                        color = TextSecondary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${selectedMembers.size} selected",
+                        fontSize = 13.sp,
+                        color = if (selectedMembers.size >= 2) Color(0xFF0A84FF) else TextSecondary
+                    )
+                }
+                
+                val grouped = remember(providers, enabledModels) { 
+                    groupModelsByProvider(providers, enabledModels) 
+                }
+                
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    grouped.forEach { (providerName, providerModels) ->
+                        Column {
+                            Text(
+                                text = providerName.uppercase(),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
+                            )
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(containerColor = GrayLighter)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(GrayLighter),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = AppIcons.ChatGPTLogo,
-                                        contentDescription = null,
-                                        tint = TextPrimary,
-                                        modifier = Modifier.size(18.dp)
+                                providerModels.forEachIndexed { index, model ->
+                                    val isSelected = selectedMembers.contains(model.id)
+                                    MemberOptionRow(
+                                        model = model,
+                                        selected = isSelected,
+                                        onClick = {
+                                            selectedMembers =
+                                                if (isSelected) selectedMembers - model.id 
+                                                else selectedMembers + model.id
+                                        }
                                     )
+                                    if (index != providerModels.lastIndex) {
+                                        Divider(color = GrayLight)
+                                    }
                                 }
-                                Column(
-                                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                                ) {
-                                    Text(
-                                        text = model.displayName,
-                                        fontSize = 14.sp,
-                                        color = TextPrimary,
-                                        fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Normal
-                                    )
-                                    Text(
-                                        text = extractRemoteModelId(model.id),
-                                        fontSize = 12.sp,
-                                        color = TextSecondary
-                                    )
-                                }
-                            }
-                            if (checked) {
-                                Icon(
-                                    imageVector = AppIcons.Check,
-                                    contentDescription = null,
-                                    tint = Color(0xFF0A84FF),
-                                    modifier = Modifier.size(18.dp)
-                                )
                             }
                         }
                     }
                     if (enabledModels.isEmpty()) {
                         Text(
-                            text = "当前没有已启用模型，请先在 Models 中启用。",
+                            text = "No enabled models. Enable models in Settings first.",
                             fontSize = 13.sp,
                             color = TextSecondary,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)
                         )
                     }
                 }
@@ -397,48 +343,251 @@ fun CreateGroupChatScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(20.dp))
         }
     }
+
+    // Coordinator Model Selector Modal
+    CoordinatorModelSelectorModal(
+        visible = showCoordinatorSelector,
+        providers = providers,
+        models = enabledModels.filter { selectedMembers.contains(it.id) },
+        selectedModelId = coordinatorModelId,
+        onSelect = { 
+            coordinatorModelId = it
+            showCoordinatorSelector = false 
+        },
+        onDismiss = { showCoordinatorSelector = false }
+    )
 }
 
 @Composable
-private fun StrategyRow(
-    title: String,
-    subtitle: String,
+private fun StrategyCapsule(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) Surface else Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (selected) TextPrimary else TextSecondary
+        )
+    }
+}
+
+@Composable
+private fun MemberOptionRow(
+    model: ModelConfig,
     selected: Boolean,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) Color(0xFFE8F2FF) else Color.Transparent)
-            .pressableScale(pressedScale = 0.98f, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
-                text = title,
-                fontSize = 15.sp,
-                color = if (selected) Color(0xFF0A84FF) else TextPrimary,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                text = model.displayName,
+                fontSize = 16.sp,
+                color = TextPrimary
             )
             Text(
-                text = subtitle,
-                fontSize = 13.sp,
+                text = extractRemoteModelId(model.id),
+                fontSize = 12.sp,
                 color = TextSecondary
             )
         }
-        if (selected) {
-            Icon(
-                imageVector = AppIcons.Check,
-                contentDescription = null,
-                tint = Color(0xFF0A84FF),
-                modifier = Modifier.size(18.dp)
-            )
+        Icon(
+            imageVector = AppIcons.Check,
+            contentDescription = null,
+            tint = TextPrimary,
+            modifier = Modifier
+                .size(22.dp)
+                .alpha(if (selected) 1f else 0f)
+        )
+    }
+}
+
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+private fun CoordinatorModelSelectorModal(
+    visible: Boolean,
+    providers: List<ProviderConfig>,
+    models: List<ModelConfig>,
+    selectedModelId: String?,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                )
+        ) {
+            M3Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .animateEnterExit(
+                        enter = slideInVertically(initialOffsetY = { it }),
+                        exit = slideOutVertically(targetOffsetY = { it })
+                    )
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { }
+                    ),
+                color = Surface,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                        .heightIn(max = 640.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(40.dp)
+                                .height(4.dp)
+                                .background(GrayLight, RoundedCornerShape(2.dp))
+                        )
+                    }
+
+                    Text(
+                        text = "Select Coordinator",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp),
+                    )
+
+                    val grouped = remember(providers, models) { 
+                        groupModelsByProvider(providers, models) 
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        if (models.isEmpty()) {
+                            Text(
+                                text = "Select at least 2 members first",
+                                fontSize = 15.sp,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+
+                        grouped.forEach { (providerName, providerModels) ->
+                            Column {
+                                Text(
+                                    text = providerName.uppercase(),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextSecondary,
+                                    modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
+                                )
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = CardDefaults.cardColors(containerColor = GrayLighter)
+                                ) {
+                                    providerModels.forEachIndexed { index, model ->
+                                        val isSelected = selectedModelId == model.id
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable(
+                                                    interactionSource = remember { MutableInteractionSource() },
+                                                    indication = null,
+                                                    onClick = { onSelect(model.id) }
+                                                )
+                                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = model.displayName,
+                                                fontSize = 16.sp,
+                                                color = TextPrimary
+                                            )
+                                            Icon(
+                                                imageVector = AppIcons.Check,
+                                                contentDescription = null,
+                                                tint = TextPrimary,
+                                                modifier = Modifier
+                                                    .size(22.dp)
+                                                    .alpha(if (isSelected) 1f else 0f)
+                                            )
+                                        }
+                                        if (index != providerModels.lastIndex) {
+                                            Divider(color = GrayLight)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
         }
     }
+}
+
+private fun groupModelsByProvider(
+    providers: List<ProviderConfig>,
+    models: List<ModelConfig>
+): List<Pair<String, List<ModelConfig>>> {
+    val providerNameById = providers.associateBy({ it.id }, { it.name })
+    return models
+        .filter { it.enabled }
+        .groupBy { model ->
+            model.providerId?.let { providerNameById[it] } ?: "Other"
+        }
+        .toList()
+        .sortedBy { it.first }
+        .map { (name, list) -> name to list.sortedBy { it.displayName.lowercase() } }
 }
