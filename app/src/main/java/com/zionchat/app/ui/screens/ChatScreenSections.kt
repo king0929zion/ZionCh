@@ -2147,7 +2147,6 @@ fun TopNavBar(
                 )
             }
         }
-        }
     }
 }
 
@@ -5060,8 +5059,7 @@ internal fun BottomInputArea(
                     }
                 }
             }
-        }
-            AnimatedVisibility(
+            androidx.compose.animation.AnimatedVisibility(
                 visible = showMentionPicker && mentionCandidates.isNotEmpty(),
                 modifier = Modifier
                     .align(Alignment.TopStart)
