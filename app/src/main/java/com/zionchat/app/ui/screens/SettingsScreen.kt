@@ -233,7 +233,7 @@ fun SettingsScreen(navController: NavController) {
                         onClick = { navController.navigate("group_chats") }
                     )
                     SettingsItem(
-                        icon = { Icon(AppIcons.ChatGPTLogo, null, Modifier.size(22.dp), tint = TextPrimary) },
+                        icon = { Icon(AppIcons.Bot, null, Modifier.size(22.dp), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_bots),
                         showChevron = true,
                         onClick = { navController.navigate("group_bots") }

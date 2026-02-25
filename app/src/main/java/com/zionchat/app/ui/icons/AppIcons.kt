@@ -2376,4 +2376,90 @@ object AppIcons {
             close()
         }
     }.build()
+
+    // Bot 图标 (Lucide Bot)
+    val Bot = ImageVector.Builder(
+        name = "bot",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        // path 1: M12 8V4H8 (手臂/天线)
+        path(
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color(0xFF1C1C1E)),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(12f, 8f)
+            verticalLineTo(4f)
+            horizontalLineTo(8f)
+        }
+        // path 2: rect (主身体)
+        path(
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color(0xFF1C1C1E)),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            // rect x=4 y=8 width=16 height=12 rx=2
+            moveTo(6f, 8f)
+            horizontalLineTo(18f)
+            arcTo(2f, 2f, 0f, false, true, 20f, 10f)
+            verticalLineTo(18f)
+            arcTo(2f, 2f, 0f, false, true, 18f, 20f)
+            horizontalLineTo(6f)
+            arcTo(2f, 2f, 0f, false, true, 4f, 18f)
+            verticalLineTo(10f)
+            arcTo(2f, 2f, 0f, false, true, 6f, 8f)
+            close()
+        }
+        // path 3: M2 14h2 (左侧天线)
+        path(
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color(0xFF1C1C1E)),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(2f, 14f)
+            horizontalLineTo(4f)
+        }
+        // path 4: M20 14h2 (右侧天线)
+        path(
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color(0xFF1C1C1E)),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(20f, 14f)
+            horizontalLineTo(22f)
+        }
+        // path 5: M15 13v2 (右眼)
+        path(
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color(0xFF1C1C1E)),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(15f, 13f)
+            verticalLineTo(15f)
+        }
+        // path 6: M9 13v2 (左眼)
+        path(
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color(0xFF1C1C1E)),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(9f, 13f)
+            verticalLineTo(15f)
+        }
+    }.build()
 }

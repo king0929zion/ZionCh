@@ -75,7 +75,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
-                        .background(if (canCreate) Color(0xFF0A84FF) else GrayLight)
+                        .background(if (canCreate) Color(0xFF1C1C1E) else GrayLight)
                         .pressableScale(
                             pressedScale = 0.96f,
                             onClick = {
@@ -286,7 +286,7 @@ fun CreateGroupChatScreen(navController: NavController) {
                     Text(
                         text = "${selectedMembers.size} selected",
                         fontSize = 13.sp,
-                        color = if (selectedMembers.size >= 2) Color(0xFF0A84FF) else TextSecondary
+                        color = if (selectedMembers.size >= 2) TextPrimary else TextSecondary
                     )
                 }
                 

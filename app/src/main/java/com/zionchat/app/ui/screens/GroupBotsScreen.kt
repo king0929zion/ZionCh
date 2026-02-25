@@ -50,7 +50,7 @@ fun GroupBotsScreen(navController: NavController) {
             .background(Background)
     ) {
         PageTopBar(
-            title = "模型成员",
+            title = "Model Members",
             onBack = { navController.popBackStack() }
         )
         Column(
@@ -91,7 +91,7 @@ fun GroupBotsScreen(navController: NavController) {
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = AppIcons.ChatGPTLogo,
+                                imageVector = AppIcons.Bot,
                                 contentDescription = null,
                                 tint = TextPrimary,
                                 modifier = Modifier.size(20.dp)

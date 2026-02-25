@@ -4397,7 +4397,7 @@ private object MentionHighlightVisualTransformation : VisualTransformation {
             val end = match.range.last + 1
             if (start >= 0 && end <= text.length) {
                 styled.addStyle(
-                    style = SpanStyle(color = Color(0xFF0A84FF), fontWeight = FontWeight.Bold),
+                    style = SpanStyle(color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold),
                     start = start,
                     end = end
                 )
@@ -4537,7 +4537,7 @@ internal fun BottomInputArea(
                     ) {
                         Text(
                             text = candidate.label,
-                            color = Color(0xFF0A84FF),
+                            color = Color(0xFF1C1C1E),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold
                         )
