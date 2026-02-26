@@ -4653,6 +4653,7 @@ internal fun ChatScreenContent(
         }
     }
 }
+}
 
 private data class GroupDispatchOutcome(
     val replies: List<Message>,
