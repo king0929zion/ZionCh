@@ -4,7 +4,6 @@ import android.app.DownloadManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.net.Uri
 import android.os.Environment
 import android.provider.OpenableColumns
@@ -144,7 +143,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
-import java.io.ByteArrayOutputStream
 import java.io.StringReader
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -172,7 +170,6 @@ private data class AutoBrowserSessionState(
     val snapshotText: String = "",
     val history: List<String> = emptyList(),
     val lastActionTitle: String = "AutoBrowser",
-    val lastScreenshotDataUrl: String? = null,
     val lastError: String? = null,
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -683,26 +680,6 @@ internal fun ChatScreenContent(
                 appendLine("Use @eN refs for click_ref/fill steps. Avoid full DOM dumps.")
             }.trim()
         return snapshotText to refs
-    }
-
-    suspend fun captureAutoBrowserScreenshot(conversationId: String): Pair<String?, String> {
-        val webView = awaitAutoBrowserWebView(conversationId, timeoutMs = 20_000L)
-            ?: return null to "no_active_webview"
-        return withContext(Dispatchers.Main) {
-            val width = webView.width.coerceAtLeast(1)
-            val height = webView.height.coerceAtLeast(1)
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            webView.draw(canvas)
-            val output = ByteArrayOutputStream()
-            val ok = bitmap.compress(Bitmap.CompressFormat.JPEG, 82, output)
-            if (!ok) {
-                null to "screenshot_encode_failed"
-            } else {
-                val encoded = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
-                "data:image/jpeg;base64,$encoded" to "${width}x${height}"
-            }
-        }
     }
 
     suspend fun waitForAutoBrowserLoadAfter(
@@ -2543,7 +2520,6 @@ internal fun ChatScreenContent(
                         var autoBrowserTagIdInRound: String? = null
                         val autoBrowserRoundHistory = mutableListOf<String>()
                         var autoBrowserCallCountInRound = 0
-                        var autoBrowserRoundScreenshotDataUrl: String? = null
 
                         suspend fun handleAutoBrowserCall(
                             call: PlannedMcpToolCall,
@@ -2590,7 +2566,6 @@ internal fun ChatScreenContent(
                                     toolLower in setOf("autobrowser_exec_js", "browser_exec_js") -> "exec_js"
                                     toolLower in setOf("autobrowser_wait", "browser_wait") -> "wait"
                                     toolLower in setOf("autobrowser_snapshot", "browser_snapshot") -> "snapshot"
-                                    toolLower in setOf("autobrowser_screenshot", "browser_screenshot") -> "screenshot"
                                     toolLower in setOf("autobrowser_upload_file", "browser_upload_file") -> "upload_file"
                                     toolLower in setOf("autobrowser_close_session", "browser_close_session") -> "close_session"
                                     actionHint in setOf("start", "start_session", "launch", "open_session") -> "start_session"
@@ -2600,7 +2575,6 @@ internal fun ChatScreenContent(
                                     actionHint in setOf("exec_js", "js", "javascript", "run_js") -> "exec_js"
                                     actionHint in setOf("wait", "sleep", "delay") -> "wait"
                                     actionHint in setOf("snapshot", "capture") -> "snapshot"
-                                    actionHint in setOf("screenshot", "screen_shot", "capture_screen", "capture_screenshot") -> "screenshot"
                                     actionHint in setOf("upload", "upload_file", "choose_file") -> "upload_file"
                                     actionHint in setOf("close", "close_session", "stop", "end") -> "close_session"
                                     else -> "unknown"
@@ -2731,34 +2705,6 @@ internal fun ChatScreenContent(
                                         }
                                         actionTitle = "快照 ${refs.size} 项"
                                         detail = snapshotText.take(2600)
-                                    }
-                                }
-
-                                "screenshot" -> {
-                                    if (session?.isActive != true) {
-                                        status = "error"
-                                        errorText = "No active browser session. Call autobrowser_start_session first."
-                                        actionTitle = "截图失败"
-                                        detail = "未检测到活动网页会话。"
-                                    } else {
-                                        val (dataUrl, sizeText) = captureAutoBrowserScreenshot(safeConversationId)
-                                        if (dataUrl.isNullOrBlank()) {
-                                            status = "error"
-                                            errorText = sizeText
-                                            actionTitle = "截图失败"
-                                            detail = "网页截图失败：$sizeText"
-                                        } else {
-                                            autoBrowserRoundScreenshotDataUrl = dataUrl
-                                            updateAutoBrowserSession(safeConversationId) {
-                                                it?.copy(
-                                                    lastScreenshotDataUrl = dataUrl,
-                                                    lastActionTitle = "截图",
-                                                    lastError = null
-                                                )
-                                            }
-                                            actionTitle = "截图 $sizeText"
-                                            detail = "已生成网页截图（$sizeText）。"
-                                        }
                                     }
                                 }
 
@@ -3679,22 +3625,6 @@ internal fun ChatScreenContent(
                             break
                         }
 
-                        autoBrowserRoundScreenshotDataUrl?.let { screenshotUrl ->
-                            val screenshotPrompt = "AutoBrowser screenshot (latest browser state)."
-                            baseMessages.removeAll { msg ->
-                                msg.role == "user" &&
-                                    msg.content.startsWith(screenshotPrompt) &&
-                                    !msg.attachments.isNullOrEmpty()
-                            }
-                            baseMessages.add(
-                                Message(
-                                    role = "user",
-                                    content = "$screenshotPrompt Use this image as visual context.",
-                                    attachments = listOf(MessageAttachment(url = screenshotUrl))
-                                )
-                            )
-                        }
-
                         baseMessages.add(
                             Message(
                                 role = "system",
@@ -4299,6 +4229,7 @@ internal fun ChatScreenContent(
                                 desktopMode = true,
                                 desktopViewportWidth = desktopViewportWidth,
                                 desktopViewportHeight = desktopViewportHeight,
+                                desktopScaleToFit = true,
                                 onRuntimeIssue = { issue ->
                                     updateAutoBrowserSession(session.conversationId) { current ->
                                         current?.copy(lastError = issue)
@@ -4331,6 +4262,7 @@ internal fun ChatScreenContent(
                             desktopMode = true,
                             desktopViewportWidth = desktopViewportWidth,
                             desktopViewportHeight = desktopViewportHeight,
+                            desktopScaleToFit = true,
                             onRuntimeIssue = { issue ->
                                 updateAutoBrowserSession(session.conversationId) { current ->
                                     current?.copy(lastError = issue)

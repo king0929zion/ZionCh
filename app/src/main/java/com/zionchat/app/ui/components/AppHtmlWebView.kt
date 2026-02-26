@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 private const val APP_RUNTIME_ERROR_MARKER = "ZION_APP_RUNTIME_ERROR:"
 private const val APP_RUNTIME_DEBUG_HOOK_JS =
@@ -86,6 +88,52 @@ private fun buildDesktopViewportScript(width: Int, height: Int): String {
     """.trimIndent()
 }
 
+private fun applyDesktopScaleToFit(webView: WebView, desktopWidth: Int, desktopHeight: Int) {
+    val viewWidth = webView.width.coerceAtLeast(1)
+    val viewHeight = webView.height.coerceAtLeast(1)
+    val scale =
+        min(
+            viewWidth.toFloat() / desktopWidth.coerceAtLeast(1).toFloat(),
+            viewHeight.toFloat() / desktopHeight.coerceAtLeast(1).toFloat()
+        ).coerceIn(0.1f, 1f)
+    val scalePercent = (scale * 100f).roundToInt().coerceIn(10, 100)
+    runCatching {
+        webView.settings.useWideViewPort = true
+        webView.settings.loadWithOverviewMode = true
+        webView.setInitialScale(scalePercent)
+        webView.scrollTo(0, 0)
+    }
+    val scaleJs = scale.toString()
+    webView.evaluateJavascript(
+        """
+        (function() {
+          try {
+            var w = $desktopWidth;
+            var h = $desktopHeight;
+            var s = $scaleJs;
+            if (!isFinite(s) || s <= 0) s = 1;
+            var root = document.documentElement;
+            if (root) {
+              root.style.width = w + 'px';
+              root.style.minWidth = w + 'px';
+              root.style.minHeight = h + 'px';
+              root.style.transformOrigin = '0 0';
+              root.style.transform = 'scale(' + s + ')';
+              root.style.overflow = 'hidden';
+            }
+            if (document.body) {
+              document.body.style.margin = '0';
+              document.body.style.width = w + 'px';
+              document.body.style.minWidth = w + 'px';
+              document.body.style.minHeight = h + 'px';
+            }
+          } catch (e) {}
+        })();
+        """.trimIndent(),
+        null
+    )
+}
+
 @Stable
 class AppHtmlWebViewState {
     var isLoading: Boolean by mutableStateOf(false)
@@ -129,6 +177,7 @@ fun AppHtmlWebView(
     desktopMode: Boolean = false,
     desktopViewportWidth: Int = 1366,
     desktopViewportHeight: Int = 768,
+    desktopScaleToFit: Boolean = false,
     injectRuntimeDebugHook: Boolean = true,
     onRuntimeIssue: ((String) -> Unit)? = null,
     onPageCommitVisible: (() -> Unit)? = null,
@@ -140,6 +189,7 @@ fun AppHtmlWebView(
     val desktopModeState by rememberUpdatedState(desktopMode)
     val desktopViewportWidthState by rememberUpdatedState(desktopViewportWidth.coerceIn(960, 4096))
     val desktopViewportHeightState by rememberUpdatedState(desktopViewportHeight.coerceIn(640, 4096))
+    val desktopScaleToFitState by rememberUpdatedState(desktopScaleToFit && desktopMode)
     var webViewGeneration by remember(contentSignature) { mutableIntStateOf(0) }
 
     val normalizedHtml = html.orEmpty()
@@ -210,6 +260,15 @@ fun AppHtmlWebView(
                             ),
                             null
                         )
+                        if (desktopScaleToFitState && view != null) {
+                            view.post {
+                                applyDesktopScaleToFit(
+                                    webView = view,
+                                    desktopWidth = desktopViewportWidthState,
+                                    desktopHeight = desktopViewportHeightState
+                                )
+                            }
+                        }
                     }
                     if (view != null) {
                         pageFinishedCallback?.invoke(view)
@@ -349,6 +408,15 @@ fun AppHtmlWebView(
                     }
                     webView.settings.loadWithOverviewMode = desktopMode
                     webView.settings.setSupportZoom(desktopMode)
+                    if (desktopScaleToFitState && desktopMode) {
+                        webView.post {
+                            applyDesktopScaleToFit(
+                                webView = webView,
+                                desktopWidth = desktopViewportWidthState,
+                                desktopHeight = desktopViewportHeightState
+                            )
+                        }
+                    }
                     if (webView.tag != contentSignature) {
                         webView.tag = contentSignature
                         if (normalizedUrl.isNotBlank()) {

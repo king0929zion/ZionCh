@@ -5590,7 +5590,6 @@ internal fun isBuiltInAutoBrowserCall(call: PlannedMcpToolCall): Boolean {
         "autobrowser_exec_js",
         "autobrowser_wait",
         "autobrowser_snapshot",
-        "autobrowser_screenshot",
         "autobrowser_upload_file",
         "autobrowser_close_session",
         "browser_start_session",
@@ -5600,7 +5599,6 @@ internal fun isBuiltInAutoBrowserCall(call: PlannedMcpToolCall): Boolean {
         "browser_exec_js",
         "browser_wait",
         "browser_snapshot",
-        "browser_screenshot",
         "browser_upload_file",
         "browser_close_session"
     ) || server in setOf(
@@ -7159,7 +7157,6 @@ internal fun buildAutoBrowserToolInstruction(
         appendLine("- autobrowser_exec_js: execute JS, arguments.script required")
         appendLine("- autobrowser_wait: wait seconds, arguments.seconds (default 1)")
         appendLine("- autobrowser_snapshot: capture compact accessibility tree snapshot and refs (@e1, @e2...)")
-        appendLine("- autobrowser_screenshot: capture current viewport screenshot image")
         appendLine("- autobrowser_upload_file: upload system file to file input, arguments.selector required")
         appendLine("- autobrowser_close_session: close current browser session")
         appendLine()
