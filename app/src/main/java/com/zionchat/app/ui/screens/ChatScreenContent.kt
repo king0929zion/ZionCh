@@ -529,18 +529,100 @@ internal fun ChatScreenContent(
                 }
                 return path.join(' > ');
               }
-              var refs=[];
-              var nodes=document.querySelectorAll('a,button,input,textarea,select,[role="button"],[onclick]');
-              var i=1;
-              for(var n=0;n<nodes.length && refs.length<120;n++){
-                var el=nodes[n];
+
+              function isVisible(el){
+                if(!(el instanceof Element)) return false;
                 var r=el.getBoundingClientRect();
-                if(!r || r.width<2 || r.height<2) continue;
-                var text=(el.innerText||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||el.getAttribute('name')||el.id||el.tagName||'').replace(/\\s+/g,' ').trim().slice(0,90);
-                refs.push({ref:'r'+(i++),selector:cssPath(el),text:text,tag:(el.tagName||'').toLowerCase()});
+                if(!r || r.width<1 || r.height<1) return false;
+                var style=window.getComputedStyle(el);
+                if(!style) return true;
+                if(style.display==='none' || style.visibility==='hidden') return false;
+                if(parseFloat(style.opacity||'1')<=0) return false;
+                return true;
               }
-              var bodyText=(document.body&&document.body.innerText?document.body.innerText:'').replace(/\\r/g,'').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,5000);
-              return JSON.stringify({ok:true,url:location.href||'',title:document.title||'',text:bodyText,refs:refs});
+
+              function inferRole(el){
+                var role=(el.getAttribute('role')||'').trim().toLowerCase();
+                if(role) return role;
+                var tag=(el.tagName||'').toLowerCase();
+                if(tag==='a' && el.getAttribute('href')) return 'link';
+                if(tag==='button') return 'button';
+                if(tag==='input'){
+                  var type=(el.getAttribute('type')||'text').toLowerCase();
+                  if(type==='button' || type==='submit' || type==='reset') return 'button';
+                  if(type==='checkbox') return 'checkbox';
+                  if(type==='radio') return 'radio';
+                  return 'textbox';
+                }
+                if(tag==='textarea') return 'textbox';
+                if(tag==='select') return 'combobox';
+                if(/^h[1-6]$/.test(tag)) return 'heading';
+                if(tag==='li') return 'listitem';
+                if(tag==='nav') return 'navigation';
+                if(tag==='main') return 'main';
+                if(tag==='section') return 'region';
+                return tag || 'node';
+              }
+
+              function inferName(el){
+                var text=(
+                  el.getAttribute('aria-label') ||
+                  el.getAttribute('title') ||
+                  el.innerText ||
+                  el.textContent ||
+                  el.value ||
+                  el.getAttribute('placeholder') ||
+                  el.getAttribute('name') ||
+                  el.id ||
+                  ''
+                ).replace(/\\s+/g,' ').trim();
+                return text.slice(0,80);
+              }
+
+              function depth(el){
+                var d=0, cur=el;
+                while(cur && cur!==document.body && d<8){ d++; cur=cur.parentElement; }
+                return d;
+              }
+
+              var pool=[];
+              function addAll(nodeList){
+                for(var i=0;i<nodeList.length;i++){
+                  var el=nodeList[i];
+                  if(pool.indexOf(el)===-1) pool.push(el);
+                }
+              }
+
+              addAll(document.querySelectorAll('button,a[href],input,textarea,select,[role],h1,h2,h3,h4,h5,h6,main,nav,section,li'));
+              if(document.activeElement && pool.indexOf(document.activeElement)===-1){
+                pool.unshift(document.activeElement);
+              }
+
+              var nodes=[];
+              var i=1;
+              for(var n=0;n<pool.length && nodes.length<45;n++){
+                var el=pool[n];
+                if(!isVisible(el)) continue;
+                var selector=cssPath(el);
+                if(!selector) continue;
+                var role=inferRole(el);
+                var name=inferName(el);
+                if(!name && (role==='region' || role==='node' || role==='section')) continue;
+                nodes.push({
+                  ref:'e'+(i++),
+                  selector:selector,
+                  role:role,
+                  name:name,
+                  depth:depth(el)
+                });
+              }
+
+              return JSON.stringify({
+                ok:true,
+                url:location.href||'',
+                title:document.title||'',
+                nodes:nodes
+              });
             })();
             """.trimIndent()
         val raw = evaluateAutoBrowserScript(conversationId, script, timeoutMs = 22_000L)
@@ -553,27 +635,33 @@ internal fun ChatScreenContent(
         }
         val url = obj.get("url")?.asString?.trim().orEmpty()
         val title = obj.get("title")?.asString?.trim().orEmpty()
-        val text = obj.get("text")?.asString?.trim().orEmpty()
-        val refsArray = obj.getAsJsonArray("refs")
+        val refsArray = obj.getAsJsonArray("nodes")
         val refs = linkedMapOf<String, String>()
-        val refLines = mutableListOf<String>()
+        val treeLines = mutableListOf<String>()
         refsArray?.forEach { element ->
             val item = runCatching { element.asJsonObject }.getOrNull() ?: return@forEach
             val ref = item.get("ref")?.asString?.trim().orEmpty()
             val selector = item.get("selector")?.asString?.trim().orEmpty()
             if (ref.isBlank() || selector.isBlank()) return@forEach
-            val tag = item.get("tag")?.asString?.trim().orEmpty()
-            val label = item.get("text")?.asString?.trim().orEmpty()
+            val role = item.get("role")?.asString?.trim().orEmpty()
+            val label = item.get("name")?.asString?.trim().orEmpty()
+            val depth = runCatching { item.get("depth")?.asInt ?: 0 }.getOrDefault(0).coerceIn(0, 3)
             refs[ref] = selector
             val line =
                 buildString {
+                    repeat(depth) { append("  ") }
+                    append("@")
                     append(ref)
-                    append(" | ")
-                    append(tag.ifBlank { "element" })
-                    append(" | ")
-                    append(label.ifBlank { selector })
+                    append(" [")
+                    append(role.ifBlank { "node" })
+                    append("]")
+                    if (label.isNotBlank()) {
+                        append(" \"")
+                        append(label)
+                        append('"')
+                    }
                 }
-            refLines += line.take(180)
+            treeLines += line.take(180)
         }
         val snapshotText =
             buildString {
@@ -584,16 +672,15 @@ internal fun ChatScreenContent(
                     appendLine(title)
                 }
                 appendLine()
-                appendLine("Text:")
-                appendLine(text.ifBlank { "(empty)" })
-                appendLine()
-                append("Refs (")
+                append("Accessibility tree refs (")
                 append(refs.size)
                 appendLine("):")
-                refLines.take(80).forEach { line ->
+                treeLines.take(36).forEach { line ->
                     append("- ")
                     appendLine(line)
                 }
+                appendLine()
+                appendLine("Use @eN refs for click_ref/fill steps. Avoid full DOM dumps.")
             }.trim()
         return snapshotText to refs
     }
@@ -2678,12 +2765,15 @@ internal fun ChatScreenContent(
 
                                 "click_ref" -> {
                                     val ref = argString("ref", "snapshot_ref", "id").trim()
-                                    val selector = session?.snapshotRefs?.get(ref)
+                                    val normalizedRef = ref.removePrefix("@")
+                                    val selector =
+                                        session?.snapshotRefs?.get(ref)
+                                            ?: session?.snapshotRefs?.get(normalizedRef)
                                     if (session?.isActive != true || ref.isBlank() || selector.isNullOrBlank()) {
                                         status = "error"
                                         errorText = "snapshot ref not found: $ref"
                                         actionTitle = "点击失败"
-                                        detail = "找不到 ref=$ref，请先调用 autobrowser_snapshot。"
+                                        detail = "找不到 ref=$ref，请先调用 autobrowser_snapshot（ref 如 @e1）。"
                                     } else {
                                         val (ok, message) = clickAutoBrowserSelector(safeConversationId, selector)
                                         if (!ok) {

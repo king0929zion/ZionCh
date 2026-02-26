@@ -2614,7 +2614,7 @@ internal fun ToolMenuPanel(
                                     onBack = { onMcpPageChange(ToolMenuPage.Tools) },
                                     onOpenSettings = onOpenMcpSettings,
                                     onToggle = onToggleMcpServer,
-                                    maxHeight = panelMaxHeight
+                                    maxHeight = currentPanelMaxHeight
                                 )
                             }
                         }
@@ -7158,13 +7158,15 @@ internal fun buildAutoBrowserToolInstruction(
         appendLine("- autobrowser_fill_css: fill input by css selector, arguments.selector + arguments.value")
         appendLine("- autobrowser_exec_js: execute JS, arguments.script required")
         appendLine("- autobrowser_wait: wait seconds, arguments.seconds (default 1)")
-        appendLine("- autobrowser_snapshot: capture text snapshot and refs")
+        appendLine("- autobrowser_snapshot: capture compact accessibility tree snapshot and refs (@e1, @e2...)")
         appendLine("- autobrowser_screenshot: capture current viewport screenshot image")
         appendLine("- autobrowser_upload_file: upload system file to file input, arguments.selector required")
         appendLine("- autobrowser_close_session: close current browser session")
         appendLine()
         appendLine("Rules:")
         appendLine("- For click_ref, call autobrowser_snapshot first in same task to obtain refs.")
+        appendLine("- Prefer compact a11y snapshot refs; do not ask for full DOM/HTML/JSON dumps.")
+        appendLine("- Re-snapshot after navigate/click when page state changes.")
         appendLine("- Keep arguments concise and deterministic.")
         appendLine("- Never fabricate browser execution results. Wait for tool results in next round.")
     }.trim()
