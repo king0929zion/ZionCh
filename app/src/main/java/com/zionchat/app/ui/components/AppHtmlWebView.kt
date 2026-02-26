@@ -31,7 +31,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 private const val APP_RUNTIME_ERROR_MARKER = "ZION_APP_RUNTIME_ERROR:"
 private const val APP_RUNTIME_DEBUG_HOOK_JS =
@@ -96,11 +95,10 @@ private fun applyDesktopScaleToFit(webView: WebView, desktopWidth: Int, desktopH
             viewWidth.toFloat() / desktopWidth.coerceAtLeast(1).toFloat(),
             viewHeight.toFloat() / desktopHeight.coerceAtLeast(1).toFloat()
         ).coerceIn(0.1f, 1f)
-    val scalePercent = (scale * 100f).roundToInt().coerceIn(10, 100)
     runCatching {
         webView.settings.useWideViewPort = true
-        webView.settings.loadWithOverviewMode = true
-        webView.setInitialScale(scalePercent)
+        webView.settings.loadWithOverviewMode = false
+        webView.setInitialScale(100)
         webView.scrollTo(0, 0)
     }
     val scaleJs = scale.toString()
@@ -117,16 +115,20 @@ private fun applyDesktopScaleToFit(webView: WebView, desktopWidth: Int, desktopH
               root.style.width = w + 'px';
               root.style.minWidth = w + 'px';
               root.style.minHeight = h + 'px';
-              root.style.transformOrigin = '0 0';
-              root.style.transform = 'scale(' + s + ')';
-              root.style.overflow = 'hidden';
+              root.style.transform = 'none';
+              root.style.zoom = String(s);
+              root.style.overflowX = 'hidden';
             }
             if (document.body) {
               document.body.style.margin = '0';
               document.body.style.width = w + 'px';
               document.body.style.minWidth = w + 'px';
               document.body.style.minHeight = h + 'px';
+              document.body.style.transform = 'none';
+              document.body.style.zoom = String(s);
+              document.body.style.overflowX = 'hidden';
             }
+            window.scrollTo(0, 0);
           } catch (e) {}
         })();
         """.trimIndent(),
@@ -369,7 +371,7 @@ fun AppHtmlWebView(
                             }
                         settings.mediaPlaybackRequiresUserGesture = false
                         settings.useWideViewPort = true
-                        settings.loadWithOverviewMode = desktopMode
+                        settings.loadWithOverviewMode = desktopMode && !desktopScaleToFitState
                         settings.javaScriptCanOpenWindowsAutomatically = false
                         settings.setSupportZoom(desktopMode)
                         settings.builtInZoomControls = false
@@ -406,7 +408,7 @@ fun AppHtmlWebView(
                     } else {
                         webView.setBackgroundColor(backgroundColor.toArgb())
                     }
-                    webView.settings.loadWithOverviewMode = desktopMode
+                    webView.settings.loadWithOverviewMode = desktopMode && !desktopScaleToFitState
                     webView.settings.setSupportZoom(desktopMode)
                     if (desktopScaleToFitState && desktopMode) {
                         webView.post {

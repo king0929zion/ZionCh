@@ -56,6 +56,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -597,7 +598,7 @@ internal fun ChatScreenContent(
 
               var nodes=[];
               var i=1;
-              for(var n=0;n<pool.length && nodes.length<45;n++){
+              for(var n=0;n<pool.length && nodes.length<32;n++){
                 var el=pool[n];
                 if(!isVisible(el)) continue;
                 var selector=cssPath(el);
@@ -658,7 +659,7 @@ internal fun ChatScreenContent(
                         append('"')
                     }
                 }
-            treeLines += line.take(180)
+            treeLines += line.take(120)
         }
         val snapshotText =
             buildString {
@@ -672,7 +673,7 @@ internal fun ChatScreenContent(
                 append("Accessibility tree refs (")
                 append(refs.size)
                 appendLine("):")
-                treeLines.take(36).forEach { line ->
+                treeLines.take(24).forEach { line ->
                     append("- ")
                     appendLine(line)
                 }
@@ -1939,19 +1940,27 @@ internal fun ChatScreenContent(
                     val maxRounds =
                         when {
                             !canUseAnyTool -> 1
-                            canUseAutoBrowserTool -> 14
-                            canUseMcp -> 10
+                            canUseAutoBrowserTool -> 24
+                            canUseMcp -> 14
                             canUseAppBuilder || canUseAutoSoulTool -> 6
                             canUseMemoryTool -> 5
                             else -> 6
                         }
                     val maxCallsPerRound =
                         when {
-                            canUseAutoBrowserTool -> 6
-                            canUseMcp -> 4
+                            canUseAutoBrowserTool -> 8
+                            canUseMcp -> 6
                             canUseAppBuilder || canUseAutoSoulTool -> 2
                             canUseMemoryTool -> 2
                             else -> 3
+                        }
+                    val streamMaxTokens =
+                        when {
+                            canUseAutoBrowserTool -> 8192
+                            canUseMcp -> 6144
+                            canUseAppBuilder || canUseAutoSoulTool -> 4096
+                            canUseMemoryTool -> 3072
+                            else -> null
                         }
                     val modelId = extractRemoteModelId(selectedModel.id)
 
@@ -1973,6 +1982,8 @@ internal fun ChatScreenContent(
                     val visibleContent = StringBuilder()
                     val thinkingContent = StringBuilder()
                     var autoSoulInvokedInThisTask = false
+                    var toolNoCallRetryCount = 0
+                    var totalToolCallsExecuted = 0
 
                     fun updateAssistantFromCombined(roundVisible: String, roundThinking: String) {
                         val mergedVisible = mergeTextSections(visibleContent.toString(), roundVisible)
@@ -1983,6 +1994,25 @@ internal fun ChatScreenContent(
                     fun appendRoundToCombined(roundVisible: String, roundThinking: String) {
                         appendTextSection(visibleContent, roundVisible)
                         appendTextSection(thinkingContent, roundThinking)
+                    }
+
+                    fun isLikelyToolTaskStillInProgress(assistantText: String): Boolean {
+                        val normalized = assistantText.trim()
+                        if (normalized.isBlank()) return false
+
+                        val completionHints =
+                            Regex(
+                                "(?is)(任务已完成|已完成|完成了|已结束|结束了|全部完成|总结如下|最终结果|final answer|all done|task completed|finished)"
+                            )
+                        if (completionHints.containsMatchIn(normalized)) return false
+
+                        val pendingHints =
+                            Regex(
+                                "(?is)(继续|接下来|下一步|让我|我来|再试|重试|正在|继续尝试|scroll|click|open|navigate|snapshot|wait|retry|continue|next|let me|i'll)"
+                            )
+                        if (pendingHints.containsMatchIn(normalized)) return true
+
+                        return canUseAutoBrowserTool && hasActiveAutoBrowserSession
                     }
 
                     var roundIndex = 1
@@ -2274,6 +2304,7 @@ internal fun ChatScreenContent(
                             extraHeaders = selectedModel.headers,
                             reasoningEffort = effectiveReasoningEffort,
                             enableThinking = enableThinking,
+                            maxTokens = streamMaxTokens,
                             conversationId = safeConversationId
                         ).takeWhile { delta ->
                             val now = System.currentTimeMillis()
@@ -2512,8 +2543,42 @@ internal fun ChatScreenContent(
                                 roundIndex += 1
                                 continue
                             }
+                            val roundCombinedText =
+                                buildString {
+                                    if (roundVisible.isNotBlank()) {
+                                        append(roundVisible)
+                                    }
+                                    if (roundThinking.isNotBlank()) {
+                                        if (isNotEmpty()) append('\n')
+                                        append(roundThinking)
+                                    }
+                                }.trim()
+                            val shouldRetryWithoutToolCall =
+                                roundIndex < maxRounds &&
+                                    (canUseAutoBrowserTool || canUseMcp || totalToolCallsExecuted > 0) &&
+                                    toolNoCallRetryCount < if (canUseAutoBrowserTool) 3 else 2 &&
+                                    isLikelyToolTaskStillInProgress(roundCombinedText)
+                            if (shouldRetryWithoutToolCall) {
+                                toolNoCallRetryCount += 1
+                                baseMessages.add(
+                                    Message(
+                                        role = "system",
+                                        content = buildMcpRoundResultContext(
+                                            roundIndex = roundIndex,
+                                            summary =
+                                                "- The previous reply did not include an executable tool_call.\n" +
+                                                    "- The task still appears to be in progress.\n" +
+                                                    "- Continue with concrete <tool_call> steps now.\n" +
+                                                    "- If the task is already complete, provide a final answer and stop."
+                                        )
+                                    )
+                                )
+                                roundIndex += 1
+                                continue
+                            }
                             break
                         }
+                        toolNoCallRetryCount = 0
 
                         val roundSummary = StringBuilder()
                         var processedCallCount = 0
@@ -3624,6 +3689,7 @@ internal fun ChatScreenContent(
                         if (processedCallCount == 0) {
                             break
                         }
+                        totalToolCallsExecuted += processedCallCount
 
                         baseMessages.add(
                             Message(
@@ -3631,9 +3697,9 @@ internal fun ChatScreenContent(
                                 content = buildMcpRoundResultContext(
                                     roundIndex,
                                     if (canUseAutoBrowserTool) {
-                                        roundSummary.toString().take(1800)
+                                        roundSummary.toString().take(1200)
                                     } else {
-                                        roundSummary.toString().take(3200)
+                                        roundSummary.toString().take(2200)
                                     }
                                 )
                             )
@@ -3646,7 +3712,7 @@ internal fun ChatScreenContent(
                                         entry.value.content.startsWith(toolContextPrefix)
                                 }
                                 .map { entry -> entry.index }
-                        val keepToolContextCount = if (canUseAutoBrowserTool) 4 else 6
+                        val keepToolContextCount = if (canUseAutoBrowserTool) 3 else 5
                         val extraToolContextCount = toolContextIndexes.size - keepToolContextCount
                         if (extraToolContextCount > 0) {
                             toolContextIndexes
@@ -4155,10 +4221,15 @@ internal fun ChatScreenContent(
                 val webViewState =
                     autoBrowserWebViewStates.getOrPut(session.conversationId) { AppHtmlWebViewState() }
                 val isExpanded = showAutoBrowserPreview
-                val previewWidth = if (isExpanded) 220.dp else 1.dp
-                val previewHeight = if (isExpanded) 146.dp else 1.dp
                 val desktopViewportWidth = 1366
                 val desktopViewportHeight = 768
+                val desktopAspectRatio = desktopViewportWidth.toFloat() / desktopViewportHeight.toFloat()
+                val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
+                val expandedPreviewWidth = (screenWidthDp * 0.84f).coerceIn(260.dp, 360.dp)
+                val expandedPreviewHeight =
+                    ((expandedPreviewWidth / desktopAspectRatio) + 40.dp).coerceIn(188.dp, 290.dp)
+                val previewWidth = if (isExpanded) expandedPreviewWidth else 1.dp
+                val previewHeight = if (isExpanded) expandedPreviewHeight else 1.dp
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)

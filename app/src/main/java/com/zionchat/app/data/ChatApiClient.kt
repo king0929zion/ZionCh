@@ -1854,6 +1854,7 @@ class ChatApiClient {
         extraHeaders: List<HttpHeader> = emptyList(),
         reasoningEffort: String? = null,
         enableThinking: Boolean? = null,
+        maxTokens: Int? = null,
         conversationId: String? = null
     ): Flow<ChatStreamDelta> {
         val type = provider.type.trim().lowercase()
@@ -1862,7 +1863,7 @@ class ChatApiClient {
             isGrokReverseDirect(provider) -> grokReverseChatCompletionsStream(provider, modelId, messages, extraHeaders, reasoningEffort)
             type == "antigravity" -> antigravityStream(provider, modelId, messages, extraHeaders)
             type == "gemini-cli" -> geminiCliStream(provider, modelId, messages, extraHeaders)
-            else -> openAIChatCompletionsStream(provider, modelId, messages, extraHeaders, reasoningEffort, enableThinking)
+            else -> openAIChatCompletionsStream(provider, modelId, messages, extraHeaders, reasoningEffort, enableThinking, maxTokens)
         }
     }
 
@@ -1872,7 +1873,8 @@ class ChatApiClient {
         messages: List<Message>,
         extraHeaders: List<HttpHeader>,
         reasoningEffort: String? = null,
-        enableThinking: Boolean? = null
+        enableThinking: Boolean? = null,
+        maxTokens: Int? = null
     ): Flow<ChatStreamDelta> = flow {
         val effectiveHeaders = buildEffectiveHeaders(provider, extraHeaders)
         val copilotInitiator =
@@ -1884,6 +1886,11 @@ class ChatApiClient {
                 "messages" to toOpenAIChatMessages(provider, messages),
                 "stream" to true
             )
+        maxTokens
+            ?.coerceIn(256, 16_384)
+            ?.let { safeMaxTokens ->
+                payload["max_tokens"] = safeMaxTokens
+            }
         if (isQwenCode(provider)) {
             val qwenTools = buildQwenBridgeTools(messages)
             payload["tools"] = qwenTools

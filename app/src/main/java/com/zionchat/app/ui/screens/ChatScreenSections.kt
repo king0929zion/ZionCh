@@ -7164,6 +7164,7 @@ internal fun buildAutoBrowserToolInstruction(
         appendLine("- For click_ref, call autobrowser_snapshot first in same task to obtain refs.")
         appendLine("- Prefer compact a11y snapshot refs; do not ask for full DOM/HTML/JSON dumps.")
         appendLine("- Re-snapshot after navigate/click when page state changes.")
+        appendLine("- If the task is still in progress, emit executable <tool_call> tags in this round; do not stop at narrative-only planning text.")
         appendLine("- Keep arguments concise and deterministic.")
         appendLine("- Never fabricate browser execution results. Wait for tool results in next round.")
     }.trim()
