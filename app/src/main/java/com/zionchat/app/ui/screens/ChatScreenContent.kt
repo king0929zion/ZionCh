@@ -1491,7 +1491,6 @@ internal fun ChatScreenContent(
         stopRequestedByUser = false
         sendInFlight = true
         streamingJob = chatStreamingExecutionScope.launch {
-            try {
                 val nowMs = System.currentTimeMillis()
                 val provisionalTitle = trimmed.lineSequence().firstOrNull().orEmpty().trim().take(24)
                 val initialConversations = repository.conversationsFlow.first()
@@ -4653,8 +4652,6 @@ internal fun ChatScreenContent(
         }
     }
 }
-}
-
 private data class GroupDispatchOutcome(
     val replies: List<Message>,
     val nextRoundRobinCursor: Int? = null,
