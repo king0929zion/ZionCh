@@ -1382,162 +1382,163 @@ internal fun ChatScreenContent(
         stopRequestedByUser = false
         sendInFlight = true
         streamingJob = chatStreamingExecutionScope.launch {
-            val nowMs = System.currentTimeMillis()
-            val provisionalTitle = trimmed.lineSequence().firstOrNull().orEmpty().trim().take(24)
-            val initialConversations = repository.conversationsFlow.first()
+            try {
+                val nowMs = System.currentTimeMillis()
+                val provisionalTitle = trimmed.lineSequence().firstOrNull().orEmpty().trim().take(24)
+                val initialConversations = repository.conversationsFlow.first()
 
-            var conversationId = effectiveConversationId?.trim().takeIf { !it.isNullOrBlank() }
-                ?: repository.currentConversationIdFlow.first()?.trim().takeIf { !it.isNullOrBlank() }
-            var conversation = conversationId?.let { cid -> initialConversations.firstOrNull { it.id == cid } }
+                var conversationId = effectiveConversationId?.trim().takeIf { !it.isNullOrBlank() }
+                    ?: repository.currentConversationIdFlow.first()?.trim().takeIf { !it.isNullOrBlank() }
+                var conversation = conversationId?.let { cid -> initialConversations.firstOrNull { it.id == cid } }
 
-            if (conversation == null) {
-                val created = repository.createConversation()
-                conversation = created
-                conversationId = created.id
-            }
+                if (conversation == null) {
+                    val created = repository.createConversation()
+                    conversation = created
+                    conversationId = created.id
+                }
 
-            val safeConversationId = conversationId ?: return@launch
-            preferredConversationId = safeConversationId
-            preferredConversationSetAtMs = nowMs
-            repository.setCurrentConversationId(safeConversationId)
+                val safeConversationId = conversationId ?: return@launch
+                preferredConversationId = safeConversationId
+                preferredConversationSetAtMs = nowMs
+                repository.setCurrentConversationId(safeConversationId)
 
-            val encodedImages = mutableListOf<String>()
-            for (attachment in attachmentsSnapshot) {
-                val url = encodeImageAttachmentToDataUrl(context, attachment)
-                if (url.isNullOrBlank()) {
+                val encodedImages = mutableListOf<String>()
+                for (attachment in attachmentsSnapshot) {
+                    val url = encodeImageAttachmentToDataUrl(context, attachment)
+                    if (url.isNullOrBlank()) {
+                        repository.appendMessage(
+                            safeConversationId,
+                            Message(
+                                role = "assistant",
+                                content = "Failed to read the selected image. Please try again."
+                            )
+                        )
+                        return@launch
+                    }
+                    encodedImages.add(url)
+                }
+            
+                // Build attachments list instead of encoding into content
+                val messageAttachments = encodedImages.map { url ->
+                    MessageAttachment(url = url)
+                }
+            
+                // Only include text content, attachments will be displayed separately
+                val userContent = trimmed.trim()
+                val hasVisionInput = encodedImages.isNotEmpty()
+                val userMessage = Message(
+                    role = "user",
+                    content = userContent,
+                    attachments = messageAttachments.takeIf { it.isNotEmpty() }
+                )
+                pendingMessages = pendingMessages + PendingMessage(safeConversationId, userMessage)
+                messageText = ""
+                imageAttachments = emptyList()
+                scrollToBottomToken++
+                repository.appendMessage(safeConversationId, userMessage)
+
+                if (pendingAppBuilderConfirmation) {
+                    pendingAppBuilderConfirmation = false
+                }
+                if (weakAutoAppBuilderIntent) {
+                    pendingAppBuilderConfirmation = true
                     repository.appendMessage(
                         safeConversationId,
                         Message(
                             role = "assistant",
-                            content = "Failed to read the selected image. Please try again."
+                            content = buildAppBuilderConfirmationMessage(trimmed)
                         )
                     )
                     return@launch
                 }
-                encodedImages.add(url)
-            }
-            
-            // Build attachments list instead of encoding into content
-            val messageAttachments = encodedImages.map { url ->
-                MessageAttachment(url = url)
-            }
-            
-            // Only include text content, attachments will be displayed separately
-            val userContent = trimmed.trim()
-            val hasVisionInput = encodedImages.isNotEmpty()
-            val userMessage = Message(
-                role = "user",
-                content = userContent,
-                attachments = messageAttachments.takeIf { it.isNotEmpty() }
-            )
-            pendingMessages = pendingMessages + PendingMessage(safeConversationId, userMessage)
-            messageText = ""
-            imageAttachments = emptyList()
-            scrollToBottomToken++
-            repository.appendMessage(safeConversationId, userMessage)
-
-            if (pendingAppBuilderConfirmation) {
-                pendingAppBuilderConfirmation = false
-            }
-            if (weakAutoAppBuilderIntent) {
-                pendingAppBuilderConfirmation = true
-                repository.appendMessage(
-                    safeConversationId,
-                    Message(
-                        role = "assistant",
-                        content = buildAppBuilderConfirmationMessage(trimmed)
-                    )
-                )
-                return@launch
-            }
-            if (confirmationMatched && selectedTool != "app_builder") {
-                selectedTool = "app_builder"
-            }
-
-            // Update conversation title only using the latest persisted conversation to avoid wiping messages.
-            val latestConversationForTitle =
-                repository.conversationsFlow.first().firstOrNull { it.id == safeConversationId }
-            if (
-                latestConversationForTitle != null &&
-                    (latestConversationForTitle.title.isBlank() || latestConversationForTitle.title == "New chat")
-            ) {
-                if (provisionalTitle.isNotBlank()) {
-                    repository.updateConversationTitle(safeConversationId, provisionalTitle)
+                if (confirmationMatched && selectedTool != "app_builder") {
+                    selectedTool = "app_builder"
                 }
-            }
 
-            val activeGroupChat =
-                repository.groupChatsFlow.first().firstOrNull { it.conversationId == safeConversationId }
-            if (activeGroupChat != null && selectedToolSnapshot == null) {
-                val allModelsSnapshot = repository.modelsFlow.first()
-                val providerListSnapshot = repository.providersFlow.first()
-                val conversationMessagesSnapshot =
-                    repository.conversationsFlow.first()
-                        .firstOrNull { it.id == safeConversationId }
-                        ?.messages
-                        .orEmpty()
-                val customInstructionSnapshot = repository.customInstructionsFlow.first().trim()
-                val botsSnapshot = repository.botsFlow.first()
-                val groupDispatch =
-                    runGroupChatDispatch(
-                        chatApiClient = chatApiClient,
-                        providerAuthManager = providerAuthManager,
-                        group = activeGroupChat,
-                        userMessage = userMessage,
-                        conversationMessages = conversationMessagesSnapshot,
-                        allBots = botsSnapshot,
-                        allModels = allModelsSnapshot,
-                        providers = providerListSnapshot,
-                        customInstructions = customInstructionSnapshot,
-                        systemTimeText = buildCurrentSystemTimeText()
-                    )
-                groupDispatch.nextRoundRobinCursor?.let { cursor ->
-                    repository.updateGroupChatRoundRobinCursor(activeGroupChat.id, cursor)
-                }
-                val replies =
-                    if (groupDispatch.replies.isEmpty()) {
-                        listOf(
-                            Message(
-                                role = "assistant",
-                                content = groupDispatch.warning ?: "群聊暂无可用回复模型。"
-                            )
-                        )
-                    } else {
-                        groupDispatch.replies
+                // Update conversation title only using the latest persisted conversation to avoid wiping messages.
+                val latestConversationForTitle =
+                    repository.conversationsFlow.first().firstOrNull { it.id == safeConversationId }
+                if (
+                    latestConversationForTitle != null &&
+                        (latestConversationForTitle.title.isBlank() || latestConversationForTitle.title == "New chat")
+                ) {
+                    if (provisionalTitle.isNotBlank()) {
+                        repository.updateConversationTitle(safeConversationId, provisionalTitle)
                     }
-                replies.forEach { reply ->
-                    repository.appendMessage(safeConversationId, reply)
                 }
-                selectedTool = null
-                return@launch
-            }
 
-            val latestDefaultChatModelId = repository.defaultChatModelIdFlow.first()
-            if (latestDefaultChatModelId.isNullOrBlank()) {
-                if (explicitAutoSoulRequest) {
-                    val autoSoulResult =
-                        handleAutoSoulInvocation(
-                            repository = repository,
+                val activeGroupChat =
+                    repository.groupChatsFlow.first().firstOrNull { it.conversationId == safeConversationId }
+                if (activeGroupChat != null && selectedToolSnapshot == null) {
+                    val allModelsSnapshot = repository.modelsFlow.first()
+                    val providerListSnapshot = repository.providersFlow.first()
+                    val conversationMessagesSnapshot =
+                        repository.conversationsFlow.first()
+                            .firstOrNull { it.id == safeConversationId }
+                            ?.messages
+                            .orEmpty()
+                    val customInstructionSnapshot = repository.customInstructionsFlow.first().trim()
+                    val botsSnapshot = repository.botsFlow.first()
+                    val groupDispatch =
+                        runGroupChatDispatch(
                             chatApiClient = chatApiClient,
-                            context = context,
-                            userMessage = userMessage
+                            providerAuthManager = providerAuthManager,
+                            group = activeGroupChat,
+                            userMessage = userMessage,
+                            conversationMessages = conversationMessagesSnapshot,
+                            allBots = botsSnapshot,
+                            allModels = allModelsSnapshot,
+                            providers = providerListSnapshot,
+                            customInstructions = customInstructionSnapshot,
+                            systemTimeText = buildCurrentSystemTimeText()
                         )
-                    repository.appendMessage(
-                        safeConversationId,
-                        Message(role = "assistant", content = autoSoulResult)
-                    )
+                    groupDispatch.nextRoundRobinCursor?.let { cursor ->
+                        repository.updateGroupChatRoundRobinCursor(activeGroupChat.id, cursor)
+                    }
+                    val replies =
+                        if (groupDispatch.replies.isEmpty()) {
+                            listOf(
+                                Message(
+                                    role = "assistant",
+                                    content = groupDispatch.warning ?: "群聊暂无可用回复模型。"
+                                )
+                            )
+                        } else {
+                            groupDispatch.replies
+                        }
+                    replies.forEach { reply ->
+                        repository.appendMessage(safeConversationId, reply)
+                    }
                     selectedTool = null
                     return@launch
                 }
-                repository.appendMessage(
-                    safeConversationId,
-                    Message(
-                        role = "assistant",
-                        content = "Please configure Chat Model (required) in Settings → Default model before chatting."
+
+                val latestDefaultChatModelId = repository.defaultChatModelIdFlow.first()
+                if (latestDefaultChatModelId.isNullOrBlank()) {
+                    if (explicitAutoSoulRequest) {
+                        val autoSoulResult =
+                            handleAutoSoulInvocation(
+                                repository = repository,
+                                chatApiClient = chatApiClient,
+                                context = context,
+                                userMessage = userMessage
+                            )
+                        repository.appendMessage(
+                            safeConversationId,
+                            Message(role = "assistant", content = autoSoulResult)
+                        )
+                        selectedTool = null
+                        return@launch
+                    }
+                    repository.appendMessage(
+                        safeConversationId,
+                        Message(
+                            role = "assistant",
+                            content = "Please configure Chat Model (required) in Settings → Default model before chatting."
+                        )
                     )
-                )
-                return@launch
-            }
+                    return@launch
+                }
 
             val effectiveModelId =
                 if (hasVisionInput) {
@@ -1849,15 +1850,16 @@ internal fun ChatScreenContent(
                     val maxRounds =
                         when {
                             !canUseAnyTool -> 1
-                            canUseMcp -> 8
-                            canUseAppBuilder || canUseAutoSoulTool || canUseAutoBrowserTool -> 6
-                            canUseMemoryTool -> 4
+                            canUseAutoBrowserTool -> 14
+                            canUseMcp -> 10
+                            canUseAppBuilder || canUseAutoSoulTool -> 6
+                            canUseMemoryTool -> 5
                             else -> 6
                         }
                     val maxCallsPerRound =
                         when {
+                            canUseAutoBrowserTool -> 6
                             canUseMcp -> 4
-                            canUseAutoBrowserTool -> 4
                             canUseAppBuilder || canUseAutoSoulTool -> 2
                             canUseMemoryTool -> 2
                             else -> 3
@@ -1982,6 +1984,7 @@ internal fun ChatScreenContent(
                         val keepTail = 12
                         var lastUiUpdateMs = 0L
                         var lastThinkingSignalAtMs = 0L
+                        var streamFinishReason: String? = null
 
                         fun captureStreamedCallPayload(payload: String) {
                             val cleaned = payload.trim()
@@ -2185,6 +2188,11 @@ internal fun ChatScreenContent(
                             conversationId = safeConversationId
                         ).takeWhile { delta ->
                             val now = System.currentTimeMillis()
+                            delta.finishReason
+                                ?.trim()
+                                ?.lowercase()
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { reason -> streamFinishReason = reason }
                             var sawThinkingSignal = false
                             delta.reasoning?.takeIf { it.isNotBlank() }?.let {
                                 appendThinkingWithInlineCallExtraction(it)
@@ -2216,7 +2224,7 @@ internal fun ChatScreenContent(
                                 inlineCallStartRegex.containsMatchIn(inlineCallTail) ||
                                     inlineCallStartRegex.containsMatchIn(thinkingInlineCallTail)
                             val hasReadyValidCall =
-                                canUseMcp &&
+                                canUseAnyTool &&
                                     streamHasReadyValidCall &&
                                     !hasOpenInlineTagTail
                             if (hasReadyValidCall) {
@@ -2366,6 +2374,10 @@ internal fun ChatScreenContent(
                             break
                         }
                         if (parsedCalls.isEmpty()) {
+                            val streamWasTruncated =
+                                streamFinishReason == "length" ||
+                                    streamFinishReason == "max_tokens" ||
+                                    streamFinishReason == "max_output_tokens"
                             if (!droppedAutoSoulCallSummary.isNullOrBlank() && roundIndex < maxRounds) {
                                 baseMessages.add(
                                     Message(
@@ -2373,6 +2385,22 @@ internal fun ChatScreenContent(
                                         content = buildMcpRoundResultContext(
                                             roundIndex = roundIndex,
                                             summary = droppedAutoSoulCallSummary.orEmpty()
+                                        )
+                                    )
+                                )
+                                roundIndex += 1
+                                continue
+                            }
+                            if (streamWasTruncated && roundIndex < maxRounds) {
+                                baseMessages.add(
+                                    Message(
+                                        role = "system",
+                                        content = buildMcpRoundResultContext(
+                                            roundIndex = roundIndex,
+                                            summary =
+                                                "- The previous response ended due to token limit.\n" +
+                                                    "- Continue the same task without repeating finished steps.\n" +
+                                                    "- If a tool call is needed, output valid <tool_call> JSON."
                                         )
                                     )
                                 )
@@ -3508,9 +3536,34 @@ internal fun ChatScreenContent(
                         baseMessages.add(
                             Message(
                                 role = "system",
-                                content = buildMcpRoundResultContext(roundIndex, roundSummary.toString())
+                                content = buildMcpRoundResultContext(
+                                    roundIndex,
+                                    if (canUseAutoBrowserTool) {
+                                        roundSummary.toString().take(1800)
+                                    } else {
+                                        roundSummary.toString().take(3200)
+                                    }
+                                )
                             )
                         )
+                        val toolContextPrefix = "Tool results from round "
+                        val toolContextIndexes =
+                            baseMessages.withIndex()
+                                .filter { entry ->
+                                    entry.value.role == "system" &&
+                                        entry.value.content.startsWith(toolContextPrefix)
+                                }
+                                .map { entry -> entry.index }
+                        val keepToolContextCount = if (canUseAutoBrowserTool) 4 else 6
+                        val extraToolContextCount = toolContextIndexes.size - keepToolContextCount
+                        if (extraToolContextCount > 0) {
+                            toolContextIndexes
+                                .take(extraToolContextCount)
+                                .asReversed()
+                                .forEach { indexToRemove ->
+                                    baseMessages.removeAt(indexToRemove)
+                                }
+                        }
 
                         roundIndex += 1
                     }
@@ -3698,6 +3751,13 @@ internal fun ChatScreenContent(
                 stopRequestedByUser = false
                 selectedTool = null // 清除选中的工具
             }
+            } finally {
+                sendInFlight = false
+                if (!isStreaming) {
+                    streamingJob = null
+                    stopRequestedByUser = false
+                }
+            }
         }
     }
 
@@ -3820,7 +3880,9 @@ internal fun ChatScreenContent(
                                 currentBatch.isBlank() || currentBatch != previousBatch
                             }
                         val showToolbar =
-                            message.role == "assistant" && latestAssistantToolbarIds.contains(message.id)
+                            message.role == "assistant" &&
+                                latestAssistantToolbarIds.contains(message.id) &&
+                                activeGroupChatConfig == null
                         MessageItem(
                             message = message,
                             conversationId = effectiveConversationId,
@@ -4008,8 +4070,10 @@ internal fun ChatScreenContent(
                 val webViewState =
                     autoBrowserWebViewStates.getOrPut(session.conversationId) { AppHtmlWebViewState() }
                 val isExpanded = showAutoBrowserPreview
-                val previewWidth = if (isExpanded) 244.dp else 1.dp
-                val previewHeight = if (isExpanded) 336.dp else 1.dp
+                val previewWidth = if (isExpanded) 176.dp else 1.dp
+                val previewHeight = if (isExpanded) 232.dp else 1.dp
+                val desktopViewportWidth = 1366
+                val desktopViewportHeight = 900
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -4025,51 +4089,25 @@ internal fun ChatScreenContent(
                             spotColor = Color.Black.copy(alpha = 0.16f)
                         )
                         .clip(RoundedCornerShape(20.dp))
-                        .background(Color.White)
+                        .background(Color(0xFFF8F8F8))
                         .zIndex(14f)
                 ) {
-                    AppHtmlWebView(
-                        modifier = Modifier.fillMaxSize(),
-                        state = webViewState,
-                        contentSignature = "autobrowser:${session.sessionId}:${session.renderNonce}:${session.currentUrl}",
-                        url = session.currentUrl,
-                        enableCookies = true,
-                        enableThirdPartyCookies = true,
-                        onRuntimeIssue = { issue ->
-                            updateAutoBrowserSession(session.conversationId) { current ->
-                                current?.copy(lastError = issue)
-                            }
-                            appendAutoBrowserHistory(session.conversationId, "Runtime issue: $issue")
-                        },
-                        onPageFinished = { webView ->
-                            autoBrowserWebViewRefs[session.conversationId] = webView
-                            val latestUrl = webView.url?.trim().orEmpty().ifBlank { session.currentUrl }
-                            val title = webView.title?.trim().orEmpty()
-                            updateAutoBrowserSession(session.conversationId) { current ->
-                                current?.copy(
-                                    currentUrl = latestUrl,
-                                    pageTitle = title,
-                                    lastPageFinishedAt = System.currentTimeMillis()
-                                )
-                            }
-                        }
-                    )
                     if (isExpanded) {
+                        Column(modifier = Modifier.fillMaxSize()) {
                         Row(
                             modifier = Modifier
-                                .align(Alignment.TopCenter)
                                 .fillMaxWidth()
                                 .background(Color.Black.copy(alpha = 0.06f))
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = session.pageTitle.ifBlank { session.currentUrl },
+                                text = "Desktop ${desktopViewportWidth}x${desktopViewportHeight}",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                fontSize = 12.sp,
-                                color = TextPrimary,
+                                fontSize = 11.sp,
+                                color = TextSecondary,
                                 modifier = Modifier.weight(1f)
                             )
                             Box(
@@ -4089,6 +4127,64 @@ internal fun ChatScreenContent(
                                 )
                             }
                         }
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp, vertical = 8.dp)
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White)
+                        ) {
+                            AppHtmlWebView(
+                                modifier = Modifier.fillMaxSize(),
+                                state = webViewState,
+                                contentSignature = "autobrowser:${session.sessionId}:${session.renderNonce}:${session.currentUrl}",
+                                url = session.currentUrl,
+                                enableCookies = true,
+                                enableThirdPartyCookies = true,
+                                desktopMode = true,
+                                desktopViewportWidth = desktopViewportWidth,
+                                desktopViewportHeight = desktopViewportHeight,
+                                onRuntimeIssue = { issue ->
+                                    updateAutoBrowserSession(session.conversationId) { current ->
+                                        current?.copy(lastError = issue)
+                                    }
+                                    appendAutoBrowserHistory(session.conversationId, "Runtime issue: $issue")
+                                },
+                                onPageFinished = { webView ->
+                                    autoBrowserWebViewRefs[session.conversationId] = webView
+                                    val latestUrl = webView.url?.trim().orEmpty().ifBlank { session.currentUrl }
+                                    val title = webView.title?.trim().orEmpty()
+                                    updateAutoBrowserSession(session.conversationId) { current ->
+                                        current?.copy(
+                                            currentUrl = latestUrl,
+                                            pageTitle = title,
+                                            lastPageFinishedAt = System.currentTimeMillis()
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                        }
+                    } else {
+                        AppHtmlWebView(
+                            modifier = Modifier.fillMaxSize(),
+                            state = webViewState,
+                            contentSignature = "autobrowser:${session.sessionId}:${session.renderNonce}:${session.currentUrl}",
+                            url = session.currentUrl,
+                            enableCookies = true,
+                            enableThirdPartyCookies = true,
+                            desktopMode = true,
+                            desktopViewportWidth = desktopViewportWidth,
+                            desktopViewportHeight = desktopViewportHeight,
+                            onRuntimeIssue = { issue ->
+                                updateAutoBrowserSession(session.conversationId) { current ->
+                                    current?.copy(lastError = issue)
+                                }
+                            },
+                            onPageFinished = { webView ->
+                                autoBrowserWebViewRefs[session.conversationId] = webView
+                            }
+                        )
                     }
                 }
             }
@@ -4563,7 +4659,13 @@ private suspend fun runGroupChatDispatch(
     val scheduledResponders =
         when (group.strategy.trim().lowercase()) {
             "round_robin" -> {
-                val index = if (responders.isEmpty()) 0 else group.roundRobinCursor % responders.size
+                val responderCount = responders.size
+                val index =
+                    if (responderCount == 0) {
+                        0
+                    } else {
+                        ((group.roundRobinCursor % responderCount) + responderCount) % responderCount
+                    }
                 listOf(responders[index])
             }
             "random" -> {
@@ -4696,7 +4798,10 @@ private suspend fun runGroupChatDispatch(
 
     val nextCursor =
         if (group.strategy.trim().lowercase() == "round_robin" && responders.isNotEmpty()) {
-            (group.roundRobinCursor + 1) % responders.size
+            val responderCount = responders.size
+            val current =
+                ((group.roundRobinCursor % responderCount) + responderCount) % responderCount
+            (current + 1) % responderCount
         } else {
             null
         }

@@ -2014,8 +2014,15 @@ class ChatApiClient {
                                 val delta = chunk.choices?.firstOrNull()?.delta
                                 val content = delta?.content
                                 val reasoning = delta?.reasoning_content ?: delta?.reasoning ?: delta?.thinking
-                                if (!content.isNullOrEmpty() || !reasoning.isNullOrEmpty()) {
-                                    emit(ChatStreamDelta(content = content, reasoning = reasoning))
+                                val normalizedFinishReason = finishReason?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+                                if (!content.isNullOrEmpty() || !reasoning.isNullOrEmpty() || normalizedFinishReason != null) {
+                                    emit(
+                                        ChatStreamDelta(
+                                            content = content,
+                                            reasoning = reasoning,
+                                            finishReason = normalizedFinishReason
+                                        )
+                                    )
                                 }
                             } catch (_: Exception) {
                                 parseOpenAIStreamDeltaLenient(data)?.let { emit(it) }
@@ -2083,6 +2090,13 @@ class ChatApiClient {
         val choices = runCatching { json.getAsJsonArray("choices") }.getOrNull() ?: return null
         if (choices.size() == 0) return null
         val firstChoice = runCatching { choices[0].asJsonObject }.getOrNull() ?: return null
+        val finishReason =
+            firstChoice.get("finish_reason")
+                ?.takeIf { it.isJsonPrimitive }
+                ?.asString
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf { it.isNotBlank() }
         val delta = runCatching { firstChoice.getAsJsonObject("delta") }.getOrNull() ?: return null
 
         val content = delta.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim()
@@ -2092,8 +2106,8 @@ class ChatApiClient {
                     delta.get(key)?.takeIf { it.isJsonPrimitive }?.asString?.trim()?.takeIf { it.isNotEmpty() }
                 }
 
-        if (content.isNullOrEmpty() && reasoning.isNullOrEmpty()) return null
-        return ChatStreamDelta(content = content, reasoning = reasoning)
+        if (content.isNullOrEmpty() && reasoning.isNullOrEmpty() && finishReason == null) return null
+        return ChatStreamDelta(content = content, reasoning = reasoning, finishReason = finishReason)
     }
 
     private data class NativeToolCallState(
@@ -3560,7 +3574,8 @@ data class OpenAIStreamDelta(
 
 data class ChatStreamDelta(
     val content: String? = null,
-    val reasoning: String? = null
+    val reasoning: String? = null,
+    val finishReason: String? = null
 )
 
 // 图片生成相关数据类

@@ -138,7 +138,7 @@ private fun BotCard(
     ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(60.dp)
                 .clip(CircleShape)
                 .background(GrayLighter),
             contentAlignment = Alignment.Center
@@ -167,7 +167,7 @@ private fun BotCard(
                         imageVector = AppIcons.Bot,
                         contentDescription = null,
                         tint = TextPrimary,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
             }

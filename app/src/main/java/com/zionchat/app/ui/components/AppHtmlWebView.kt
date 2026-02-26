@@ -48,6 +48,44 @@ private fun shouldIgnoreConsoleRuntimeError(message: String): Boolean {
     return normalized.contains("scrolling is in progress") || normalized.contains("cannot be interrupted")
 }
 
+private fun desktopUserAgent(raw: String): String {
+    val source = raw.trim()
+    if (source.isBlank()) return raw
+    var ua = source
+    ua = ua.replace(Regex("""\bMobile\b""", RegexOption.IGNORE_CASE), "")
+    ua = ua.replace(Regex("""\bwv\b""", RegexOption.IGNORE_CASE), "")
+    if (!ua.contains("X11; Linux x86_64", ignoreCase = true)) {
+        ua = ua.replaceFirst("Linux; Android", "X11; Linux x86_64")
+    }
+    return ua.replace(Regex("\\s+"), " ").trim()
+}
+
+private fun buildDesktopViewportScript(width: Int, height: Int): String {
+    val safeWidth = width.coerceIn(960, 4096)
+    val safeHeight = height.coerceIn(640, 4096)
+    return """
+        (function() {
+          try {
+            var w = $safeWidth;
+            var h = $safeHeight;
+            var meta = document.querySelector('meta[name="viewport"]');
+            if (!meta) {
+              meta = document.createElement('meta');
+              meta.setAttribute('name', 'viewport');
+              document.head.appendChild(meta);
+            }
+            meta.setAttribute('content', 'width=' + w + ', initial-scale=1, minimum-scale=0.25, maximum-scale=5, viewport-fit=cover');
+            document.documentElement.style.minWidth = w + 'px';
+            if (document.body) {
+              document.body.style.minWidth = w + 'px';
+              document.body.style.minHeight = h + 'px';
+            }
+            window.__zionDesktopViewport = { width: w, height: h };
+          } catch (e) {}
+        })();
+    """.trimIndent()
+}
+
 @Stable
 class AppHtmlWebViewState {
     var isLoading: Boolean by mutableStateOf(false)
@@ -88,6 +126,9 @@ fun AppHtmlWebView(
     transparentBackground: Boolean = false,
     backgroundColor: Color = Color.White,
     preRenderEnabled: Boolean = true,
+    desktopMode: Boolean = false,
+    desktopViewportWidth: Int = 1366,
+    desktopViewportHeight: Int = 768,
     injectRuntimeDebugHook: Boolean = true,
     onRuntimeIssue: ((String) -> Unit)? = null,
     onPageCommitVisible: (() -> Unit)? = null,
@@ -96,6 +137,9 @@ fun AppHtmlWebView(
     val runtimeIssueCallback by rememberUpdatedState(onRuntimeIssue)
     val pageCommitVisibleCallback by rememberUpdatedState(onPageCommitVisible)
     val pageFinishedCallback by rememberUpdatedState(onPageFinished)
+    val desktopModeState by rememberUpdatedState(desktopMode)
+    val desktopViewportWidthState by rememberUpdatedState(desktopViewportWidth.coerceIn(960, 4096))
+    val desktopViewportHeightState by rememberUpdatedState(desktopViewportHeight.coerceIn(640, 4096))
     var webViewGeneration by remember(contentSignature) { mutableIntStateOf(0) }
 
     val normalizedHtml = html.orEmpty()
@@ -157,6 +201,15 @@ fun AppHtmlWebView(
                     state.pageTitle = view?.title
                     if (injectRuntimeDebugHook) {
                         view?.evaluateJavascript(APP_RUNTIME_DEBUG_HOOK_JS, null)
+                    }
+                    if (desktopModeState) {
+                        view?.evaluateJavascript(
+                            buildDesktopViewportScript(
+                                width = desktopViewportWidthState,
+                                height = desktopViewportHeightState
+                            ),
+                            null
+                        )
                     }
                     if (view != null) {
                         pageFinishedCallback?.invoke(view)
@@ -257,14 +310,17 @@ fun AppHtmlWebView(
                             }
                         settings.mediaPlaybackRequiresUserGesture = false
                         settings.useWideViewPort = true
-                        settings.loadWithOverviewMode = false
+                        settings.loadWithOverviewMode = desktopMode
                         settings.javaScriptCanOpenWindowsAutomatically = false
-                        settings.setSupportZoom(false)
+                        settings.setSupportZoom(desktopMode)
                         settings.builtInZoomControls = false
                         settings.displayZoomControls = false
                         settings.cacheMode = WebSettings.LOAD_DEFAULT
                         settings.textZoom = 100
                         settings.loadsImagesAutomatically = true
+                        if (desktopMode) {
+                            settings.userAgentString = desktopUserAgent(settings.userAgentString.orEmpty())
+                        }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                             settings.offscreenPreRaster = preRenderEnabled
                         }
@@ -291,6 +347,8 @@ fun AppHtmlWebView(
                     } else {
                         webView.setBackgroundColor(backgroundColor.toArgb())
                     }
+                    webView.settings.loadWithOverviewMode = desktopMode
+                    webView.settings.setSupportZoom(desktopMode)
                     if (webView.tag != contentSignature) {
                         webView.tag = contentSignature
                         if (normalizedUrl.isNotBlank()) {

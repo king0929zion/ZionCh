@@ -133,12 +133,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -2391,9 +2393,9 @@ internal fun ToolMenuPanel(
                                         animate(
                                             initialValue = panelOffsetPx,
                                             targetValue = targetOffset,
-                                            animationSpec = tween(
-                                                durationMillis = 150,
-                                                easing = FastOutSlowInEasing
+                                            animationSpec = spring(
+                                                dampingRatio = 0.78f,
+                                                stiffness = Spring.StiffnessMediumLow
                                             )
                                         ) { value, _ ->
                                             panelOffsetPx = value
@@ -7096,7 +7098,7 @@ internal fun buildAutoBrowserToolInstruction(
     roundIndex: Int,
     maxCallsPerRound: Int
 ): String {
-    val callLimit = minOf(maxCallsPerRound.coerceAtLeast(1), 4)
+    val callLimit = minOf(maxCallsPerRound.coerceAtLeast(1), 8)
     return buildString {
         appendLine("Built-in tool available: autobrowser (Android WebView browser automation).")
         appendLine("Current round: $roundIndex")
