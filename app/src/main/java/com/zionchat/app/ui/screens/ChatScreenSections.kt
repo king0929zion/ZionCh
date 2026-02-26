@@ -2327,13 +2327,40 @@ internal fun ToolMenuPanel(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val screenHeightDp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
-    val panelMaxHeight = screenHeightDp * 0.6f
+    val panelBaseMaxHeight = screenHeightDp * 0.6f
+    val panelExpandLimitDp = screenHeightDp * 0.28f
     var panelOffsetPx by remember { mutableFloatStateOf(0f) }
+    var panelExpandPx by remember { mutableFloatStateOf(0f) }
     val dismissThresholdPx = remember(density) { with(density) { 120.dp.toPx() } }
-    val maxLiftPx = remember(density, screenHeightDp) { with(density) { (screenHeightDp * 0.42f).toPx() } }
-    val expandSnapThresholdPx = remember(maxLiftPx) { maxLiftPx * 0.35f }
+    val panelExpandLimitPx = remember(density, panelExpandLimitDp) { with(density) { panelExpandLimitDp.toPx() } }
+    val expandSnapThresholdPx = remember(panelExpandLimitPx) { panelExpandLimitPx * 0.45f }
     val dragProgress = remember(panelOffsetPx, dismissThresholdPx) {
         (panelOffsetPx.coerceAtLeast(0f) / dismissThresholdPx).coerceIn(0f, 1f)
+    }
+    val currentPanelMaxHeight = remember(panelBaseMaxHeight, panelExpandPx, density) {
+        panelBaseMaxHeight + with(density) { panelExpandPx.toDp() }
+    }
+    val panelDragState = rememberDraggableState { delta ->
+        if (delta < 0f) {
+            val expandProgress = if (panelExpandLimitPx <= 1f) 1f else (panelExpandPx / panelExpandLimitPx).coerceIn(0f, 1f)
+            val resistance = 1f - (expandProgress * 0.55f)
+            panelExpandPx =
+                (panelExpandPx + (-delta * resistance)).coerceIn(0f, panelExpandLimitPx)
+            return@rememberDraggableState
+        }
+
+        var remainingDelta = delta
+        if (panelExpandPx > 0f) {
+            val collapseProgress = if (panelExpandLimitPx <= 1f) 1f else (panelExpandPx / panelExpandLimitPx).coerceIn(0f, 1f)
+            val collapseResistance = 0.6f + (collapseProgress * 0.25f)
+            val collapseAmount = (remainingDelta * collapseResistance).coerceAtMost(panelExpandPx)
+            panelExpandPx = (panelExpandPx - collapseAmount).coerceAtLeast(0f)
+            remainingDelta -= collapseAmount / collapseResistance
+        }
+
+        if (remainingDelta > 0f) {
+            panelOffsetPx = (panelOffsetPx + remainingDelta).coerceIn(0f, dismissThresholdPx * 1.8f)
+        }
     }
     val scrimAlpha by animateFloatAsState(
         targetValue = if (visible) (0.5f * (1f - dragProgress * 0.72f)) else 0f,
@@ -2342,9 +2369,11 @@ internal fun ToolMenuPanel(
     LaunchedEffect(visible) {
         if (!visible) {
             panelOffsetPx = 0f
+            panelExpandPx = 0f
             onMcpPageChange(ToolMenuPage.Tools)
         } else {
             panelOffsetPx = 0f
+            panelExpandPx = 0f
         }
     }
 
@@ -2373,37 +2402,6 @@ internal fun ToolMenuPanel(
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                         .offset { IntOffset(0, panelOffsetPx.roundToInt()) }
-                        .draggable(
-                            orientation = Orientation.Vertical,
-                            state = rememberDraggableState { delta ->
-                                panelOffsetPx = (panelOffsetPx + delta).coerceIn(-maxLiftPx, dismissThresholdPx * 1.8f)
-                            },
-                            onDragStopped = { velocity ->
-                                val shouldDismiss =
-                                    panelOffsetPx > dismissThresholdPx || velocity > 2400f
-                                if (shouldDismiss) {
-                                    onDismiss()
-                                    panelOffsetPx = 0f
-                                } else {
-                                    val shouldExpand =
-                                        panelOffsetPx < -expandSnapThresholdPx || velocity < -1700f
-                                    val targetOffset =
-                                        if (shouldExpand && maxLiftPx > 1f) -maxLiftPx else 0f
-                                    scope.launch {
-                                        animate(
-                                            initialValue = panelOffsetPx,
-                                            targetValue = targetOffset,
-                                            animationSpec = spring(
-                                                dampingRatio = 0.78f,
-                                                stiffness = Spring.StiffnessMediumLow
-                                            )
-                                        ) { value, _ ->
-                                            panelOffsetPx = value
-                                        }
-                                    }
-                                }
-                            }
-                        )
                         .animateEnterExit(
                             enter =
                                 slideInVertically(
@@ -2431,12 +2429,53 @@ internal fun ToolMenuPanel(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = panelMaxHeight)
+                            .heightIn(max = currentPanelMaxHeight)
                             .background(Surface)
                             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
                     ) {
                         Box(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .draggable(
+                                    orientation = Orientation.Vertical,
+                                    state = panelDragState,
+                                    onDragStopped = { velocity ->
+                                        val shouldDismiss = panelOffsetPx > dismissThresholdPx || velocity > 2200f
+                                        if (shouldDismiss) {
+                                            onDismiss()
+                                            panelOffsetPx = 0f
+                                            panelExpandPx = 0f
+                                        } else {
+                                            val shouldExpand =
+                                                panelExpandPx > expandSnapThresholdPx || velocity < -1200f
+                                            val targetExpand = if (shouldExpand) panelExpandLimitPx else 0f
+                                            scope.launch {
+                                                animate(
+                                                    initialValue = panelOffsetPx,
+                                                    targetValue = 0f,
+                                                    animationSpec = spring(
+                                                        dampingRatio = 0.9f,
+                                                        stiffness = Spring.StiffnessMedium
+                                                    )
+                                                ) { value, _ ->
+                                                    panelOffsetPx = value
+                                                }
+                                            }
+                                            scope.launch {
+                                                animate(
+                                                    initialValue = panelExpandPx,
+                                                    targetValue = targetExpand,
+                                                    animationSpec = spring(
+                                                        dampingRatio = 0.86f,
+                                                        stiffness = Spring.StiffnessLow
+                                                    )
+                                                ) { value, _ ->
+                                                    panelExpandPx = value
+                                                }
+                                            }
+                                        }
+                                    }
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Box(
@@ -5551,6 +5590,7 @@ internal fun isBuiltInAutoBrowserCall(call: PlannedMcpToolCall): Boolean {
         "autobrowser_exec_js",
         "autobrowser_wait",
         "autobrowser_snapshot",
+        "autobrowser_screenshot",
         "autobrowser_upload_file",
         "autobrowser_close_session",
         "browser_start_session",
@@ -5560,6 +5600,7 @@ internal fun isBuiltInAutoBrowserCall(call: PlannedMcpToolCall): Boolean {
         "browser_exec_js",
         "browser_wait",
         "browser_snapshot",
+        "browser_screenshot",
         "browser_upload_file",
         "browser_close_session"
     ) || server in setOf(
@@ -7118,6 +7159,7 @@ internal fun buildAutoBrowserToolInstruction(
         appendLine("- autobrowser_exec_js: execute JS, arguments.script required")
         appendLine("- autobrowser_wait: wait seconds, arguments.seconds (default 1)")
         appendLine("- autobrowser_snapshot: capture text snapshot and refs")
+        appendLine("- autobrowser_screenshot: capture current viewport screenshot image")
         appendLine("- autobrowser_upload_file: upload system file to file input, arguments.selector required")
         appendLine("- autobrowser_close_session: close current browser session")
         appendLine()
