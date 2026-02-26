@@ -2556,7 +2556,7 @@ internal fun ChatScreenContent(
                             val shouldRetryWithoutToolCall =
                                 roundIndex < maxRounds &&
                                     (canUseAutoBrowserTool || canUseMcp || totalToolCallsExecuted > 0) &&
-                                    toolNoCallRetryCount < if (canUseAutoBrowserTool) 3 else 2 &&
+                                    toolNoCallRetryCount < (if (canUseAutoBrowserTool) 3 else 2) &&
                                     isLikelyToolTaskStillInProgress(roundCombinedText)
                             if (shouldRetryWithoutToolCall) {
                                 toolNoCallRetryCount += 1
