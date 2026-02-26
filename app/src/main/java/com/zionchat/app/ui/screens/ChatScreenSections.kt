@@ -7140,6 +7140,8 @@ internal fun buildAutoBrowserToolInstruction(
     val callLimit = minOf(maxCallsPerRound.coerceAtLeast(1), 8)
     return buildString {
         appendLine("Built-in tool available: autobrowser (Android WebView browser automation).")
+        appendLine("Language support: follow the user's language (Chinese or English).")
+        appendLine("语言支持：按用户语言回复（中文/英文均可）。")
         appendLine("Current round: $roundIndex")
         appendLine("Use this tool only when the user explicitly selected AutoBrowser in this chat.")
         appendLine("Do not call AutoBrowser for generic Q&A, memory tasks, or AutoSoul phone automation tasks.")

@@ -956,27 +956,23 @@ internal fun ChatScreenContent(
     fun startNewChat() {
         scope.launch {
             val activeGroup = activeGroupChatConfig
+            val createRegularChatFromGroup = groupChatPageMode && activeGroup != null
             val created =
-                if (groupChatPageMode && activeGroup != null) {
-                    repository.createConversation(title = activeGroup.name)
+                if (createRegularChatFromGroup) {
+                    repository.createConversation(title = "Chat")
                 } else {
                     repository.createConversation()
                 }
-            if (groupChatPageMode && activeGroup != null) {
-                repository.upsertGroupChat(
-                    activeGroup.copy(
-                        conversationId = created.id,
-                        roundRobinCursor = 0,
-                        updatedAt = System.currentTimeMillis()
-                    )
-                )
-            }
             preferredConversationId = created.id
             preferredConversationSetAtMs = System.currentTimeMillis()
+            repository.setCurrentConversationId(created.id)
             selectedTool = null
             showAutoBrowserPreview = false
             messageText = ""
             drawerState.close()
+            if (createRegularChatFromGroup) {
+                navController.navigate("chat")
+            }
             scrollToBottomToken++
         }
     }
@@ -1469,6 +1465,7 @@ internal fun ChatScreenContent(
         stopRequestedByUser = false
         sendInFlight = true
         streamingJob = chatStreamingExecutionScope.launch {
+            try {
                 val nowMs = System.currentTimeMillis()
                 val provisionalTitle = trimmed.lineSequence().firstOrNull().orEmpty().trim().take(24)
                 val initialConversations = repository.conversationsFlow.first()
@@ -3909,6 +3906,13 @@ internal fun ChatScreenContent(
                 stopRequestedByUser = false
                 selectedTool = null // 清除选中的工具
             }
+            } finally {
+                sendInFlight = false
+                if (!isStreaming) {
+                    streamingJob = null
+                    stopRequestedByUser = false
+                }
+            }
         }
     }
 
@@ -4725,7 +4729,7 @@ private suspend fun selectDynamicGroupResponders(
         }
     val selectorPrompt =
         buildString {
-            appendLine("你是群聊调度器，需要从候选 Bot 中选择最适合回复本条消息的 1~3 个。")
+            appendLine("你是群聊调度器，需要从候选 Bot 中选择最适合回复本条消息的 1~2 个。")
             append("当前系统时间：")
             appendLine(systemTimeText)
             appendLine("请只返回 JSON 数组，数组元素必须是 bot_id、token 或 bot_name。")
@@ -4740,7 +4744,10 @@ private suspend fun selectDynamicGroupResponders(
             provider = resolvedProvider,
             modelId = extractRemoteModelId(coordinatorModel.id).ifBlank { coordinatorModel.id },
             messages = listOf(Message(role = "user", content = selectorPrompt)),
-            extraHeaders = coordinatorModel.headers
+            extraHeaders = coordinatorModel.headers,
+            reasoningEffort = "none",
+            enableThinking = false,
+            maxTokens = 1024
         ).getOrNull().orEmpty()
 
     val rawCandidates = linkedSetOf<String>()
@@ -4758,7 +4765,7 @@ private suspend fun selectDynamicGroupResponders(
                     normalizeMentionLookup(buildBotMentionToken(responder.bot))
                 )
             aliases.any { normalized.contains(it) }
-        }.take(3)
+        }.take(2)
     return if (selected.isEmpty()) responders.take(1) else selected
 }
 
@@ -4853,7 +4860,7 @@ private suspend fun runGroupChatDispatch(
     val selectedResponders = ordered.values.toList()
 
     val cleanHistory =
-        conversationMessages.takeLast(24).mapNotNull { msg ->
+        conversationMessages.takeLast(16).mapNotNull { msg ->
             val clean = stripMcpTagMarkers(msg.content).trim()
             if (clean.isBlank()) {
                 null
@@ -4930,7 +4937,10 @@ private suspend fun runGroupChatDispatch(
                 provider = resolvedProvider,
                 modelId = extractRemoteModelId(model.id).ifBlank { model.id },
                 messages = requestMessages,
-                extraHeaders = model.headers
+                extraHeaders = model.headers,
+                reasoningEffort = "none",
+                enableThinking = false,
+                maxTokens = 1536
             ).getOrElse { error ->
                 "暂时无法回复：${error.message?.trim().orEmpty().ifBlank { "unknown_error" }}"
             }.trim()

@@ -1756,7 +1756,10 @@ class ChatApiClient {
         provider: ProviderConfig,
         modelId: String,
         messages: List<Message>,
-        extraHeaders: List<HttpHeader> = emptyList()
+        extraHeaders: List<HttpHeader> = emptyList(),
+        reasoningEffort: String? = null,
+        enableThinking: Boolean? = null,
+        maxTokens: Int? = null
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             runCatching {
@@ -1777,12 +1780,40 @@ class ChatApiClient {
                         "model" to modelId,
                         "messages" to toOpenAIChatMessages(provider, messages)
                     )
+                maxTokens
+                    ?.coerceIn(256, 16_384)
+                    ?.let { safeMaxTokens ->
+                        payload["max_tokens"] = safeMaxTokens
+                    }
+                enableThinking?.let { thinkingEnabled ->
+                    payload["enable_thinking"] = thinkingEnabled
+                    val extraBody = linkedMapOf<String, Any>("enable_thinking" to thinkingEnabled)
+                    if (isKimiProvider(provider)) {
+                        extraBody["thinking"] =
+                            mapOf(
+                                "type" to if (thinkingEnabled) "enabled" else "disabled"
+                            )
+                    }
+                    payload["extra_body"] = extraBody
+                }
+                if (isGrok2Api(provider)) {
+                    normalizeReasoningEffort(reasoningEffort)?.let { payload["reasoning_effort"] = it }
+                }
                 if (isQwenCode(provider)) {
                     val qwenTools = buildQwenBridgeTools(messages)
                     payload["tools"] = qwenTools
                     payload["tool_choice"] = if (isNoopQwenToolList(qwenTools)) "none" else "auto"
                 }
                 val body = gson.toJson(payload)
+                val fallbackBodyWithoutThinkingParams =
+                    if (enableThinking != null && (payload.containsKey("enable_thinking") || payload.containsKey("extra_body"))) {
+                        val fallbackPayload = LinkedHashMap(payload)
+                        fallbackPayload.remove("enable_thinking")
+                        fallbackPayload.remove("extra_body")
+                        gson.toJson(fallbackPayload)
+                    } else {
+                        null
+                    }
                 val baseCandidates = providerApiBaseCandidates(provider)
                 ensureGrokGatewayTokenSynced(provider, effectiveHeaders, baseCandidates)
                 val attemptErrors = mutableListOf<String>()
@@ -1790,31 +1821,58 @@ class ChatApiClient {
                 for ((index, baseUrl) in baseCandidates.withIndex()) {
                     try {
                         val url = baseUrl + "/chat/completions"
-                        val requestBuilder = Request.Builder().url(url)
+                        fun buildRequest(requestBody: String): Request {
+                            val requestBuilder = Request.Builder().url(url)
 
-                        applyHeaders(requestBuilder, effectiveHeaders)
-                        applyProviderAuthorizationIfNeeded(requestBuilder, provider, effectiveHeaders)
-                        if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
-                            requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
-                        }
-                        if (isQwenCode(provider)) {
-                            applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
-                        }
-                        if (isGitHubCopilot(provider)) {
-                            applyGitHubCopilotHeadersIfNeeded(
-                                requestBuilder = requestBuilder,
-                                effectiveHeaders = effectiveHeaders,
-                                initiator = copilotInitiator,
-                                visionRequest = copilotVisionRequest
-                            )
+                            applyHeaders(requestBuilder, effectiveHeaders)
+                            applyProviderAuthorizationIfNeeded(requestBuilder, provider, effectiveHeaders)
+                            if (isIFlow(provider) && !hasHeader(effectiveHeaders, "user-agent")) {
+                                requestBuilder.header("User-Agent", IFLOW_USER_AGENT)
+                            }
+                            if (isQwenCode(provider)) {
+                                applyQwenCompatibleHeaders(requestBuilder, effectiveHeaders)
+                            }
+                            if (isGitHubCopilot(provider)) {
+                                applyGitHubCopilotHeadersIfNeeded(
+                                    requestBuilder = requestBuilder,
+                                    effectiveHeaders = effectiveHeaders,
+                                    initiator = copilotInitiator,
+                                    visionRequest = copilotVisionRequest
+                                )
+                            }
+
+                            requestBuilder.header("Content-Type", "application/json")
+                            return requestBuilder
+                                .post(requestBody.toRequestBody(jsonMediaType))
+                                .build()
                         }
 
-                        requestBuilder.header("Content-Type", "application/json")
-                        val request = requestBuilder
-                            .post(body.toRequestBody(jsonMediaType))
-                            .build()
+                        val initialResponse = client.newCall(buildRequest(body)).execute()
+                        val responseToUse =
+                            if (!initialResponse.isSuccessful && fallbackBodyWithoutThinkingParams != null) {
+                                val initialCode = initialResponse.code
+                                val initialErrorBody = initialResponse.body?.string().orEmpty()
+                                val shouldRetryWithoutParam =
+                                    shouldRetryWithoutEnableThinking(initialCode, initialErrorBody)
+                                initialResponse.close()
+                                if (!shouldRetryWithoutParam) {
+                                    throw IllegalStateException("HTTP $initialCode @ $url: $initialErrorBody")
+                                }
 
-                        client.newCall(request).execute().use { response ->
+                                val fallbackResponse =
+                                    client.newCall(buildRequest(fallbackBodyWithoutThinkingParams)).execute()
+                                if (!fallbackResponse.isSuccessful) {
+                                    val fallbackCode = fallbackResponse.code
+                                    val fallbackErrorBody = fallbackResponse.body?.string().orEmpty()
+                                    fallbackResponse.close()
+                                    throw IllegalStateException("HTTP $fallbackCode @ $url: $fallbackErrorBody")
+                                }
+                                fallbackResponse
+                            } else {
+                                initialResponse
+                            }
+
+                        responseToUse.use { response ->
                             val raw = response.body?.string().orEmpty()
                             if (!response.isSuccessful) {
                                 error("HTTP ${response.code} @ $url: $raw")
