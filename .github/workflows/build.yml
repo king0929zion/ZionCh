@@ -64,7 +64,7 @@ jobs:
         if [ "${{ github.event_name }}" = "pull_request" ]; then
           ./gradlew :app:assembleDebug --stacktrace --parallel --build-cache --configuration-cache -PCI_FAST_BUILD=true
         else
-          ./gradlew :app:assembleRelease --stacktrace --parallel --max-workers=4 --build-cache --configuration-cache -PCI_FAST_BUILD=true
+          ./gradlew :app:assembleRelease --stacktrace --parallel --max-workers=4 --build-cache --configuration-cache -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
         fi
 
     - name: Run tests
