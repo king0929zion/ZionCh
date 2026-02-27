@@ -796,7 +796,7 @@ fun SettingsGroup(
         Text(
             text = title.uppercase(),
             fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.SemiBold,
             fontFamily = SourceSans3,
             color = TextSecondary,
             modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
@@ -808,7 +808,7 @@ fun SettingsGroup(
                 .fillMaxWidth()
                 .shadow(0.dp, RoundedCornerShape(16.dp)),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Surface)
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF2F2F2))
         ) {
             Column {
                 content()
@@ -851,22 +851,24 @@ fun SettingsItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(if (isPressed) Color(0xFFE5E5EA) else Surface)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .heightIn(min = 68.dp)
+                .background(if (isPressed) Color(0xFFE8E8E8) else Color(0xFFF2F2F2))
+                .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(28.dp),
                 contentAlignment = Alignment.Center
             ) {
                 icon()
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
             Text(
                 text = label,
-                fontSize = 16.sp,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
                 fontFamily = SourceSans3,
                 color = TextPrimary,
                 modifier = Modifier.weight(1f)
@@ -876,6 +878,7 @@ fun SettingsItem(
                 Text(
                     text = value,
                     fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
                     color = TextSecondary
                 )
                 Spacer(modifier = Modifier.width(4.dp))
@@ -896,10 +899,9 @@ fun SettingsItem(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
+                    .padding(horizontal = 18.dp)
                     .height(1.dp)
-                    .background(Color.White)
-                    .shadow(0.5.dp, spotColor = Color(0xFFE5E5EA), ambientColor = Color(0xFFE5E5EA))
+                    .background(Color(0xFFE4E4E4))
             )
         }
     }

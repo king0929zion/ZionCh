@@ -7,14 +7,6 @@ def escapeForBuildConfig = { value ->
     return value.toString().replace("\\", "\\\\").replace("\"", "\\\"")
 }
 
-def runtimePackagerBaseUrl =
-    (project.findProperty("RUNTIME_PACKAGER_BASE_URL")
-        ?: System.getenv("RUNTIME_PACKAGER_BASE_URL")
-        ?: "http://127.0.0.1:17856").toString()
-def runtimePackagerToken =
-    (project.findProperty("RUNTIME_PACKAGER_TOKEN")
-        ?: System.getenv("RUNTIME_PACKAGER_TOKEN")
-        ?: "").toString()
 def runtimeShellPluginPackage =
     (project.findProperty("RUNTIME_SHELL_PLUGIN_PACKAGE")
         ?: System.getenv("RUNTIME_SHELL_PLUGIN_PACKAGE")
@@ -40,15 +32,13 @@ android {
         applicationId "com.zionchat.app"
         minSdk 24
         targetSdk 36
-        versionCode 312
-        versionName "0.18.281"
+        versionCode 313
+        versionName "0.19.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary true
         }
-        buildConfigField "String", "RUNTIME_PACKAGER_BASE_URL", "\"${escapeForBuildConfig(runtimePackagerBaseUrl)}\""
-        buildConfigField "String", "RUNTIME_PACKAGER_TOKEN", "\"${escapeForBuildConfig(runtimePackagerToken)}\""
         buildConfigField "String", "RUNTIME_SHELL_PLUGIN_PACKAGE", "\"${escapeForBuildConfig(runtimeShellPluginPackage)}\""
         buildConfigField "String", "RUNTIME_SHELL_PLUGIN_DOWNLOAD_URL", "\"${escapeForBuildConfig(runtimeShellPluginDownloadUrl)}\""
         buildConfigField "String", "IFLOW_CLIENT_ID", "\"${escapeForBuildConfig(iflowClientId)}\""

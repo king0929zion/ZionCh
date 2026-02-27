@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -231,7 +230,6 @@ class MainActivity : AppCompatActivity() {
                             }
                             composable("autosoul") { AutoSoulScreen(navController) }
                             composable("about") { AboutScreen(navController) }
-                            composable("web_hosting") { WebHostingScreen(navController) }
                         }
                     }
                 }
