@@ -5,6 +5,13 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Build and publish release APK"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -14,10 +21,65 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  ci:
     runs-on: ubuntu-latest
     env:
       CI_FAST_BUILD: "true"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Ensure Gradle wrapper executable
+      run: chmod +x gradlew
+
+    - name: Build Debug APK (fast CI)
+      run: ./gradlew :app:assembleDebug --stacktrace --build-cache --configuration-cache -PCI_FAST_BUILD=true
+
+    - name: Run tests
+      if: github.event_name == 'pull_request'
+      run: ./gradlew :app:testDebugUnitTest --stacktrace --build-cache --configuration-cache -PCI_FAST_BUILD=true
+      continue-on-error: true
+
+    - name: Get version from build.gradle
+      id: get_version
+      run: |
+        VERSION=$(grep "versionName" app/build.gradle | head -1 | sed 's/.*versionName.*"\([0-9.]*\)".*/\1/')
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Upload Debug APK to Artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: ZionChat-debug-v${{ steps.get_version.outputs.version }}
+        compression-level: 0
+        path: |
+          app/build/outputs/apk/debug/*.apk
+
+    - name: Upload build reports
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: build-reports-ci
+        path: |
+          app/build/reports/
+          build/reports/
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
+    runs-on: ubuntu-latest
+    env:
+      CI_FAST_BUILD: "false"
 
     steps:
     - name: Checkout code
@@ -53,12 +115,7 @@ jobs:
         fi
 
     - name: Build Release APK
-      run: ./gradlew :app:assembleRelease --stacktrace --build-cache --configuration-cache -PCI_FAST_BUILD=true
-
-    - name: Run tests
-      if: github.event_name == 'pull_request'
-      run: ./gradlew :app:testDebugUnitTest --stacktrace --build-cache --configuration-cache -PCI_FAST_BUILD=true
-      continue-on-error: true
+      run: ./gradlew :app:assembleRelease --stacktrace --build-cache --configuration-cache -PCI_FAST_BUILD=false
 
     - name: Get version from build.gradle
       id: get_version
@@ -67,9 +124,8 @@ jobs:
         echo "VERSION=$VERSION" >> $GITHUB_ENV
         echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-    - name: Upload APK to Artifacts
+    - name: Upload Release APK to Artifacts
       uses: actions/upload-artifact@v4
-      if: always()
       with:
         name: ZionChat-v${{ steps.get_version.outputs.version }}
         compression-level: 0
@@ -77,7 +133,6 @@ jobs:
           app/build/outputs/apk/release/*.apk
 
     - name: Create Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: softprops/action-gh-release@v1
       with:
         tag_name: v${{ steps.get_version.outputs.version }}
@@ -90,11 +145,11 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload build reports
+    - name: Upload release build reports
       uses: actions/upload-artifact@v4
       if: failure()
       with:
-        name: build-reports
+        name: build-reports-release
         path: |
           app/build/reports/
           build/reports/
