@@ -206,7 +206,7 @@ private fun SwipeableGroupCard(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(swipeableState.offset.value.roundToInt(), 0) }
-                .background(Surface, RoundedCornerShape(16.dp))
+                .background(Color(0xFFF1F1F1), RoundedCornerShape(20.dp))
                 .swipeable(
                     state = swipeableState,
                     anchors = anchors,

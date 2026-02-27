@@ -119,8 +119,8 @@ fun McpDetailScreen(
                 McpSectionTitle(title = "Server URL")
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Surface)
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
                 ) {
                     Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         BasicTextField(

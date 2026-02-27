@@ -356,8 +356,8 @@ private fun SearchSectionTitle(text: String) {
 private fun SearchCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Surface)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
     ) {
         Column(
             modifier =
@@ -381,8 +381,8 @@ private fun SearchProviderItem(
             Modifier
                 .fillMaxWidth()
                 .pressableScale(pressedScale = 0.98f, onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Surface)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
     ) {
         Row(
             modifier =

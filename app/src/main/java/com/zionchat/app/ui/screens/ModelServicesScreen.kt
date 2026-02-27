@@ -203,8 +203,8 @@ private fun ProviderItem(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .background(Surface, RoundedCornerShape(14.dp))
-            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFFF1F1F1), RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp))
             .pressableScale(pressedScale = 0.98f, onClick = onClick)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -268,7 +268,7 @@ private fun SwipeableConfiguredProviderItem(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(20.dp))
     ) {
         Box(
             modifier = Modifier
@@ -305,7 +305,7 @@ private fun SwipeableConfiguredProviderItem(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(swipeableState.offset.value.roundToInt(), 0) }
-                .background(Surface, RoundedCornerShape(14.dp))
+                .background(Color(0xFFF1F1F1), RoundedCornerShape(20.dp))
                 .swipeable(
                     state = swipeableState,
                     anchors = anchors,

@@ -102,8 +102,8 @@ fun PersonalizationScreen(navController: NavController) {
             SectionTitle(title = stringResource(R.string.personalization_nickname))
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Surface)
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
             ) {
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                     BasicTextField(
@@ -138,8 +138,8 @@ fun PersonalizationScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 280.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Surface)
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
             ) {
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                     BasicTextField(
@@ -177,8 +177,8 @@ fun PersonalizationScreen(navController: NavController) {
             SectionTitle(title = stringResource(R.string.personalization_memory))
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Surface)
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
             ) {
                 Row(
                     modifier = Modifier

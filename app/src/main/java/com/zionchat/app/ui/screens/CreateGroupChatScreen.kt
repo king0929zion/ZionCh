@@ -248,8 +248,8 @@ private fun GroupNameSection(name: String, onValueChange: (String) -> Unit) {
         )
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Surface)
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
         ) {
             BasicTextField(
                 value = name,
@@ -342,8 +342,8 @@ private fun CoordinatorSection(
         )
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Surface)
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
         ) {
             Row(
                 modifier = Modifier
@@ -414,8 +414,8 @@ private fun MembersSection(
         }
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Surface)
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
         ) {
             if (bots.isEmpty()) {
                 Text(

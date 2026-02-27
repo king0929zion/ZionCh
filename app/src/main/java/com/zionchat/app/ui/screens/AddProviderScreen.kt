@@ -407,7 +407,7 @@ fun AddProviderScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
-                        .background(Surface, RoundedCornerShape(20.dp))
+                        .background(Color(0xFFF1F1F1), RoundedCornerShape(20.dp))
                         .pressableScale(pressedScale = 0.98f) {
                             scope.launch {
                                 repository.upsertProvider(
@@ -661,7 +661,7 @@ fun FormField(
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = Surface,
+            color = Color(0xFFF1F1F1),
             shape = RoundedCornerShape(20.dp)
         ) {
             TextField(

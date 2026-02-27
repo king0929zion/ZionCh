@@ -238,9 +238,9 @@ fun AboutGroup(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(0.dp, RoundedCornerShape(16.dp)),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Surface)
+            .shadow(0.dp, RoundedCornerShape(20.dp)),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
         ) {
             Column {
                 content()

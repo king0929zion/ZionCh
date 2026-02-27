@@ -234,8 +234,8 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = Surface)
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
                     ) {
                         BasicTextField(
                             value = name,
@@ -281,8 +281,8 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                 )
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Surface)
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
                 ) {
                     Row(
                         modifier = Modifier
@@ -330,8 +330,8 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                 )
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Surface)
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
                 ) {
                     BasicTextField(
                         value = systemPrompt,

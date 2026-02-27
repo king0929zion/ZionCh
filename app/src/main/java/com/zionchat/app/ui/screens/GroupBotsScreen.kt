@@ -129,8 +129,8 @@ private fun BotCard(
     androidx.compose.foundation.layout.Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Surface)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFFF1F1F1))
             .pressableScale(pressedScale = 0.98f, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),

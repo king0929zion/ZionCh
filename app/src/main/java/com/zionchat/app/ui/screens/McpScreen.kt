@@ -204,7 +204,7 @@ fun McpListItem(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(20.dp))
     ) {
         Box(
             modifier = Modifier
@@ -240,7 +240,7 @@ fun McpListItem(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(swipeableState.offset.value.roundToInt(), 0) }
-                .background(Surface, RoundedCornerShape(14.dp))
+                .background(Color(0xFFF1F1F1), RoundedCornerShape(20.dp))
                 .swipeable(
                     state = swipeableState,
                     anchors = anchors,
