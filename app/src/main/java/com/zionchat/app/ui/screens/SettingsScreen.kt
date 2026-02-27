@@ -74,9 +74,9 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 private val SettingsPageBackgroundColor = Color(0xFFFCFCFC)
-private val SettingsItemContainerColor = Color(0xFFF3F3F3)
-private val SettingsItemPressedColor = Color(0xFFEAEAEA)
-private val SettingsGroupCornerRadius = 22.dp
+private val SettingsItemContainerColor = Color(0xFFF1F1F1)
+private val SettingsItemPressedColor = Color(0xFFE5E5E5)
+private val SettingsGroupCornerRadius = 26.dp
 private val SettingsItemIconSize = 24.dp
 
 @OptIn(FlowPreview::class)

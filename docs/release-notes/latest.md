@@ -3,6 +3,7 @@
 - 移除未使用的 Vercel 部署与 Runtime APK 打包模块，减少无效依赖与维护成本。
 - 设置页完成新一轮视觉微调：文字取消加粗并小幅放大，同组模块之间改为空白分隔线露出背景，模块底色改为 `#F3F3F3`，圆角进一步增大，页面背景更白。
 - 设置页入口图标统一微调放大（如 Personalization、Language 等），强化可识别性并保持整体版式平衡。
+- 设置页继续细调：分组卡片圆角进一步加大，模块底色加深为更灰的 `#F1F1F1`，按下态同步加深以保持层次一致。
 - CI 构建链路提速：保持每次 push 自动 release，同时在 CI 快速构建模式下关闭 `release` 混淆、资源压缩、PNG crunch、zipAlign 与 release lint 检查。
 - CI 构建卡顿修复：CI Release 构建禁用 `android.enableResourceOptimizations`，跳过 `:app:optimizeReleaseResources` 的超长耗时步骤。
 - CI 并发策略修复：`concurrency.cancel-in-progress` 调整为 `false`，新提交会排队等待，不再自动取消上一个正在执行的构建。
