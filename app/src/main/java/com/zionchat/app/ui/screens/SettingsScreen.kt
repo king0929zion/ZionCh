@@ -1,4 +1,4 @@
-package com.zionchat.app.ui.screens
+﻿package com.zionchat.app.ui.screens
 
 import android.content.Intent
 
@@ -77,6 +77,7 @@ private val SettingsPageBackgroundColor = Color(0xFFFCFCFC)
 private val SettingsItemContainerColor = Color(0xFFF3F3F3)
 private val SettingsItemPressedColor = Color(0xFFEAEAEA)
 private val SettingsGroupCornerRadius = 22.dp
+private val SettingsItemIconSize = 24.dp
 
 @OptIn(FlowPreview::class)
 @Composable
@@ -151,7 +152,7 @@ fun SettingsScreen(navController: NavController) {
                 // My ChatGPT 分组
                 SettingsGroup(title = stringResource(R.string.settings_group_my_chatgpt), itemCount = 2) {
                     SettingsItem(
-                        icon = { Icon(AppIcons.Personalization, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        icon = { Icon(AppIcons.Personalization, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_personalization),
                         showDivider = true,
                         onClick = { navController.navigate("personalization") }
@@ -161,7 +162,7 @@ fun SettingsScreen(navController: NavController) {
                             Icon(
                                 painter = rememberResourceDrawablePainter(R.drawable.ic_apps),
                                 contentDescription = null,
-                                modifier = Modifier.size(22.dp),
+                                modifier = Modifier.size(SettingsItemIconSize),
                                 tint = Color.Unspecified
                             )
                         },
@@ -176,7 +177,7 @@ fun SettingsScreen(navController: NavController) {
                         appearanceAnchorY = coordinates.positionInWindow().y
                     }) {
                         SettingsItem(
-                            icon = { Icon(AppIcons.Appearance, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                            icon = { Icon(AppIcons.Appearance, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                             label = stringResource(R.string.settings_item_appearance),
                             value = when(selectedAppearance) {
                                 "system" -> stringResource(R.string.appearance_option_system)
@@ -197,7 +198,7 @@ fun SettingsScreen(navController: NavController) {
                         accentColorAnchorHeight = coordinates.size.height.toFloat()
                     }) {
                         SettingsItem(
-                            icon = { Icon(AppIcons.Accent, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                            icon = { Icon(AppIcons.Accent, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                             label = stringResource(R.string.settings_item_accent_color),
                             value = accentColorLabel,
                             showChevron = true,
@@ -209,7 +210,7 @@ fun SettingsScreen(navController: NavController) {
                         )
                     }
                     SettingsItem(
-                        icon = { Icon(AppIcons.Language, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        icon = { Icon(AppIcons.Language, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_language),
                         value = languageLabel,
                         showChevron = true,
@@ -217,7 +218,7 @@ fun SettingsScreen(navController: NavController) {
                         onClick = { navController.navigate("language") }
                     )
                     SettingsItem(
-                        icon = { Icon(AppIcons.Notifications, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        icon = { Icon(AppIcons.Notifications, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_notifications),
                         showChevron = true,
                         onClick = { }
@@ -230,7 +231,7 @@ fun SettingsScreen(navController: NavController) {
                             Icon(
                                 painter = rememberResourceDrawablePainter(R.drawable.ic_group_chat),
                                 contentDescription = null,
-                                modifier = Modifier.size(22.dp),
+                                modifier = Modifier.size(SettingsItemIconSize),
                                 tint = TextPrimary
                             )
                         },
@@ -240,7 +241,7 @@ fun SettingsScreen(navController: NavController) {
                         onClick = { navController.navigate("group_chats") }
                     )
                     SettingsItem(
-                        icon = { Icon(AppIcons.Bot, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        icon = { Icon(AppIcons.Bot, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_bots),
                         showChevron = true,
                         onClick = { navController.navigate("group_bots") }
@@ -254,7 +255,7 @@ fun SettingsScreen(navController: NavController) {
                             Icon(
                                 painter = rememberResourceDrawablePainter(R.drawable.ic_model),
                                 contentDescription = null,
-                                modifier = Modifier.size(22.dp),
+                                modifier = Modifier.size(SettingsItemIconSize),
                                 tint = Color.Unspecified
                             )
                         },
@@ -269,7 +270,7 @@ fun SettingsScreen(navController: NavController) {
                             Icon(
                                 painter = rememberResourceDrawablePainter(R.drawable.ic_model_services),
                                 contentDescription = null,
-                                modifier = Modifier.size(22.dp),
+                                modifier = Modifier.size(SettingsItemIconSize),
                                 tint = Color.Unspecified
                             )
                         },
@@ -279,14 +280,14 @@ fun SettingsScreen(navController: NavController) {
                         onClick = { navController.navigate("model_services") }
                     )
                     SettingsItem(
-                        icon = { Icon(AppIcons.Globe, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        icon = { Icon(AppIcons.Globe, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_search),
                         showChevron = true,
                         showDivider = true,
                         onClick = { navController.navigate("search_settings") }
                     )
                     SettingsItem(
-                        icon = { Icon(AppIcons.MCPTools, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        icon = { Icon(AppIcons.MCPTools, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_mcp_tools),
                         showChevron = true,
                         showDivider = true,
@@ -297,7 +298,7 @@ fun SettingsScreen(navController: NavController) {
                             Icon(
                                 painter = rememberResourceDrawablePainter(R.drawable.ic_autosoul),
                                 contentDescription = null,
-                                modifier = Modifier.size(22.dp),
+                                modifier = Modifier.size(SettingsItemIconSize),
                                 tint = TextPrimary
                             )
                         },
@@ -310,7 +311,7 @@ fun SettingsScreen(navController: NavController) {
                 // About 分组
                 SettingsGroup(title = stringResource(R.string.about_title), itemCount = 1) {
                     SettingsItem(
-                        icon = { Icon(AppIcons.Info, null, Modifier.size(22.dp), tint = Color.Unspecified) },
+                        icon = { Icon(AppIcons.Info, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                         label = stringResource(R.string.about_title),
                         showChevron = true,
                         onClick = { navController.navigate("about") }
@@ -1230,3 +1231,4 @@ fun AccentColorMenu(
         }
     }
 }
+
