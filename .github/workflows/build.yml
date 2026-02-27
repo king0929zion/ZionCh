@@ -32,6 +32,9 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
 
+    - name: Ensure Gradle wrapper executable
+      run: chmod +x gradlew
+
     - name: Configure signing (optional)
       env:
         SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
@@ -79,16 +82,7 @@ jobs:
       with:
         tag_name: v${{ steps.get_version.outputs.version }}
         name: ZionChat v${{ steps.get_version.outputs.version }}
-        body: |
-          ## ZionChat Android 版本 v${{ steps.get_version.outputs.version }}
-
-          ### 发布说明
-          - 本次版本包含功能更新与稳定性修复。
-          - 详细变更请查看对应提交记录与 PR 说明。
-
-          ### 安装说明
-          - 下载下方 APK 并安装到 Android 设备。
-          - 如系统提示，请开启“允许安装未知来源应用”。
+        body_path: docs/release-notes/latest.md
         files: |
           app/build/outputs/apk/release/*.apk
         draft: false
