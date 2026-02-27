@@ -128,6 +128,7 @@ import com.zionchat.app.data.SavedApp
 import com.zionchat.app.data.WebHostingConfig
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.AppHtmlWebView
+import com.zionchat.app.ui.components.rememberAppHtmlWebViewState
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
@@ -419,81 +420,116 @@ fun AppsScreen(navController: NavController) {
         filterAppsByCategory(sortedApps, selectedCategory)
     }
     val listBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val preloadCandidateApp = remember(visibleApps, sortedApps) {
+        visibleApps.firstOrNull() ?: sortedApps.firstOrNull()
+    }
+    val preloadWebViewState = rememberAppHtmlWebViewState()
+    val preloadDeployUrl = remember(preloadCandidateApp?.deployUrl) {
+        preloadCandidateApp?.deployUrl?.trim()?.takeIf { it.isNotBlank() }
+    }
+    val preloadBaseUrl = remember(preloadCandidateApp?.id) {
+        "https://saved-app.zionchat.local/preload/${preloadCandidateApp?.id.orEmpty()}/"
+    }
+    val preloadSignature = remember(preloadCandidateApp?.id, preloadCandidateApp?.html, preloadDeployUrl) {
+        val app = preloadCandidateApp
+        "apps_preload:${app?.id.orEmpty()}:${app?.html?.hashCode() ?: 0}:${preloadDeployUrl.orEmpty()}"
+    }
 
-    Scaffold(
-        containerColor = Color.White,
-        topBar = {
-            AppsTopBar(
-                onBack = { navController.popBackStack() },
-                onAdd = { navController.navigate("chat") }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White)
-                .padding(top = padding.calculateTopPadding())
-        ) {
-            AppsCategoryTabs(
-                selected = selectedCategory,
-                onSelect = { selectedCategory = it }
-            )
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = listBottomInset + 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = Color.White,
+            topBar = {
+                AppsTopBar(
+                    onBack = { navController.popBackStack() },
+                    onAdd = { navController.navigate("chat") }
+                )
+            }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White)
+                    .padding(top = padding.calculateTopPadding())
             ) {
-                if (!runtimeShellInstalled) {
-                    item(key = "runtime_shell_required") {
-                        RuntimeShellInstallRow(onClick = { openRuntimeShellDownload() })
-                    }
-                }
+                AppsCategoryTabs(
+                    selected = selectedCategory,
+                    onSelect = { selectedCategory = it }
+                )
 
-                if (visibleApps.isEmpty()) {
-                    item(key = "apps_empty_state") {
-                        Box(
-                            modifier = Modifier.fillParentMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            AppsListEmptyState(
-                                category = selectedCategory,
-                                onCreate = { navController.navigate("chat") }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = listBottomInset + 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    if (!runtimeShellInstalled) {
+                        item(key = "runtime_shell_required") {
+                            RuntimeShellInstallRow(onClick = { openRuntimeShellDownload() })
+                        }
+                    }
+
+                    if (visibleApps.isEmpty()) {
+                        item(key = "apps_empty_state") {
+                            Box(
+                                modifier = Modifier.fillParentMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AppsListEmptyState(
+                                    category = selectedCategory,
+                                    onCreate = { navController.navigate("chat") }
+                                )
+                            }
+                        }
+                    } else {
+                        items(
+                            items = visibleApps,
+                            key = { app -> app.id }
+                        ) { app ->
+                            SavedAppListRow(
+                                app = app,
+                                isLaunching = openingAppId == app.id,
+                                isOpened = openedSwipeAppId == app.id,
+                                onOpenChanged = { opened ->
+                                    openedSwipeAppId =
+                                        when {
+                                            opened -> app.id
+                                            openedSwipeAppId == app.id -> null
+                                            else -> openedSwipeAppId
+                                        }
+                                },
+                                onClick = {
+                                    if (openingAppId != null) return@SavedAppListRow
+                                    openingAppId = app.id
+                                    selectedSavedApp = app
+                                    openingAppId = null
+                                },
+                                onDelete = {
+                                    openedSwipeAppId = null
+                                    pendingDeleteApp = app
+                                }
                             )
                         }
                     }
-                } else {
-                    items(
-                        items = visibleApps,
-                        key = { app -> app.id }
-                    ) { app ->
-                        SavedAppListRow(
-                            app = app,
-                            isLaunching = openingAppId == app.id,
-                            isOpened = openedSwipeAppId == app.id,
-                            onOpenChanged = { opened ->
-                                openedSwipeAppId =
-                                    when {
-                                        opened -> app.id
-                                        openedSwipeAppId == app.id -> null
-                                        else -> openedSwipeAppId
-                                    }
-                            },
-                            onClick = {
-                                if (openingAppId != null) return@SavedAppListRow
-                                openingAppId = app.id
-                                selectedSavedApp = app
-                                openingAppId = null
-                            },
-                            onDelete = {
-                                openedSwipeAppId = null
-                                pendingDeleteApp = app
-                            }
-                        )
-                    }
                 }
             }
+        }
+
+        if (preloadCandidateApp != null) {
+            AppHtmlWebView(
+                modifier = Modifier
+                    .size(1.dp)
+                    .align(Alignment.BottomEnd)
+                    .graphicsLayer { alpha = 0f },
+                state = preloadWebViewState,
+                contentSignature = preloadSignature,
+                html = if (preloadDeployUrl.isNullOrBlank()) preloadCandidateApp.html else null,
+                baseUrl = preloadBaseUrl,
+                url = preloadDeployUrl,
+                enableCookies = true,
+                enableThirdPartyCookies = true,
+                transparentBackground = true,
+                backgroundColor = Color.Transparent,
+                preRenderEnabled = true
+            )
         }
     }
 

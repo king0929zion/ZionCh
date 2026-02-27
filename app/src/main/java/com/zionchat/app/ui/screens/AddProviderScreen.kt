@@ -703,7 +703,7 @@ fun TypeOption(
 ) {
     val shape = RoundedCornerShape(16.dp)
     val bgColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (selected) TextPrimary else Color(0xFFF5F5F7),
+        targetValue = if (selected) TextPrimary else Color.White,
         animationSpec = tween(durationMillis = 180),
         label = "type_option_bg"
     )

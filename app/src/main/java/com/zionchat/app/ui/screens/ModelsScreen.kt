@@ -356,7 +356,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                         ModelConfig(
                             id = buildModelStorageId(provider.id, id.trim()),
                             displayName = name.trim().ifBlank { id.trim() },
-                            enabled = false,
+                            enabled = true,
                             providerId = provider.id
                         )
                     )
@@ -487,8 +487,9 @@ private fun ModelItem(
     onToggle: () -> Unit,
     onClick: () -> Unit
 ) {
+    val neutralModelCard = Color(0xFFF2F2F2)
     val cardColor by animateColorAsState(
-        targetValue = if (model.enabled) GrayLighter else GrayLight,
+        targetValue = neutralModelCard,
         animationSpec = tween(durationMillis = 180),
         label = "model_item_bg"
     )
@@ -943,13 +944,14 @@ private fun ModelConnectionTestModal(
                                     val selected = selectedModelId == model.id
                                     val result = results[model.id]
                                     val isRunning = testingModelId == model.id
+                                    val neutralOptionCard = Color(0xFFF2F2F2)
 
                                     Column(
                                         modifier =
                                             Modifier
                                                 .fillMaxWidth()
                                                 .background(
-                                                    if (selected) GrayLight else GrayLighter,
+                                                    neutralOptionCard,
                                                     RoundedCornerShape(12.dp)
                                                 )
                                                 .border(

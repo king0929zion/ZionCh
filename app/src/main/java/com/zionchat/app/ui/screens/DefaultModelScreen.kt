@@ -52,6 +52,10 @@ private enum class DefaultModelType(
     APP_BUILDER(title = "App Development", required = false, selectorTitle = "Select App Development")
 }
 
+private val NeutralSelectorCard = Color(0xFFF3F3F3)
+private val NeutralSelectorDivider = Color(0xFFE4E4E4)
+private val NeutralHandle = Color(0xFFE0E0E0)
+
 @Composable
 fun DefaultModelScreen(navController: NavController) {
     val repository = LocalAppRepository.current
@@ -293,7 +297,7 @@ private fun DefaultModelSelectorModal(
                             modifier = Modifier
                                 .width(40.dp)
                                 .height(4.dp)
-                                .background(GrayLight, RoundedCornerShape(2.dp))
+                                .background(NeutralHandle, RoundedCornerShape(2.dp))
                         )
                     }
 
@@ -319,7 +323,7 @@ private fun DefaultModelSelectorModal(
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
-                                colors = CardDefaults.cardColors(containerColor = GrayLighter)
+                                colors = CardDefaults.cardColors(containerColor = NeutralSelectorCard)
                             ) {
                                 DefaultModelNoneOptionRow(
                                     selected = selectedModelId.isNullOrBlank(),
@@ -340,7 +344,7 @@ private fun DefaultModelSelectorModal(
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = CardDefaults.cardColors(containerColor = GrayLighter)
+                                    colors = CardDefaults.cardColors(containerColor = NeutralSelectorCard)
                                 ) {
                                     providerModels.forEachIndexed { index, model ->
                                         DefaultModelOptionRow(
@@ -353,7 +357,7 @@ private fun DefaultModelSelectorModal(
                                             onClick = { onSelect(model.id) }
                                         )
                                         if (index != providerModels.lastIndex) {
-                                            Divider(color = GrayLight)
+                                            Divider(color = NeutralSelectorDivider)
                                         }
                                     }
                                 }
