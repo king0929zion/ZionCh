@@ -16,6 +16,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      CI_FAST_BUILD: "true"
 
     steps:
     - name: Checkout code
@@ -29,8 +31,6 @@ jobs:
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
-      with:
-        gradle-version: 9.1.0
 
     - name: Configure signing (optional)
       env:
@@ -50,11 +50,11 @@ jobs:
         fi
 
     - name: Build Release APK
-      run: gradle assembleRelease --stacktrace --parallel --build-cache
+      run: ./gradlew :app:assembleRelease --stacktrace --build-cache --configuration-cache -PCI_FAST_BUILD=true
 
     - name: Run tests
       if: github.event_name == 'pull_request'
-      run: gradle test --stacktrace --parallel --build-cache
+      run: ./gradlew :app:testDebugUnitTest --stacktrace --build-cache --configuration-cache -PCI_FAST_BUILD=true
       continue-on-error: true
 
     - name: Get version from build.gradle
@@ -69,6 +69,7 @@ jobs:
       if: always()
       with:
         name: ZionChat-v${{ steps.get_version.outputs.version }}
+        compression-level: 0
         path: |
           app/build/outputs/apk/release/*.apk
 
