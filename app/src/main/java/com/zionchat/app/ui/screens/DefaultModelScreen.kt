@@ -16,7 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -357,7 +357,7 @@ private fun DefaultModelSelectorModal(
                                             onClick = { onSelect(model.id) }
                                         )
                                         if (index != providerModels.lastIndex) {
-                                            Divider(color = NeutralSelectorDivider)
+                                            HorizontalDivider(color = NeutralSelectorDivider)
                                         }
                                     }
                                 }
@@ -453,3 +453,4 @@ private fun groupModelsByProvider(
         .sortedBy { it.first }
         .map { (name, list) -> name to list.sortedBy { it.displayName.lowercase() } }
 }
+

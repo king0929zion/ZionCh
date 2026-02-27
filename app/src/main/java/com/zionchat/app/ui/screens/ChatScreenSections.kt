@@ -1,4 +1,4 @@
-﻿package com.zionchat.app.ui.screens
+package com.zionchat.app.ui.screens
 
 import android.app.DownloadManager
 import android.content.Context
@@ -235,6 +235,7 @@ fun MessageItem(
     onDelete: (conversationId: String, messageId: String) -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
 
     val isUser = message.role == "user"
@@ -2552,7 +2553,7 @@ internal fun ToolMenuPanel(
                                     }
 
                                     Spacer(modifier = Modifier.height(16.dp))
-                                    Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
+                                    HorizontalDivider(color = GrayLight, modifier = Modifier.fillMaxWidth())
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     val webSearchSubtitle =
@@ -2920,7 +2921,7 @@ internal fun ChatModelPickerSheetContent(
                                             )
                                         }
                                         if (index != providerModels.lastIndex) {
-                                            Divider(color = GrayLight)
+                                            HorizontalDivider(color = GrayLight)
                                         }
                                     }
                                 }
@@ -3394,7 +3395,7 @@ internal suspend fun executeAutoSoulTask(
                 }
             val statusText =
                 when {
-                    success -> finishMessage ?: "任务结束"
+                    success -> finishMessage.orEmpty()
                     exhaustedRounds -> "达到最大执行轮次"
                     else -> stepTraces.lastOrNull()?.statusText?.ifBlank { "执行失败" } ?: "执行失败"
                 }
@@ -5678,7 +5679,7 @@ internal fun resolveAutoSoulTaskPrompt(
                 when (raw) {
                     is String -> raw.trim().takeIf { it.isNotBlank() }
                     is Number, is Boolean -> raw.toString()
-                    else -> raw?.toString()?.trim()?.takeIf { it.isNotBlank() }
+                    else -> raw.toString().trim().takeIf { it.isNotBlank() }
                 }
             }.firstOrNull()
             .orEmpty()
@@ -5809,7 +5810,7 @@ internal fun parseAppDevToolSpec(arguments: Map<String, Any?>): AppDevToolSpec? 
                 val value = arguments.entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value ?: return@mapNotNull null
                 when (value) {
                     is String -> value.trim().takeIf { it.isNotBlank() }
-                    else -> value?.toString()?.trim()?.takeIf { it.isNotBlank() }
+                    else -> value.toString().trim().takeIf { it.isNotBlank() }
                 }
             }
             .firstOrNull()
@@ -7703,4 +7704,5 @@ internal suspend fun generateConversationTitle(
     val firstLine = stripMarkdownCodeFences(raw).lineSequence().firstOrNull().orEmpty().trim()
     return firstLine.takeIf { it.isNotBlank() }
 }
+
 

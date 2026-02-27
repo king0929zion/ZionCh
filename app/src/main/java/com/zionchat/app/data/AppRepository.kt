@@ -305,8 +305,9 @@ class AppRepository(context: Context) {
         if (name.isBlank() || conversationId.isBlank()) return null
 
         // 支持旧的memberModelIds字段迁移到新的memberBotIds
+        @Suppress("DEPRECATION")
         val botIds =
-            (group.memberBotIds.takeIf { it.isNotEmpty() } 
+            (group.memberBotIds.takeIf { it.isNotEmpty() }
                 ?: group.memberModelIds) // 向后兼容
                 .mapNotNull { item ->
                     val key = safeTrim(item)

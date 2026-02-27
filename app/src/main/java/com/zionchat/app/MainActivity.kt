@@ -38,6 +38,7 @@ import okhttp3.OkHttpClient
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
+    @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 

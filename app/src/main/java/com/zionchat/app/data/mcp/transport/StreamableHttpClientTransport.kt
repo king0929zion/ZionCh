@@ -19,7 +19,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import io.ktor.utils.io.readUTF8Line
+import io.ktor.utils.io.readLine
 import io.modelcontextprotocol.kotlin.sdk.shared.AbstractTransport
 import io.modelcontextprotocol.kotlin.sdk.shared.TransportSendOptions
 import io.modelcontextprotocol.kotlin.sdk.types.JSONRPCMessage
@@ -301,7 +301,7 @@ class StreamableHttpClientTransport(
         }
 
         while (!channel.isClosedForRead) {
-            val line = channel.readUTF8Line() ?: break
+            val line = channel.readLine() ?: break
             if (line.isEmpty()) {
                 dispatch(id = id, eventName = eventName, data = sb.toString())
                 id = null
@@ -324,4 +324,5 @@ class StreamableHttpClientTransport(
         return runCatching { ContentType.parse(raw).withoutParameters() }.getOrNull()
     }
 }
+
 

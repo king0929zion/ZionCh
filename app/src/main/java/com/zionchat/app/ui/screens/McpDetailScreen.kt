@@ -33,6 +33,7 @@ import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -42,7 +43,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun McpDetailScreen(
     navController: NavController,
@@ -374,7 +375,7 @@ fun McpConnectionCard(mcp: McpConfig) {
             )
             
             if (mcp.description.isNotBlank()) {
-                Divider(color = GrayLighter, thickness = 1.dp)
+                HorizontalDivider(color = GrayLighter, thickness = 1.dp)
                 ConnectionInfoRow(
                     label = "Description",
                     value = mcp.description
@@ -757,3 +758,4 @@ fun ParameterItem(param: com.zionchat.app.data.McpToolParameter) {
         }
     }
 }
+

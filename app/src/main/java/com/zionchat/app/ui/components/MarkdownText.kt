@@ -27,7 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -140,7 +140,7 @@ private fun MarkdownTableBlock(
             }
         }
         if (table.rows.isNotEmpty()) {
-            Divider(color = GrayLight, thickness = 0.75.dp)
+            HorizontalDivider(color = GrayLight, thickness = 0.75.dp)
         }
 
         table.rows.forEachIndexed { rowIndex, row ->
@@ -155,7 +155,7 @@ private fun MarkdownTableBlock(
                 }
             }
             if (rowIndex < table.rows.lastIndex) {
-                Divider(color = GrayLight, thickness = 0.75.dp)
+                HorizontalDivider(color = GrayLight, thickness = 0.75.dp)
             }
         }
     }
@@ -208,7 +208,7 @@ private fun MarkdownBlock(
         is FencedCodeBlock -> MarkdownCodeBlock(node.literal, textStyle, node.info)
         is IndentedCodeBlock -> MarkdownCodeBlock(node.literal, textStyle)
         is BlockQuote -> MarkdownBlockQuote(node, textStyle, linkColor)
-        is ThematicBreak -> Divider(color = GrayLight, thickness = 1.dp)
+        is ThematicBreak -> HorizontalDivider(color = GrayLight, thickness = 1.dp)
         else -> {
             val literal = (node as? MarkdownTextNode)?.literal.orEmpty()
             if (literal.isNotBlank()) {
@@ -262,6 +262,7 @@ private fun MarkdownParagraph(
     }
 }
 
+@Suppress("DEPRECATION")
 @Composable
 private fun AnnotatedMarkdownText(
     text: AnnotatedString,
@@ -831,3 +832,4 @@ private fun buildInlineAnnotatedString(parent: Node, linkColor: Color): Annotate
     appendInline(parent)
     return builder.toAnnotatedString()
 }
+

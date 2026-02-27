@@ -452,7 +452,7 @@ fun AddDeviceProviderScreen(
                         .then(
                             if (canManageModels) {
                                 Modifier.pressableScale(pressedScale = 0.985f) {
-                                    val id = activeProviderId ?: return@pressableScale
+                                    val id = activeProviderId
                                     navController.navigate("models?providerId=$id")
                                 }
                             } else {
@@ -483,3 +483,4 @@ fun AddDeviceProviderScreen(
         }
     }
 }
+

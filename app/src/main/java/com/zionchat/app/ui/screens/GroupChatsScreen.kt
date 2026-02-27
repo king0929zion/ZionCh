@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.zionchat.app.ui.screens
 
 import androidx.compose.foundation.background

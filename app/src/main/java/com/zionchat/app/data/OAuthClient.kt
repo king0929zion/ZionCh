@@ -40,7 +40,7 @@ class OAuthClient {
                         .build()
 
                 client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
+                    val raw = response.body.string()
                     if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
                     val parsed = gson.fromJson(raw, GitHubDeviceCodeResponse::class.java)
 
@@ -103,7 +103,7 @@ class OAuthClient {
                             .build()
 
                     client.newCall(request).execute().use { response ->
-                        val raw = response.body?.string().orEmpty()
+                        val raw = response.body.string()
                         if (!response.isSuccessful) {
                             error("HTTP ${response.code}: $raw")
                         }
@@ -225,7 +225,7 @@ class OAuthClient {
                         .build()
 
                 client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
+                    val raw = response.body.string()
                     if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
                     val parsed = gson.fromJson(raw, QwenDeviceCodeResponse::class.java)
                     val authUrl =
@@ -294,7 +294,7 @@ class OAuthClient {
                         .build()
 
                 client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
+                    val raw = response.body.string()
                     if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
 
                     val parsed = gson.fromJson(raw, CodexTokenResponse::class.java)
@@ -354,7 +354,7 @@ class OAuthClient {
 
                 val token =
                     client.newCall(request).execute().use { response ->
-                        val raw = response.body?.string().orEmpty()
+                        val raw = response.body.string()
                         if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
                         gson.fromJson(raw, IFlowTokenResponse::class.java)
                     }
@@ -405,7 +405,7 @@ class OAuthClient {
                         .build()
 
                 client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
+                    val raw = response.body.string()
                     if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
 
                     val parsed = gson.fromJson(raw, CodexTokenResponse::class.java)
@@ -467,7 +467,7 @@ class OAuthClient {
 
                 val tokenResp =
                     client.newCall(request).execute().use { response ->
-                        val raw = response.body?.string().orEmpty()
+                        val raw = response.body.string()
                         if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
                         gson.fromJson(raw, IFlowTokenResponse::class.java)
                     }
@@ -527,7 +527,7 @@ class OAuthClient {
 
                     var shouldRetry = false
                     client.newCall(request).execute().use { response ->
-                        val raw = response.body?.string().orEmpty()
+                        val raw = response.body.string()
                         if (response.isSuccessful) {
                             return@runCatching parseQwenTokenResult(raw)
                         }
@@ -585,7 +585,7 @@ class OAuthClient {
                         .build()
 
                 client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
+                    val raw = response.body.string()
                     if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
                     val parsed = parseQwenTokenResult(raw)
                     parsed.copy(refreshToken = parsed.refreshToken ?: token)
@@ -598,7 +598,7 @@ class OAuthClient {
         val url = "${IFLOW_USERINFO_URL}?accessToken=${Uri.encode(accessToken)}"
         val request = Request.Builder().url(url).get().addHeader("Accept", "application/json").build()
         return client.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
+            val raw = response.body.string()
             if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
             val parsed = gson.fromJson(raw, IFlowUserInfoResponse::class.java)
             if (!parsed.success) error("iFlow user info returned success=false")
@@ -899,3 +899,4 @@ class OAuthClient {
         private const val GITHUB_POLLING_SAFETY_MARGIN_MS = 3000L
     }
 }
+

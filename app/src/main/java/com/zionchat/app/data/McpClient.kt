@@ -21,6 +21,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.ClassDiscriminatorMode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -34,6 +35,7 @@ import java.util.concurrent.TimeUnit
 import com.zionchat.app.data.mcp.transport.SseClientTransport
 import com.zionchat.app.data.mcp.transport.StreamableHttpClientTransport
 
+@OptIn(ExperimentalSerializationApi::class)
 class McpClient {
     private val okHttpClient: OkHttpClient =
         OkHttpClient.Builder()
@@ -75,7 +77,7 @@ class McpClient {
         return withContext(Dispatchers.IO) {
             runCatching {
                 withConnectedClient(config) { client ->
-                    val tools = client.listTools()?.tools.orEmpty()
+                    val tools = client.listTools().tools
                     tools.map { tool -> tool.toUiTool() }
                 }
             }
@@ -310,3 +312,4 @@ class McpClient {
         }
     }
 }
+

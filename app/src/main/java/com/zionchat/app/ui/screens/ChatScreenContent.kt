@@ -1,4 +1,4 @@
-﻿package com.zionchat.app.ui.screens
+package com.zionchat.app.ui.screens
 
 import android.app.DownloadManager
 import android.content.Context
@@ -722,7 +722,7 @@ internal fun ChatScreenContent(
         val resultObj = runCatching { JsonParser.parseString(decoded).asJsonObject }.getOrNull()
         val ok = resultObj?.get("ok")?.asBoolean == true
         return if (ok) {
-            true to (resultObj?.get("text")?.asString?.trim().orEmpty().ifBlank { "clicked" })
+            true to (resultObj.get("text")?.asString?.trim().orEmpty().ifBlank { "clicked" })
         } else {
             false to (resultObj?.get("error")?.asString?.trim().orEmpty().ifBlank { "click_failed" })
         }
@@ -815,7 +815,7 @@ internal fun ChatScreenContent(
         val resultObj = runCatching { JsonParser.parseString(decoded).asJsonObject }.getOrNull()
         val ok = resultObj?.get("ok")?.asBoolean == true
         return if (ok) {
-            true to (resultObj?.get("name")?.asString?.trim().orEmpty().ifBlank { fileName })
+            true to (resultObj.get("name")?.asString?.trim().orEmpty().ifBlank { fileName })
         } else {
             false to (resultObj?.get("error")?.asString?.trim().orEmpty().ifBlank { "upload_failed" })
         }
@@ -4220,8 +4220,8 @@ internal fun ChatScreenContent(
                 }
             }
 
-            if (hasActiveAutoBrowserSession && activeAutoBrowserSession != null) {
-                val session = activeAutoBrowserSession
+            if (hasActiveAutoBrowserSession) {
+                val session = requireNotNull(activeAutoBrowserSession)
                 val webViewState =
                     autoBrowserWebViewStates.getOrPut(session.conversationId) { AppHtmlWebViewState() }
                 val isExpanded = showAutoBrowserPreview
@@ -4668,7 +4668,7 @@ private data class GroupDispatchOutcome(
 private fun buildCurrentSystemTimeText(nowMs: Long = System.currentTimeMillis()): String {
     val formatter = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
     formatter.timeZone = java.util.TimeZone.getDefault()
-    val zone = formatter.timeZone?.id?.trim().orEmpty()
+    val zone = formatter.timeZone.id.trim()
     val value = formatter.format(java.util.Date(nowMs))
     return if (zone.isBlank()) value else "$value ($zone)"
 }
@@ -4974,3 +4974,4 @@ private suspend fun runGroupChatDispatch(
         }
     return GroupDispatchOutcome(replies = replies, nextRoundRobinCursor = nextCursor, warning = null)
 }
+

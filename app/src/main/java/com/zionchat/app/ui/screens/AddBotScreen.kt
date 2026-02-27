@@ -673,7 +673,7 @@ private fun BotModelSelectorModal(
                                             )
                                         }
                                         if (index != providerModels.lastIndex) {
-                                            androidx.compose.material3.Divider(
+                                            androidx.compose.material3.HorizontalDivider(
                                                 color = GrayLight,
                                                 modifier = Modifier.padding(horizontal = 16.dp)
                                             )
@@ -706,3 +706,4 @@ private fun copyImageToApp(context: android.content.Context, uri: Uri): String {
     
     return file.absolutePath
 }
+

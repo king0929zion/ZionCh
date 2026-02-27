@@ -23,7 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -94,6 +94,7 @@ private const val DEFAULT_AUTOSOUL_SCRIPT = """
 fun AutoSoulScreen(navController: NavController) {
     val repository = LocalAppRepository.current
     val context = LocalContext.current
+    @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val providers by repository.providersFlow.collectAsState(initial = emptyList())
@@ -217,7 +218,7 @@ fun AutoSoulScreen(navController: NavController) {
                         showToast(openedSettingsText)
                     }
                 )
-                Divider(color = GrayLight)
+                HorizontalDivider(color = GrayLight)
                 AutoSoulPermissionRow(
                     title = stringResource(R.string.autosoul_permission_shizuku),
                     subtitle =
@@ -237,7 +238,7 @@ fun AutoSoulScreen(navController: NavController) {
                         }
                     }
                 )
-                Divider(color = GrayLight)
+                HorizontalDivider(color = GrayLight)
                 AutoSoulPermissionRow(
                     title = stringResource(R.string.autosoul_permission_overlay),
                     subtitle = stringResource(R.string.autosoul_permission_overlay_desc),
@@ -248,7 +249,7 @@ fun AutoSoulScreen(navController: NavController) {
                         showToast(openedSettingsText)
                     }
                 )
-                Divider(color = GrayLight)
+                HorizontalDivider(color = GrayLight)
                 AutoSoulPermissionRow(
                     title = stringResource(R.string.autosoul_permission_notification),
                     subtitle = stringResource(R.string.autosoul_permission_notification_desc),
@@ -408,7 +409,7 @@ fun AutoSoulScreen(navController: NavController) {
                         )
                     }
                 }
-                Divider(color = GrayLight)
+                HorizontalDivider(color = GrayLight)
                 if (logs.isEmpty()) {
                     Text(
                         text = stringResource(R.string.autosoul_logs_empty),
@@ -720,7 +721,7 @@ private fun AutoSoulVisionModelPickerContent(
                                     )
                                 }
                                 if (index != providerModels.lastIndex) {
-                                    Divider(color = GrayLight)
+                                    HorizontalDivider(color = GrayLight)
                                 }
                             }
                         }
@@ -760,3 +761,4 @@ private fun groupAutoSoulModelsByProvider(
 
     return grouped.map { it.key to it.value.toList() }
 }
+

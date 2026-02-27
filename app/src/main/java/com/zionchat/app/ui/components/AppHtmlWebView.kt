@@ -1,4 +1,6 @@
-﻿package com.zionchat.app.ui.components
+@file:Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+
+package com.zionchat.app.ui.components
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
@@ -302,7 +304,7 @@ fun AppHtmlWebView(
                     runtimeIssueCallback?.invoke(detail)
                 }
 
-                @Suppress("DEPRECATION")
+                @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
                 override fun onReceivedError(
                     view: WebView?,
                     errorCode: Int,
@@ -446,3 +448,4 @@ fun AppHtmlWebView(
 
     }
 }
+

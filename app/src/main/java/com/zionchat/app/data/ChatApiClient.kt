@@ -211,7 +211,7 @@ class ChatApiClient {
                 .post(body.toRequestBody(jsonMediaType))
                 .build()
         return grokAdminClient.newCall(request).execute().use { response ->
-            response.code to response.body?.string().orEmpty()
+            response.code to response.body.string()
         }
     }
 
@@ -685,10 +685,10 @@ class ChatApiClient {
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                val raw = response.body?.string().orEmpty()
+                val raw = response.body.string()
                 throw IllegalStateException("HTTP ${response.code}: $raw")
             }
-            val source = response.body?.source() ?: throw IllegalStateException("Response body is null")
+            val source = response.body.source()
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: continue
                 val responseObject = extractGrokReverseResponseObject(line) ?: continue
@@ -753,10 +753,10 @@ class ChatApiClient {
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                val raw = response.body?.string().orEmpty()
+                val raw = response.body.string()
                 throw IllegalStateException("HTTP ${response.code}: $raw")
             }
-            val source = response.body?.source() ?: throw IllegalStateException("Response body is null")
+            val source = response.body.source()
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: continue
                 normalizeGrokReverseStreamLine(line)?.let { normalized ->
@@ -1187,11 +1187,11 @@ class ChatApiClient {
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                val raw = response.body?.string().orEmpty()
+                val raw = response.body.string()
                 throw IllegalStateException("HTTP ${response.code}: $raw")
             }
 
-            val source = response.body?.source() ?: throw IllegalStateException("Response body is null")
+            val source = response.body.source()
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: continue
                 val responseObject = extractGrokReverseResponseObject(line) ?: continue
@@ -1282,7 +1282,7 @@ class ChatApiClient {
                 .build()
 
         webSearchClient.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
+            val raw = response.body.string()
             if (!response.isSuccessful) {
                 error("Bing HTTP ${response.code}: $raw")
             }
@@ -1336,7 +1336,7 @@ class ChatApiClient {
                 .build()
 
         webSearchClient.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
+            val raw = response.body.string()
             if (!response.isSuccessful) {
                 error("Exa HTTP ${response.code}: $raw")
             }
@@ -1389,7 +1389,7 @@ class ChatApiClient {
                 .build()
 
         webSearchClient.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
+            val raw = response.body.string()
             if (!response.isSuccessful) {
                 error("Tavily HTTP ${response.code}: $raw")
             }
@@ -1443,7 +1443,7 @@ class ChatApiClient {
                 .build()
 
         webSearchClient.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
+            val raw = response.body.string()
             if (!response.isSuccessful) {
                 error("Linkup HTTP ${response.code}: $raw")
             }
@@ -1558,7 +1558,7 @@ class ChatApiClient {
                         }
 
                         client.newCall(requestBuilder.build()).execute().use { response ->
-                            val raw = response.body?.string().orEmpty()
+                            val raw = response.body.string()
                             if (!response.isSuccessful) {
                                 error("HTTP ${response.code}: $raw")
                             }
@@ -1614,7 +1614,7 @@ class ChatApiClient {
             val ids =
                 runCatching {
                     client.newCall(request).execute().use { response ->
-                        val raw = response.body?.string().orEmpty()
+                        val raw = response.body.string()
                         if (!response.isSuccessful) return@use emptyList<String>()
                         val parsed = parseCodexModelsResponse(raw)
                         if (parsed.isNotEmpty()) {
@@ -1744,7 +1744,7 @@ class ChatApiClient {
 
         return runCatching {
             client.newCall(requestBuilder.build()).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
+                val raw = response.body.string()
                 if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
                 val ids = parseModelIdsFromJson(raw).distinct()
                 if (ids.isNotEmpty()) ids else QWEN_CODE_DEFAULT_MODELS
@@ -1851,7 +1851,7 @@ class ChatApiClient {
                         val responseToUse =
                             if (!initialResponse.isSuccessful && fallbackBodyWithoutThinkingParams != null) {
                                 val initialCode = initialResponse.code
-                                val initialErrorBody = initialResponse.body?.string().orEmpty()
+                                val initialErrorBody = initialResponse.body.string()
                                 val shouldRetryWithoutParam =
                                     shouldRetryWithoutEnableThinking(initialCode, initialErrorBody)
                                 initialResponse.close()
@@ -1863,7 +1863,7 @@ class ChatApiClient {
                                     client.newCall(buildRequest(fallbackBodyWithoutThinkingParams)).execute()
                                 if (!fallbackResponse.isSuccessful) {
                                     val fallbackCode = fallbackResponse.code
-                                    val fallbackErrorBody = fallbackResponse.body?.string().orEmpty()
+                                    val fallbackErrorBody = fallbackResponse.body.string()
                                     fallbackResponse.close()
                                     throw IllegalStateException("HTTP $fallbackCode @ $url: $fallbackErrorBody")
                                 }
@@ -1873,7 +1873,7 @@ class ChatApiClient {
                             }
 
                         responseToUse.use { response ->
-                            val raw = response.body?.string().orEmpty()
+                            val raw = response.body.string()
                             if (!response.isSuccessful) {
                                 error("HTTP ${response.code} @ $url: $raw")
                             }
@@ -2022,7 +2022,7 @@ class ChatApiClient {
                 val responseToUse =
                     if (!initialResponse.isSuccessful && fallbackBodyWithoutThinkingParams != null) {
                         val initialCode = initialResponse.code
-                        val initialErrorBody = initialResponse.body?.string().orEmpty()
+                        val initialErrorBody = initialResponse.body.string()
                         val shouldRetryWithoutParam =
                             shouldRetryWithoutEnableThinking(initialCode, initialErrorBody)
                         initialResponse.close()
@@ -2034,7 +2034,7 @@ class ChatApiClient {
                             client.newCall(buildStreamRequest(fallbackBodyWithoutThinkingParams)).execute()
                         if (!fallbackResponse.isSuccessful) {
                             val fallbackCode = fallbackResponse.code
-                            val fallbackErrorBody = fallbackResponse.body?.string().orEmpty()
+                            val fallbackErrorBody = fallbackResponse.body.string()
                             fallbackResponse.close()
                             throw IllegalStateException("HTTP $fallbackCode @ $url: $fallbackErrorBody")
                         }
@@ -2045,13 +2045,13 @@ class ChatApiClient {
 
                 responseToUse.use { response ->
                     if (!response.isSuccessful) {
-                        val errorBody = response.body?.string().orEmpty()
+                        val errorBody = response.body.string()
                         throw IllegalStateException("HTTP ${response.code} @ $url: $errorBody")
                     }
 
                     val contentType = response.header("Content-Type").orEmpty()
                     if (!contentType.contains("text/event-stream", ignoreCase = true)) {
-                        val raw = response.body?.string().orEmpty()
+                        val raw = response.body.string()
                         val parsed = runCatching { gson.fromJson(raw, OpenAIChatCompletionsResponse::class.java) }.getOrNull()
                         val text = parsed?.choices?.firstOrNull()?.message?.content?.trim().orEmpty()
                         val toolCallTags = extractToolCallTagsFromOpenAIResponse(raw)
@@ -2062,8 +2062,7 @@ class ChatApiClient {
                         return@flow
                     }
 
-                    val source = response.body?.source()
-                        ?: throw IllegalStateException("Response body is null")
+                    val source = response.body.source()
                     val nativeToolCallStates = linkedMapOf<Int, NativeToolCallState>()
 
                     while (!source.exhausted()) {
@@ -2387,7 +2386,7 @@ class ChatApiClient {
             .mapNotNull { key ->
                 map.entries.firstOrNull { entry -> entry.key.equals(key, ignoreCase = true) }?.value
             }
-            .mapNotNull { value -> value?.toString()?.trim() }
+            .mapNotNull { value -> value.toString().trim() }
             .firstOrNull { value -> value.isNotBlank() }
     }
 
@@ -2556,14 +2555,14 @@ class ChatApiClient {
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                val errorBody = response.body?.string().orEmpty()
+                val errorBody = response.body.string()
                 val sentContentType = request.body?.contentType()?.toString().orEmpty()
                 throw IllegalStateException(
                     "HTTP ${response.code}: $errorBody (url=$url, content-type=$sentContentType)"
                 )
             }
 
-            val source = response.body?.source() ?: throw IllegalStateException("Response body is null")
+            val source = response.body.source()
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: continue
                 if (!line.startsWith("data:")) continue
@@ -2664,14 +2663,14 @@ class ChatApiClient {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    val errorBody = response.body?.string().orEmpty()
+                    val errorBody = response.body.string()
                     lastError = "HTTP ${response.code}: $errorBody"
                     if (index + 1 < baseUrls.size) return@use
-                    throw IllegalStateException(lastError ?: "HTTP ${response.code}")
+                    throw IllegalStateException(lastError)
                 }
 
                 completed = true
-                val source = response.body?.source() ?: throw IllegalStateException("Response body is null")
+                val source = response.body.source()
                 while (!source.exhausted()) {
                     val line = source.readUtf8Line() ?: continue
                     if (!line.startsWith("data:")) continue
@@ -2758,11 +2757,11 @@ class ChatApiClient {
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                val errorBody = response.body?.string().orEmpty()
+                val errorBody = response.body.string()
                 throw IllegalStateException("HTTP ${response.code}: $errorBody")
             }
 
-            val source = response.body?.source() ?: throw IllegalStateException("Response body is null")
+            val source = response.body.source()
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: continue
                 if (!line.startsWith("data:")) continue
@@ -2815,11 +2814,11 @@ class ChatApiClient {
             val request = requestBuilder.build()
 
             client.newCall(request).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
+                val raw = response.body.string()
                 if (!response.isSuccessful) {
                     lastError = "HTTP ${response.code}: $raw"
                     if (index + 1 < baseUrls.size) return@use
-                    error(lastError ?: "HTTP ${response.code}")
+                    error(lastError)
                 }
 
                 val json = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return emptyList()
@@ -2830,7 +2829,7 @@ class ChatApiClient {
             }
         }
 
-        if (!lastError.isNullOrBlank()) error(lastError!!)
+        if (lastError.isNotBlank()) error(lastError)
         return emptyList()
     }
 
@@ -2860,7 +2859,7 @@ class ChatApiClient {
         val request = requestBuilder.build()
 
         client.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
+            val raw = response.body.string()
             if (!response.isSuccessful) error("HTTP ${response.code}: $raw")
 
             val json = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return emptyList()
@@ -2894,7 +2893,7 @@ class ChatApiClient {
 
                 remoteModels =
                     client.newCall(requestBuilder.build()).execute().use { response ->
-                        val raw = response.body?.string().orEmpty()
+                        val raw = response.body.string()
                         if (!response.isSuccessful) {
                             error("HTTP ${response.code}: $raw")
                         }
@@ -2968,7 +2967,7 @@ class ChatApiClient {
                             .build()
 
                         return@runCatching client.newCall(request).execute().use { response ->
-                            val raw = response.body?.string().orEmpty()
+                            val raw = response.body.string()
                             if (!response.isSuccessful) {
                                 error("HTTP ${response.code}: $raw")
                             }
@@ -3652,3 +3651,4 @@ data class ImageData(
     val url: String?,
     val b64_json: String?
 )
+

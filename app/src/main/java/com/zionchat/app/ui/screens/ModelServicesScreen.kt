@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.zionchat.app.ui.screens
 
 import androidx.compose.foundation.background
@@ -14,7 +16,7 @@ import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.FractionalThreshold
 import androidx.compose.material.rememberSwipeableState
 import androidx.compose.material.swipeable
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -163,7 +165,7 @@ fun ModelServicesScreen(navController: NavController) {
 
             if (configuredProvidersForDisplay.isNotEmpty() && availablePresetProviders.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
-                Divider(color = GrayLight, modifier = Modifier.fillMaxWidth())
+                HorizontalDivider(color = GrayLight, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(4.dp))
             }
 
@@ -462,3 +464,4 @@ private fun ProviderIcon(
         )
     }
 }
+

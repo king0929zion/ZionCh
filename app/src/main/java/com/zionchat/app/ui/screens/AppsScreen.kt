@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.zionchat.app.ui.screens
 
 import android.app.Activity
@@ -82,7 +84,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -2318,4 +2320,5 @@ private fun extractHtmlDocumentSegmentForAutoFix(raw: String): String {
     }
     return source.substring(start).trim()
 }
+
 

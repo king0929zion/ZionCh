@@ -430,7 +430,7 @@ class AutoSoulActionExecutor(
         val normalizedTarget = normalizeAppName(appName)
         val exact =
             list.filter { item ->
-                val label = item.loadLabel(pm)?.toString().orEmpty()
+                val label = item.loadLabel(pm).toString()
                 label.equals(appName, ignoreCase = true) || normalizeAppName(label) == normalizedTarget
             }
             .mapNotNull { it.activityInfo?.packageName }
@@ -439,7 +439,7 @@ class AutoSoulActionExecutor(
 
         val fuzzy =
             list.filter { item ->
-                val label = item.loadLabel(pm)?.toString().orEmpty()
+                val label = item.loadLabel(pm).toString()
                 val normalizedLabel = normalizeAppName(label)
                 label.contains(appName, ignoreCase = true) ||
                     appName.contains(label, ignoreCase = true) ||
@@ -705,3 +705,4 @@ class AutoSoulActionExecutor(
         return latch.await(7L, TimeUnit.SECONDS) && ok
     }
 }
+
