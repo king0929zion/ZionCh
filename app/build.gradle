@@ -36,8 +36,8 @@ android {
         applicationId "com.zionchat.app"
         minSdk 24
         targetSdk 36
-        versionCode 315
-        versionName "0.21.0"
+        versionCode 316
+        versionName "0.22.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -70,6 +70,8 @@ android {
         release {
             minifyEnabled !ciFastBuild
             shrinkResources !ciFastBuild
+            crunchPngs !ciFastBuild
+            zipAlignEnabled !ciFastBuild
             if (hasSigning) {
                 signingConfig signingConfigs.release
             }
@@ -88,6 +90,10 @@ android {
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
         }
+    }
+    lint {
+        checkReleaseBuilds !ciFastBuild
+        abortOnError !ciFastBuild
     }
 }
 
