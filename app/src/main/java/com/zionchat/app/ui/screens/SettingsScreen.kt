@@ -73,6 +73,11 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
+private val SettingsPageBackgroundColor = Color(0xFFFCFCFC)
+private val SettingsItemContainerColor = Color(0xFFF3F3F3)
+private val SettingsItemPressedColor = Color(0xFFEAEAEA)
+private val SettingsGroupCornerRadius = 22.dp
+
 @OptIn(FlowPreview::class)
 @Composable
 fun SettingsScreen(navController: NavController) {
@@ -123,7 +128,7 @@ fun SettingsScreen(navController: NavController) {
 
     Scaffold(
         topBar = { SettingsTopBar(navController) },
-        containerColor = Background
+        containerColor = SettingsPageBackgroundColor
     ) { padding ->
         Box(
             modifier = Modifier
@@ -316,7 +321,7 @@ fun SettingsScreen(navController: NavController) {
             }
 
             TopFadeScrim(
-                color = Background,
+                color = SettingsPageBackgroundColor,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
@@ -365,7 +370,7 @@ fun SettingsTopBar(navController: NavController) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Background.copy(alpha = 0.95f))
+            .background(SettingsPageBackgroundColor.copy(alpha = 0.95f))
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(horizontal = 16.dp, vertical = 16.dp)
     ) {
@@ -797,20 +802,20 @@ fun SettingsGroup(
         // 分组标题
         Text(
             text = title.uppercase(),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
             fontFamily = SourceSans3,
             color = TextSecondary,
             modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
         )
 
-        // 分组内容 - 白色卡片带圆角
+        // 分组内容 - 使用更圆角与留白分隔
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(0.dp, RoundedCornerShape(16.dp)),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF2F2F2))
+                .shadow(0.dp, RoundedCornerShape(SettingsGroupCornerRadius)),
+            shape = RoundedCornerShape(SettingsGroupCornerRadius),
+            colors = CardDefaults.cardColors(containerColor = SettingsPageBackgroundColor)
         ) {
             Column {
                 content()
@@ -854,7 +859,7 @@ fun SettingsItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 68.dp)
-                .background(if (isPressed) Color(0xFFE8E8E8) else Color(0xFFF2F2F2))
+                .background(if (isPressed) SettingsItemPressedColor else SettingsItemContainerColor)
                 .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -869,8 +874,8 @@ fun SettingsItem(
 
             Text(
                 text = label,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Normal,
                 fontFamily = SourceSans3,
                 color = TextPrimary,
                 modifier = Modifier.weight(1f)
@@ -879,8 +884,8 @@ fun SettingsItem(
             if (value != null) {
                 Text(
                     text = value,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Normal,
                     color = TextSecondary
                 )
                 Spacer(modifier = Modifier.width(4.dp))
@@ -896,15 +901,9 @@ fun SettingsItem(
             }
         }
 
-        // 白色分割线（带轻微阴影效果）
+        // 模块之间留空线，露出更白背景
         if (showDivider) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp)
-                    .height(1.dp)
-                    .background(Color(0xFFE4E4E4))
-            )
+            Spacer(modifier = Modifier.height(2.dp))
         }
     }
 }
