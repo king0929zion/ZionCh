@@ -2829,7 +2829,7 @@ class ChatApiClient {
             }
         }
 
-        if (lastError.isNotBlank()) error(lastError)
+        lastError?.takeIf { it.isNotBlank() }?.let { error(it) }
         return emptyList()
     }
 
