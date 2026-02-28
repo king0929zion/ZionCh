@@ -45,11 +45,11 @@ val PageTopBarContentTopPadding: Dp = 72.dp
 fun Modifier.headerActionButtonShadow(
     shape: Shape = CircleShape
 ): Modifier = this.shadow(
-    elevation = 14.dp,
+    elevation = 20.dp,
     shape = shape,
     clip = false,
-    ambientColor = Color.Black.copy(alpha = 0.2f),
-    spotColor = Color.Black.copy(alpha = 0.14f)
+    ambientColor = Color.Black.copy(alpha = 0.25f),
+    spotColor = Color.Black.copy(alpha = 0.18f)
 )
 
 @Composable
@@ -57,9 +57,9 @@ fun Modifier.settingsBottomInsets(): Modifier =
     this.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
 
 /**
- * iOS-style translucent top bar with gradient fade at bottom edge.
- * The entire bar uses a semi-transparent background so scrolling content
- * shows through. The bottom edge fades to fully transparent.
+ * iOS-style translucent top bar with a smooth full-height gradient.
+ * The background transitions gradually from opaque at the very top
+ * to fully transparent at the bottom — no hard edge.
  */
 @Composable
 fun PageTopBar(
@@ -67,65 +67,73 @@ fun PageTopBar(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     containerColor: Color = Color(0xFFFFFFFF),
-    containerAlpha: Float = 0.85f,
-    fadeHeight: Dp = 24.dp,
+    containerAlpha: Float = 0.92f,
+    fadeHeight: Dp = 32.dp,
     trailing: (@Composable () -> Unit)? = null
 ) {
-    val semiTransparent = containerColor.copy(alpha = containerAlpha)
+    val topColor = containerColor.copy(alpha = containerAlpha)
+    val midColor = containerColor.copy(alpha = containerAlpha * 0.55f)
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        // Semi-transparent bar area (status bar + content row)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(semiTransparent)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(horizontal = 16.dp, vertical = 16.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .headerActionButtonShadow(CircleShape)
-                    .clip(CircleShape)
-                    .background(Surface, CircleShape)
-                    .pressableScale(pressedScale = 0.95f, onClick = onBack)
-                    .align(Alignment.CenterStart),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = AppIcons.Back,
-                    contentDescription = "Back",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            Text(
-                text = title,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = SourceSans3,
-                color = TextPrimary,
-                modifier = Modifier.align(Alignment.Center)
-            )
-
-            if (trailing != null) {
-                Box(modifier = Modifier.align(Alignment.CenterEnd)) {
-                    trailing()
-                }
-            }
-        }
-        // Gradient fade zone: semi-transparent -> fully transparent
+    Box(modifier = modifier.fillMaxWidth()) {
+        // Gradient background that covers the entire header height
         Spacer(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(fadeHeight)
+                .matchParentSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(semiTransparent, Color.Transparent)
+                        0.0f to topColor,
+                        0.55f to topColor,
+                        0.78f to midColor,
+                        1.0f to Color.Transparent
                     )
                 )
         )
+
+        // Foreground content
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
+                        .clip(CircleShape)
+                        .background(Surface, CircleShape)
+                        .pressableScale(pressedScale = 0.95f, onClick = onBack)
+                        .align(Alignment.CenterStart),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Back,
+                        contentDescription = "Back",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Text(
+                    text = title,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = SourceSans3,
+                    color = TextPrimary,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+
+                if (trailing != null) {
+                    Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                        trailing()
+                    }
+                }
+            }
+            // Extra space for gradient tail to breathe
+            Spacer(modifier = Modifier.height(fadeHeight))
+        }
     }
 }
 
