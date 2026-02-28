@@ -60,7 +60,6 @@ import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.liquidGlass
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.FlowPreview
@@ -128,21 +127,23 @@ fun SettingsScreen(navController: NavController) {
             else -> stringResource(R.string.accent_color_default)
         }
 
-    Scaffold(
-        topBar = { SettingsTopBar(navController) },
-        containerColor = SettingsPageBackgroundColor
-    ) { padding ->
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SettingsPageBackgroundColor)
+    ) {
+        // Scrollable content – rendered first so the header overlays on top
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .layerBackdrop(screenBackdrop)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .settingsBottomInsets()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = 72.dp) // leave space for the header bar area
             ) {
                 // User Profile Section
                 UserProfileSection(
@@ -324,6 +325,9 @@ fun SettingsScreen(navController: NavController) {
             }
 
         }
+
+        // Floating gradient header – overlays on top of scrollable content
+        SettingsTopBar(navController)
     }
 
     // 编辑资料弹窗
@@ -368,7 +372,10 @@ fun SettingsScreen(navController: NavController) {
 fun SettingsTopBar(navController: NavController) {
     PageTopBar(
         title = stringResource(R.string.settings),
-        onBack = { navController.navigateUp() }
+        onBack = { navController.navigateUp() },
+        containerColor = SettingsPageBackgroundColor,
+        gradientFade = true,
+        fadeHeight = 20.dp
     )
 }
 
