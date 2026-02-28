@@ -49,12 +49,12 @@ import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.buildModelStorageId
 import com.zionchat.app.data.findProviderPreset
 import com.zionchat.app.ui.components.AssetIcon
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import kotlinx.coroutines.launch
 
 // 页面状态
@@ -147,42 +147,57 @@ fun AddOAuthProviderScreen(
             }
     }
 
-    Scaffold(
-        topBar = {
-            AddProviderTopBar(
-                onBack = { navController.navigateUp() },
-                onSave = {
-                    if (isWorking) return@AddProviderTopBar
-                    errorText = null
-                    val provider = connectedProvider
-                    if (providerName.isBlank()) {
-                        errorText = context.getString(R.string.error_provider_name_required)
-                        return@AddProviderTopBar
-                    }
-                    if (currentStep != OAuthStep.STEP_3_COMPLETED || provider == null) {
-                        errorText = context.getString(R.string.error_oauth_complete_first)
-                        return@AddProviderTopBar
-                    }
-                    scope.launch {
-                        val trimmedName = providerName.trim()
-                        if (trimmedName.isNotBlank() && provider.name != trimmedName) {
-                            val updated = provider.copy(name = trimmedName)
-                            repository.upsertProvider(updated)
-                            connectedProvider = updated
-                        }
-                        navController.navigateUp()
-                    }
-                }
-            )
-        },
-        containerColor = Color(0xFFFFFFFF)
-    ) { padding ->
+    fun handleSave() {
+        if (isWorking) return
+        errorText = null
+        val provider = connectedProvider
+        if (providerName.isBlank()) {
+            errorText = context.getString(R.string.error_provider_name_required)
+            return
+        }
+        if (currentStep != OAuthStep.STEP_3_COMPLETED || provider == null) {
+            errorText = context.getString(R.string.error_oauth_complete_first)
+            return
+        }
+        scope.launch {
+            val trimmedName = providerName.trim()
+            if (trimmedName.isNotBlank() && provider.name != trimmedName) {
+                val updated = provider.copy(name = trimmedName)
+                repository.upsertProvider(updated)
+                connectedProvider = updated
+            }
+            navController.navigateUp()
+        }
+    }
+
+    SettingsPage(
+        title = stringResource(R.string.add_provider),
+        onBack = { navController.navigateUp() },
+        trailing = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .pressableScale(pressedScale = 0.95f, onClick = ::handleSave),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Check,
+                    contentDescription = "Save",
+                    tint = Color(0xFF1C1C1E),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
         ) {
             // 头像选择区
             AvatarSection(
@@ -511,35 +526,6 @@ private fun suggestEnabledModels(provider: OAuthClient.OAuthProvider, modelIds: 
         OAuthClient.OAuthProvider.QwenCode ->
             listOfNotNull(byLower["qwen3-coder-plus"], byLower["qwen3-coder-flash"], modelIds.firstOrNull()).distinct()
     }
-}
-
-@Composable
-private fun AddProviderTopBar(
-    onBack: () -> Unit,
-    onSave: () -> Unit
-) {
-    PageTopBar(
-        title = stringResource(R.string.add_provider),
-        onBack = onBack,
-        trailing = {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .headerActionButtonShadow(CircleShape)
-                    .clip(CircleShape)
-                    .background(Color.White)
-                    .pressableScale(pressedScale = 0.95f, onClick = onSave),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = AppIcons.Check,
-                    contentDescription = "Save",
-                    tint = Color(0xFF1C1C1E),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-    )
 }
 
 @Composable

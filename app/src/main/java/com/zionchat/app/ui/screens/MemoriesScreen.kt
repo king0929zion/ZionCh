@@ -20,9 +20,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -33,21 +33,16 @@ fun MemoriesScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
     val items by repository.memoriesFlow.collectAsState(initial = emptyList())
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFFFFFF))
+    SettingsPage(
+        title = "Memories",
+        onBack = { navController.navigateUp() }
     ) {
-        PageTopBar(
-            title = "Memories",
-            onBack = { navController.navigateUp() }
-        )
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 

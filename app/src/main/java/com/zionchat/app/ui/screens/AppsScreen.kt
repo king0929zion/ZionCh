@@ -59,7 +59,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -128,12 +127,12 @@ import com.zionchat.app.data.RuntimeShellPlugin
 import com.zionchat.app.data.SavedApp
 import com.zionchat.app.data.WebHostingConfig
 import com.zionchat.app.data.extractRemoteModelId
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.AppHtmlWebView
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.rememberAppHtmlWebViewState
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.SourceSans3
@@ -440,20 +439,33 @@ fun AppsScreen(navController: NavController) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
-            containerColor = Color.White,
-            topBar = {
-                AppsTopBar(
-                    onBack = { navController.popBackStack() },
-                    onAdd = { navController.navigate("chat") }
-                )
+        SettingsPage(
+            title = stringResource(R.string.apps),
+            onBack = { navController.popBackStack() },
+            trailing = {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
+                        .clip(CircleShape)
+                        .background(Color.White, CircleShape)
+                        .pressableScale(pressedScale = 0.95f, onClick = { navController.navigate("chat") }),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Plus,
+                        contentDescription = "Add",
+                        tint = Color(0xFF1C1C1E),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
-        ) { padding ->
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.White)
-                    .padding(top = padding.calculateTopPadding())
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = PageTopBarContentTopPadding)
             ) {
                 AppsCategoryTabs(
                     selected = selectedCategory,
@@ -461,7 +473,7 @@ fun AppsScreen(navController: NavController) {
                 )
 
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().settingsBottomInsets(),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = listBottomInset),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
@@ -694,35 +706,6 @@ private fun RuntimeShellRequiredCard(
             }
         }
     }
-}
-
-@Composable
-private fun AppsTopBar(
-    onBack: () -> Unit,
-    onAdd: () -> Unit
-) {
-    PageTopBar(
-        title = stringResource(R.string.apps),
-        onBack = onBack,
-        trailing = {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .headerActionButtonShadow(CircleShape)
-                    .clip(CircleShape)
-                    .background(Color.White, CircleShape)
-                    .pressableScale(pressedScale = 0.95f, onClick = onAdd),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = AppIcons.Plus,
-                    contentDescription = "Add",
-                    tint = Color(0xFF1C1C1E),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-    )
 }
 
 @Composable

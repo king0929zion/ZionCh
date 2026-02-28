@@ -47,11 +47,11 @@ import com.zionchat.app.data.ProviderPreset
 import com.zionchat.app.data.isGrok2ApiProvider
 import com.zionchat.app.data.resolveProviderIconAsset
 import com.zionchat.app.ui.components.AssetIcon
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.SourceSans3
@@ -99,42 +99,36 @@ fun ModelServicesScreen(navController: NavController) {
     }
     var openedProviderId by remember { mutableStateOf<String?>(null) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFFFFFF))
-    ) {
-        PageTopBar(
-            title = stringResource(R.string.model_services),
-            onBack = { navController.navigateUp() },
-            trailing = {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .headerActionButtonShadow(CircleShape)
-                        .clip(CircleShape)
-                        .background(Surface, CircleShape)
-                        .pressableScale(pressedScale = 0.95f) {
-                            navController.navigate("add_provider?preset=&providerId=")
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Plus,
-                        contentDescription = stringResource(R.string.add_provider),
-                        tint = TextPrimary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+    SettingsPage(
+        title = stringResource(R.string.model_services),
+        onBack = { navController.navigateUp() },
+        trailing = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(pressedScale = 0.95f) {
+                        navController.navigate("add_provider?preset=&providerId=")
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Plus,
+                    contentDescription = stringResource(R.string.add_provider),
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
             }
-        )
-
+        }
+    ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
                 .padding(horizontal = 16.dp)
                 .padding(top = 12.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)

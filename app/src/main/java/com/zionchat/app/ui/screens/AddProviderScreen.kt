@@ -35,12 +35,12 @@ import com.zionchat.app.data.DEFAULT_PROVIDER_PRESETS
 import com.zionchat.app.data.findProviderPreset
 import com.zionchat.app.data.resolveProviderIconAsset
 import com.zionchat.app.ui.components.AssetIcon
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.liquidGlass
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.FlowPreview
@@ -189,66 +189,60 @@ fun AddProviderScreen(
             }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFFFFFF))
-    ) {
-        PageTopBar(
-            title = "Add provider",
-            onBack = { navController.navigateUp() },
-            trailing = {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .headerActionButtonShadow(CircleShape)
-                        .clip(CircleShape)
-                        .background(Surface, CircleShape)
-                        .pressableScale(pressedScale = 0.95f) {
-                            if (providerName.isBlank() || apiUrl.isBlank()) return@pressableScale
-                            scope.launch {
-                                val normalizedIconAsset = selectedIconAsset.trim().takeIf { it.isNotBlank() }
-                                repository.upsertProvider(
-                                    editingProvider?.let { existing ->
-                                        existing.copy(
-                                            name = providerName.trim(),
-                                        type = selectedType.trim(),
-                                        apiUrl = apiUrl.trim(),
-                                        apiKey = apiKey.trim(),
-                                        iconAsset = normalizedIconAsset ?: existing.iconAsset,
-                                        headers = existing.headers
-                                    )
-                                } ?: ProviderConfig(
-                                        id = editingProviderId,
-                                        presetId = presetData?.id ?: preset?.trim()?.takeIf { it.isNotBlank() },
-                                        iconAsset = normalizedIconAsset,
+    SettingsPage(
+        title = "Add provider",
+        onBack = { navController.navigateUp() },
+        trailing = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(pressedScale = 0.95f) {
+                        if (providerName.isBlank() || apiUrl.isBlank()) return@pressableScale
+                        scope.launch {
+                            val normalizedIconAsset = selectedIconAsset.trim().takeIf { it.isNotBlank() }
+                            repository.upsertProvider(
+                                editingProvider?.let { existing ->
+                                    existing.copy(
                                         name = providerName.trim(),
-                                        type = selectedType.trim(),
-                                        apiUrl = apiUrl.trim(),
-                                        apiKey = apiKey.trim()
-                                    )
+                                    type = selectedType.trim(),
+                                    apiUrl = apiUrl.trim(),
+                                    apiKey = apiKey.trim(),
+                                    iconAsset = normalizedIconAsset ?: existing.iconAsset,
+                                    headers = existing.headers
                                 )
-                                navController.navigateUp()
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Check,
-                        contentDescription = "Save",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                            } ?: ProviderConfig(
+                                    id = editingProviderId,
+                                    presetId = presetData?.id ?: preset?.trim()?.takeIf { it.isNotBlank() },
+                                    iconAsset = normalizedIconAsset,
+                                    name = providerName.trim(),
+                                    type = selectedType.trim(),
+                                    apiUrl = apiUrl.trim(),
+                                    apiKey = apiKey.trim()
+                                )
+                            )
+                            navController.navigateUp()
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Check,
+                    contentDescription = "Save",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
             }
-        )
-
+        }
+    ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
                 .padding(horizontal = 16.dp)
                 .padding(top = 12.dp),
             horizontalAlignment = Alignment.Start

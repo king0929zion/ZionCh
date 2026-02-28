@@ -28,10 +28,10 @@ import com.zionchat.app.R
 import com.zionchat.app.data.BotConfig
 import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.extractRemoteModelId
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.Surface
@@ -46,41 +46,37 @@ fun GroupBotsScreen(navController: NavController) {
 
     val modelNameById = remember(models) { models.associateBy({ it.id }, { it.displayName }) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFFFFFF))
-    ) {
-        PageTopBar(
-            title = stringResource(R.string.group_bots_title),
-            onBack = { navController.popBackStack() },
-            trailing = {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .headerActionButtonShadow(CircleShape)
-                        .clip(CircleShape)
-                        .background(Surface, CircleShape)
-                        .pressableScale(
-                            pressedScale = 0.95f,
-                            onClick = { navController.navigate("add_bot") }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Plus,
-                        contentDescription = stringResource(R.string.group_bot_add_title),
-                        tint = TextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+    SettingsPage(
+        title = stringResource(R.string.group_bots_title),
+        onBack = { navController.popBackStack() },
+        trailing = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(
+                        pressedScale = 0.95f,
+                        onClick = { navController.navigate("add_bot") }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Plus,
+                    contentDescription = stringResource(R.string.group_bot_add_title),
+                    tint = TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
-        )
+        }
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {

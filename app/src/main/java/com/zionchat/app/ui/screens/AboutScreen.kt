@@ -31,8 +31,8 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.zionchat.app.BuildConfig
 import com.zionchat.app.R
-import com.zionchat.app.ui.components.PageTopBar
-import com.zionchat.app.ui.components.settingsBottomInsets
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -50,21 +50,19 @@ fun AboutScreen(navController: NavController) {
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf<UpdateInfo?>(null) }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF))) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            PageTopBar(
-                title = stringResource(R.string.about_title),
-                onBack = { navController.navigateUp() }
-            )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .settingsBottomInsets()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
+    SettingsPage(
+        title = stringResource(R.string.about_title),
+        onBack = { navController.navigateUp() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
                 // App Logo and Version
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -162,7 +160,6 @@ fun AboutScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
-    }
 
     // Update Dialog
     showUpdateDialog?.let { updateInfo ->

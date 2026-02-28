@@ -50,10 +50,10 @@ import com.zionchat.app.data.GroupChatConfig
 import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.extractRemoteModelId
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
@@ -98,90 +98,85 @@ fun CreateGroupChatScreen(navController: NavController, groupId: String? = null)
 
     val canSave = name.trim().isNotBlank() && selectedBotIds.size >= 2
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFFFFFF))
-    ) {
-        PageTopBar(
-            title = if (isEditMode) stringResource(R.string.group_chat_edit_title) else stringResource(R.string.group_chat_create_title),
-            onBack = { navController.popBackStack() },
-            trailing = {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .headerActionButtonShadow(CircleShape)
-                        .clip(CircleShape)
-                        .background(Surface, CircleShape)
-                        .pressableScale(
-                            pressedScale = 0.96f,
-                            onClick = {
-                                if (!canSave) return@pressableScale
-                                scope.launch {
-                                    val finalName = name.trim()
-                                    val finalMembers = selectedBotIds.toList()
-                                    val finalCoordinator =
-                                        if (strategy == GROUP_STRATEGY_DYNAMIC) {
-                                            coordinatorModelId?.trim()?.takeIf { it.isNotBlank() }
-                                        } else {
-                                            null
-                                        }
-
-                                    val current = existingGroup
-                                    val savedGroup =
-                                        if (current != null) {
-                                            repository.upsertGroupChat(
-                                                current.copy(
-                                                    name = finalName,
-                                                    memberBotIds = finalMembers,
-                                                    strategy = strategy,
-                                                    dynamicCoordinatorModelId = finalCoordinator,
-                                                    updatedAt = System.currentTimeMillis()
-                                                )
-                                            )
-                                        } else {
-                                            val conversation = repository.createConversation(title = finalName)
-                                            repository.upsertGroupChat(
-                                                GroupChatConfig(
-                                                    name = finalName,
-                                                    memberBotIds = finalMembers,
-                                                    strategy = strategy,
-                                                    dynamicCoordinatorModelId = finalCoordinator,
-                                                    conversationId = conversation.id
-                                                )
-                                            )
-                                        }
-
-                                    if (savedGroup == null) return@launch
-                                    if (current != null) {
-                                        navController.popBackStack()
+    SettingsPage(
+        title = if (isEditMode) stringResource(R.string.group_chat_edit_title) else stringResource(R.string.group_chat_create_title),
+        onBack = { navController.popBackStack() },
+        trailing = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(
+                        pressedScale = 0.96f,
+                        onClick = {
+                            if (!canSave) return@pressableScale
+                            scope.launch {
+                                val finalName = name.trim()
+                                val finalMembers = selectedBotIds.toList()
+                                val finalCoordinator =
+                                    if (strategy == GROUP_STRATEGY_DYNAMIC) {
+                                        coordinatorModelId?.trim()?.takeIf { it.isNotBlank() }
                                     } else {
-                                        repository.setCurrentConversationId(savedGroup.conversationId)
-                                        navController.navigate("group_chat/${savedGroup.id}") {
-                                            popUpTo("group_chats") { inclusive = false }
-                                        }
+                                        null
+                                    }
+
+                                val current = existingGroup
+                                val savedGroup =
+                                    if (current != null) {
+                                        repository.upsertGroupChat(
+                                            current.copy(
+                                                name = finalName,
+                                                memberBotIds = finalMembers,
+                                                strategy = strategy,
+                                                dynamicCoordinatorModelId = finalCoordinator,
+                                                updatedAt = System.currentTimeMillis()
+                                            )
+                                        )
+                                    } else {
+                                        val conversation = repository.createConversation(title = finalName)
+                                        repository.upsertGroupChat(
+                                            GroupChatConfig(
+                                                name = finalName,
+                                                memberBotIds = finalMembers,
+                                                strategy = strategy,
+                                                dynamicCoordinatorModelId = finalCoordinator,
+                                                conversationId = conversation.id
+                                            )
+                                        )
+                                    }
+
+                                if (savedGroup == null) return@launch
+                                if (current != null) {
+                                    navController.popBackStack()
+                                } else {
+                                    repository.setCurrentConversationId(savedGroup.conversationId)
+                                    navController.navigate("group_chat/${savedGroup.id}") {
+                                        popUpTo("group_chats") { inclusive = false }
                                     }
                                 }
                             }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Check,
-                        contentDescription =
-                            if (isEditMode) stringResource(R.string.common_save) else stringResource(R.string.group_chat_create),
-                        tint = if (canSave) TextPrimary else TextSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Check,
+                    contentDescription =
+                        if (isEditMode) stringResource(R.string.common_save) else stringResource(R.string.group_chat_create),
+                    tint = if (canSave) TextPrimary else TextSecondary,
+                    modifier = Modifier.size(22.dp)
+                )
             }
-        )
-
+        }
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {

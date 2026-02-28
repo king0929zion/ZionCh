@@ -41,10 +41,10 @@ import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.R
 import com.zionchat.app.data.BotConfig
 import com.zionchat.app.data.GroupChatConfig
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
@@ -62,37 +62,34 @@ fun GroupChatsScreen(navController: NavController) {
     val bots by repository.botsFlow.collectAsState(initial = emptyList())
     var openedSwipeId by remember { mutableStateOf<String?>(null) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFFFFFF))
-    ) {
-        PageTopBar(
-            title = stringResource(R.string.group_chats_title),
-            onBack = { navController.popBackStack() },
-            trailing = {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .headerActionButtonShadow(CircleShape)
-                        .clip(CircleShape)
-                        .background(Surface, CircleShape)
-                        .pressableScale(pressedScale = 0.95f, onClick = { navController.navigate("create_group_chat") }),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Plus,
-                        contentDescription = stringResource(R.string.group_chat_create),
-                        tint = TextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+    SettingsPage(
+        title = stringResource(R.string.group_chats_title),
+        onBack = { navController.popBackStack() },
+        trailing = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(pressedScale = 0.95f, onClick = { navController.navigate("create_group_chat") }),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Plus,
+                    contentDescription = stringResource(R.string.group_chat_create),
+                    tint = TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
-        )
-
+        }
+    ) {
         if (groups.isEmpty()) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = PageTopBarContentTopPadding),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -106,7 +103,8 @@ fun GroupChatsScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .settingsBottomInsets()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = PageTopBarContentTopPadding)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {

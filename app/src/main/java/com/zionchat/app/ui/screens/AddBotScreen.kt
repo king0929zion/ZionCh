@@ -42,10 +42,10 @@ import com.zionchat.app.R
 import com.zionchat.app.data.BotConfig
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.extractRemoteModelId
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -106,61 +106,56 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
         }
     }
     
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFFFFFF))
-    ) {
-        PageTopBar(
-            title = if (botId != null) stringResource(R.string.group_bot_edit_title) else stringResource(R.string.group_bot_add_title),
-            onBack = { navController.popBackStack() },
-            trailing = {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .headerActionButtonShadow(CircleShape)
-                        .clip(CircleShape)
-                        .background(Surface, CircleShape)
-                        .pressableScale(
-                            pressedScale = 0.96f,
-                            onClick = {
-                                if (!canSave) return@pressableScale
-                                scope.launch {
-                                    val bot = BotConfig(
-                                        id = botId ?: UUID.randomUUID().toString(),
-                                        name = name.trim(),
-                                        avatarUri = avatarUri,
-                                        avatarAssetName = avatarAssetName,
-                                        defaultModelId = defaultModelId,
-                                        systemPrompt = systemPrompt.trim(),
-                                        updatedAt = System.currentTimeMillis()
-                                    )
-                                    if (botId != null) {
-                                        repository.updateBot(bot)
-                                    } else {
-                                        repository.addBot(bot)
-                                    }
-                                    navController.popBackStack()
+    SettingsPage(
+        title = if (botId != null) stringResource(R.string.group_bot_edit_title) else stringResource(R.string.group_bot_add_title),
+        onBack = { navController.popBackStack() },
+        trailing = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(
+                        pressedScale = 0.96f,
+                        onClick = {
+                            if (!canSave) return@pressableScale
+                            scope.launch {
+                                val bot = BotConfig(
+                                    id = botId ?: UUID.randomUUID().toString(),
+                                    name = name.trim(),
+                                    avatarUri = avatarUri,
+                                    avatarAssetName = avatarAssetName,
+                                    defaultModelId = defaultModelId,
+                                    systemPrompt = systemPrompt.trim(),
+                                    updatedAt = System.currentTimeMillis()
+                                )
+                                if (botId != null) {
+                                    repository.updateBot(bot)
+                                } else {
+                                    repository.addBot(bot)
                                 }
+                                navController.popBackStack()
                             }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Check,
-                        contentDescription = stringResource(R.string.common_save),
-                        tint = if (canSave) TextPrimary else TextSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Check,
+                    contentDescription = stringResource(R.string.common_save),
+                    tint = if (canSave) TextPrimary else TextSecondary,
+                    modifier = Modifier.size(22.dp)
+                )
             }
-        )
-        
+        }
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {

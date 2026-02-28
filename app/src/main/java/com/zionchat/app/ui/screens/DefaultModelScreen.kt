@@ -33,9 +33,9 @@ import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.ProviderConfig
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -83,22 +83,17 @@ fun DefaultModelScreen(navController: NavController) {
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFFFFFF))
+    SettingsPage(
+        title = "Default model",
+        onBack = { navController.navigateUp() }
     ) {
-        PageTopBar(
-            title = "Default model",
-            onBack = { navController.navigateUp() }
-        )
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
+                .padding(horizontal = 16.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 

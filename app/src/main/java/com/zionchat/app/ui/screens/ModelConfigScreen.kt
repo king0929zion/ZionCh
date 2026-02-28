@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -54,10 +55,10 @@ import com.zionchat.app.data.isLikelyVisionModel
 import com.zionchat.app.data.normalizeInputModality
 import com.zionchat.app.ui.components.EditableHeader
 import com.zionchat.app.ui.components.HeadersEditorCard
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
@@ -134,40 +135,38 @@ fun ModelConfigScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF))) {
-        PageTopBar(
-            title = "Model configuration",
-            onBack = { navController.popBackStack() },
-            trailing = {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .headerActionButtonShadow(CircleShape)
-                        .clip(CircleShape)
-                        .background(Surface, CircleShape)
-                        .pressableScale(pressedScale = 0.95f, onClick = ::save),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Check,
-                        contentDescription = "Save",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-        )
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
+    SettingsPage(
+        title = "Model configuration",
+        onBack = { navController.popBackStack() },
+        trailing = {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .settingsBottomInsets()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 12.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(pressedScale = 0.95f, onClick = ::save),
+                contentAlignment = Alignment.Center
             ) {
+                Icon(
+                    imageVector = AppIcons.Check,
+                    contentDescription = "Save",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
+                .padding(horizontal = 16.dp)
+                .padding(top = 12.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -304,7 +303,6 @@ fun ModelConfigScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
             }
-        }
     }
 }
 

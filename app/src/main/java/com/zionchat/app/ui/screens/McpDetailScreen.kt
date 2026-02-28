@@ -29,9 +29,9 @@ import com.zionchat.app.data.McpProtocol
 import com.zionchat.app.data.McpTool
 import com.zionchat.app.ui.components.AppModalBottomSheet
 import com.zionchat.app.ui.components.LiquidGlassSwitch
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.FlowPreview
@@ -102,83 +102,80 @@ fun McpDetailScreen(
             .collect()
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF))) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            PageTopBar(
-                title = mcp.name,
-                onBack = { navController.navigateUp() }
-            )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .settingsBottomInsets()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 8.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+    SettingsPage(
+        title = mcp.name,
+        onBack = { navController.navigateUp() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
+                .padding(horizontal = 16.dp)
+                .padding(top = 8.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            McpSectionTitle(title = "Server URL")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
             ) {
-                McpSectionTitle(title = "Server URL")
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
-                ) {
-                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        BasicTextField(
-                            value = serverUrl,
-                            onValueChange = { serverUrl = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onFocusChanged { serverUrlFocused = it.isFocused },
-                            textStyle = TextStyle(
-                                fontSize = 16.sp,
-                                color = TextPrimary
-                            ),
-                            singleLine = true,
-                            cursorBrush = SolidColor(TextPrimary),
-                            decorationBox = { innerTextField ->
-                                Box(modifier = Modifier.fillMaxWidth()) {
-                                    if (serverUrl.isBlank()) {
-                                        Text(
-                                            text = "Enter server URL",
-                                            fontSize = 16.sp,
-                                            color = Color(0xFFC7C7CC)
-                                        )
-                                    }
-                                    innerTextField()
+                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    BasicTextField(
+                        value = serverUrl,
+                        onValueChange = { serverUrl = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { serverUrlFocused = it.isFocused },
+                        textStyle = TextStyle(
+                            fontSize = 16.sp,
+                            color = TextPrimary
+                        ),
+                        singleLine = true,
+                        cursorBrush = SolidColor(TextPrimary),
+                        decorationBox = { innerTextField ->
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                if (serverUrl.isBlank()) {
+                                    Text(
+                                        text = "Enter server URL",
+                                        fontSize = 16.sp,
+                                        color = Color(0xFFC7C7CC)
+                                    )
                                 }
-                            }
-                        )
-                    }
-                }
-
-                McpSectionTitle(title = "Available tools")
-                McpToolsCard(
-                    tools = mcp.tools,
-                    syncing = syncingTools,
-                    syncError = syncError,
-                    onSync = {
-                        if (syncingTools) return@McpToolsCard
-                        syncingTools = true
-                        syncError = null
-                        scope.launch {
-                            try {
-                                mcpClient.fetchTools(mcp)
-                                    .onSuccess { tools ->
-                                        repository.updateMcpTools(mcp.id, tools)
-                                    }
-                                    .onFailure { error ->
-                                        syncError = error.message.orEmpty().ifBlank { "Sync failed" }
-                                    }
-                            } finally {
-                                syncingTools = false
+                                innerTextField()
                             }
                         }
-                    },
-                    onToolClick = { tool -> showToolDetail = tool }
-                )
+                    )
+                }
             }
+
+            McpSectionTitle(title = "Available tools")
+            McpToolsCard(
+                tools = mcp.tools,
+                syncing = syncingTools,
+                syncError = syncError,
+                onSync = {
+                    if (syncingTools) return@McpToolsCard
+                    syncingTools = true
+                    syncError = null
+                    scope.launch {
+                        try {
+                            mcpClient.fetchTools(mcp)
+                                .onSuccess { tools ->
+                                    repository.updateMcpTools(mcp.id, tools)
+                                }
+                                .onFailure { error ->
+                                    syncError = error.message.orEmpty().ifBlank { "Sync failed" }
+                                }
+                        } finally {
+                            syncingTools = false
+                        }
+                    }
+                },
+                onToolClick = { tool -> showToolDetail = tool }
+            )
         }
 
         showToolDetail?.let { tool ->

@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
 import com.zionchat.app.ui.components.liquidGlass
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.components.pressableScale
@@ -143,7 +144,7 @@ fun SettingsScreen(navController: NavController) {
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(top = 72.dp) // leave space for the header bar area
+                    .padding(top = PageTopBarContentTopPadding) // leave space for the header bar area
             ) {
                 // User Profile Section
                 UserProfileSection(
@@ -369,13 +370,10 @@ fun SettingsScreen(navController: NavController) {
 }
 
 @Composable
-fun SettingsTopBar(navController: NavController) {
+private fun SettingsTopBar(navController: NavController) {
     PageTopBar(
         title = stringResource(R.string.settings),
-        onBack = { navController.navigateUp() },
-        containerColor = SettingsPageBackgroundColor,
-        gradientFade = true,
-        fadeHeight = 20.dp
+        onBack = { navController.navigateUp() }
     )
 }
 

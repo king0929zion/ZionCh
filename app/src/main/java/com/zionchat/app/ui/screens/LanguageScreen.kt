@@ -9,10 +9,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,8 +39,8 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.R
-import com.zionchat.app.ui.components.PageTopBar
-import com.zionchat.app.ui.components.settingsBottomInsets
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.TextPrimary
@@ -71,23 +74,18 @@ fun LanguageScreen(navController: NavController) {
             }
         }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(androidx.compose.ui.graphics.Color(0xFFFFFFFF))
+    SettingsPage(
+        title = stringResource(R.string.language_title),
+        onBack = { navController.navigateUp() }
     ) {
-        PageTopBar(
-            title = stringResource(R.string.language_title),
-            onBack = { navController.navigateUp() }
-        )
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp)
-                .padding(top = 2.dp)
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets(),
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
+                .padding(horizontal = 16.dp)
+                .padding(top = 2.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             SettingsGroup(

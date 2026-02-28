@@ -39,10 +39,10 @@ import com.zionchat.app.ui.components.AppModalBottomSheet
 import com.zionchat.app.ui.components.EditableHeader
 import com.zionchat.app.ui.components.HeadersEditorCard
 import com.zionchat.app.ui.components.LiquidGlassSwitch
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -61,62 +61,66 @@ fun McpScreen(navController: NavController) {
     var showAddModal by remember { mutableStateOf(false) }
     var editingMcp by remember { mutableStateOf<McpConfig?>(null) }
     
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF))) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            PageTopBar(
-                title = stringResource(R.string.settings_item_mcp_tools),
-                onBack = { navController.navigateUp() },
-                trailing = {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .headerActionButtonShadow(CircleShape)
-                            .clip(CircleShape)
-                            .background(Surface, CircleShape)
-                            .pressableScale(pressedScale = 0.95f) {
-                                editingMcp = null
-                                showAddModal = true
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.Plus,
-                            contentDescription = stringResource(R.string.common_add),
-                            tint = TextPrimary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                }
-            )
-            
-            if (mcpList.isEmpty()) {
+    SettingsPage(
+        title = stringResource(R.string.settings_item_mcp_tools),
+        onBack = { navController.navigateUp() },
+        trailing = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(pressedScale = 0.95f) {
+                        editingMcp = null
+                        showAddModal = true
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Plus,
+                    contentDescription = stringResource(R.string.common_add),
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    ) {
+        if (mcpList.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = PageTopBarContentTopPadding)
+            ) {
                 McpEmptyState()
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .settingsBottomInsets()
-                        .padding(horizontal = 16.dp)
-                        .padding(top = 12.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    mcpList.forEach { mcp ->
-                        McpListItem(
-                            mcp = mcp,
-                            onClick = { navController.navigate("mcp_detail/${mcp.id}") },
-                            onToggle = {
-                                scope.launch {
-                                    repository.toggleMcpEnabled(mcp.id)
-                                }
-                            },
-                            onDelete = {
-                                scope.launch {
-                                    repository.deleteMcp(mcp.id)
-                                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = PageTopBarContentTopPadding)
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 12.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                mcpList.forEach { mcp ->
+                    McpListItem(
+                        mcp = mcp,
+                        onClick = { navController.navigate("mcp_detail/${mcp.id}") },
+                        onToggle = {
+                            scope.launch {
+                                repository.toggleMcpEnabled(mcp.id)
                             }
-                        )
-                    }
+                        },
+                        onDelete = {
+                            scope.launch {
+                                repository.deleteMcp(mcp.id)
+                            }
+                        }
+                    )
                 }
             }
         }

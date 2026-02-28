@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,7 +17,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,10 +55,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.R
 import com.zionchat.app.ui.components.AssetIcon
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.GrayLight
@@ -138,29 +141,23 @@ fun SearchSettingsScreen(navController: NavController) {
         }
     }
 
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(Color(0xFFFFFFFF))
+    SettingsPage(
+        title = stringResource(R.string.settings_item_search),
+        onBack = { navController.navigateUp() },
+        trailing = {
+            SaveAction(
+                enabled = initialized,
+                onClick = ::saveGeneralSettings
+            )
+        }
     ) {
-        PageTopBar(
-            title = stringResource(R.string.settings_item_search),
-            onBack = { navController.navigateUp() },
-            trailing = {
-                SaveAction(
-                    enabled = initialized,
-                    onClick = ::saveGeneralSettings
-                )
-            }
-        )
-
         Column(
             modifier =
                 Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -249,29 +246,23 @@ fun SearchProviderConfigScreen(
         }
     }
 
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(Color(0xFFFFFFFF))
+    SettingsPage(
+        title = provider.title,
+        onBack = { navController.navigateUp() },
+        trailing = {
+            SaveAction(
+                enabled = initialized,
+                onClick = ::saveProviderSettings
+            )
+        }
     ) {
-        PageTopBar(
-            title = provider.title,
-            onBack = { navController.navigateUp() },
-            trailing = {
-                SaveAction(
-                    enabled = initialized,
-                    onClick = ::saveProviderSettings
-                )
-            }
-        )
-
         Column(
             modifier =
                 Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .settingsBottomInsets()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = PageTopBarContentTopPadding)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {

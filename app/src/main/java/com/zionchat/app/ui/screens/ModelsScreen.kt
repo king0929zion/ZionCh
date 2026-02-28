@@ -84,11 +84,11 @@ import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.buildModelStorageId
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.LiquidGlassSwitch
-import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
+import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
-import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
@@ -211,67 +211,64 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
         onRefresh = { fetchedSignature = null }
     )
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF))) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            PageTopBar(
-                title = stringResource(R.string.models),
-                onBack = { navController.popBackStack() },
-                trailing = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .headerActionButtonShadow(CircleShape)
-                                .clip(CircleShape)
-                                .background(Surface, CircleShape)
-                                .pressableScale(pressedScale = 0.95f) { showTestModal = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = rememberResourceDrawablePainter(R.drawable.ic_model_test),
-                                contentDescription = stringResource(R.string.models_test_entry),
-                                tint = TextPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .headerActionButtonShadow(CircleShape)
-                                .clip(CircleShape)
-                                .background(Surface, CircleShape)
-                                .pressableScale(pressedScale = 0.95f) { showAddModal = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = AppIcons.Plus,
-                                contentDescription = "Add Model",
-                                tint = TextPrimary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-                }
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .pullRefresh(pullRefreshState)
+    SettingsPage(
+        title = stringResource(R.string.models),
+        onBack = { navController.popBackStack() },
+        trailing = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .settingsBottomInsets()
-                        .padding(horizontal = 16.dp)
-                        .padding(top = 12.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
+                        .clip(CircleShape)
+                        .background(Surface, CircleShape)
+                        .pressableScale(pressedScale = 0.95f) { showTestModal = true },
+                    contentAlignment = Alignment.Center
                 ) {
+                    Icon(
+                        painter = rememberResourceDrawablePainter(R.drawable.ic_model_test),
+                        contentDescription = stringResource(R.string.models_test_entry),
+                        tint = TextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
+                        .clip(CircleShape)
+                        .background(Surface, CircleShape)
+                        .pressableScale(pressedScale = 0.95f) { showAddModal = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Plus,
+                        contentDescription = "Add Model",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+        }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pullRefresh(pullRefreshState)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = PageTopBarContentTopPadding)
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 12.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                     if (activeProvider == null) {
                         Text(
                             text = stringResource(R.string.models_test_summary_no_provider),
@@ -336,12 +333,13 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                     state = pullRefreshState,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(top = PageTopBarContentTopPadding)
                         .padding(top = 4.dp),
                     contentColor = TextPrimary,
                     backgroundColor = Surface
                 )
             }
-        }
 
         AddModelModal(
             visible = showAddModal,
