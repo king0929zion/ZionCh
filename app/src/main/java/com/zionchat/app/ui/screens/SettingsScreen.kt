@@ -73,7 +73,7 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
-private val SettingsPageBackgroundColor = Color(0xFFFCFCFC)
+private val SettingsPageBackgroundColor = Color(0xFFFFFFFF)
 private val SettingsItemContainerColor = Color(0xFFF1F1F1)
 private val SettingsItemPressedColor = Color(0xFFE5E5E5)
 private val SettingsGroupCornerRadius = 26.dp
@@ -859,9 +859,10 @@ fun SettingsItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 64.dp)
+                .heightIn(min = 54.dp)
+                .clip(RoundedCornerShape(12.dp))
                 .background(if (isPressed) SettingsItemPressedColor else SettingsItemContainerColor)
-                .padding(horizontal = 18.dp, vertical = 16.dp),
+                .padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -876,7 +877,7 @@ fun SettingsItem(
             Text(
                 text = label,
                 fontSize = 18.sp,
-                fontWeight = FontWeight.Normal,
+                fontWeight = FontWeight.Medium,
                 fontFamily = SourceSans3,
                 color = TextPrimary,
                 modifier = Modifier.weight(1f)

@@ -3,7 +3,7 @@ package com.zionchat.app.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // iOS Style Colors
-val Background = Color(0xFFF7F7F9)
+val Background = Color(0xFFFCFCFC)
 // Chat background
 val ChatBackground = Color(0xFFF5F5F5)
 val Surface = Color(0xFFFFFFFF)

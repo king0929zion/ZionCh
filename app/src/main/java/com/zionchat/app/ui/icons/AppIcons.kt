@@ -632,7 +632,7 @@ object AppIcons {
         }
     }.build()
 
-    // Personalization 图标 - 完全匹配 HTML 原项目（带Y轴翻转）
+    // Personalization 图标 - 笑脸（圆圈 + 嘴角上扬弧线）
     val Personalization = ImageVector.Builder(
         name = "personalization",
         defaultWidth = 24.dp,
@@ -641,95 +641,31 @@ object AppIcons {
         viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color(0xFF1C1C1E)),
-            stroke = null
+            fill = SolidColor(Color(0xFF0D0D0D)),
+            stroke = null,
+            pathFillType = PathFillType.EvenOdd
         ) {
-            // Y轴翻转后的路径（scale(1, -1) translate(0, -20.75)）
-            // 底部圆环（原顶部）
-            moveTo(12f, 20.06f)
-            curveTo(11.175f, 20.06f, 10.357f, 19.96f, 9.69f, 19.785f)
-            curveTo(8.985f, 19.595f, 8.775f, 18.965f, 8.92f, 18.455f)
-            curveTo(9.05f, 18.025f, 9.515f, 17.685f, 10.175f, 17.855f)
-            curveTo(10.73f, 18.005f, 11.385f, 18.095f, 12f, 18.095f)
-            curveTo(12.685f, 18.095f, 13.322f, 18.01f, 13.87f, 17.855f)
-            curveTo(14.53f, 17.685f, 15.01f, 18.045f, 15.15f, 18.475f)
-            curveTo(15.29f, 18.935f, 15.08f, 19.565f, 14.375f, 19.785f)
-            curveTo(13.71f, 19.975f, 12.89f, 20.06f, 12f, 20.06f)
+            // 外圆环（填充规则 EvenOdd 自动挖空）
+            moveTo(12f, 4f)
+            curveTo(7.582f, 4f, 4f, 7.582f, 4f, 12f)
+            curveTo(4f, 16.418f, 7.582f, 20f, 12f, 20f)
+            curveTo(16.418f, 20f, 20f, 16.418f, 20f, 12f)
+            curveTo(20f, 7.582f, 16.418f, 4f, 12f, 4f)
             close()
-            // 右侧装饰
-            moveTo(20.005f, 15.39f)
-            curveTo(19.585f, 16.115f, 19.12f, 16.775f, 18.605f, 17.285f)
-            curveTo(18.085f, 17.815f, 17.445f, 17.705f, 17.115f, 17.355f)
-            curveTo(16.795f, 17.005f, 16.74f, 16.445f, 17.245f, 15.955f)
-            curveTo(17.655f, 15.545f, 18.065f, 15.025f, 18.405f, 14.435f)
-            curveTo(18.745f, 13.845f, 18.99f, 13.23f, 19.13f, 12.72f)
-            curveTo(19.32f, 12.015f, 19.83f, 11.805f, 20.29f, 11.915f)
-            curveTo(20.76f, 12.025f, 21.185f, 12.505f, 20.985f, 13.235f)
-            curveTo(20.815f, 13.905f, 20.48f, 14.685f, 20.055f, 15.39f)
+            moveTo(2f, 12f)
+            curveTo(2f, 6.477f, 6.477f, 2f, 12f, 2f)
+            curveTo(17.523f, 2f, 22f, 6.477f, 22f, 12f)
+            curveTo(22f, 17.523f, 17.523f, 22f, 12f, 22f)
+            curveTo(6.477f, 22f, 2f, 17.523f, 2f, 12f)
             close()
-            // 右上装饰
-            moveTo(20.095f, 6.2f)
-            curveTo(20.515f, 6.925f, 20.855f, 7.715f, 21.015f, 8.365f)
-            curveTo(21.215f, 9.095f, 20.785f, 9.595f, 20.365f, 9.705f)
-            curveTo(19.955f, 9.815f, 19.45f, 9.575f, 19.26f, 8.87f)
-            curveTo(19.115f, 8.33f, 18.86f, 7.735f, 18.51f, 7.16f)
-            curveTo(18.18f, 6.585f, 17.755f, 6.06f, 17.34f, 5.635f)
-            curveTo(16.85f, 5.135f, 16.915f, 4.565f, 17.235f, 4.22f)
-            curveTo(17.575f, 3.855f, 18.205f, 3.755f, 18.725f, 4.3f)
-            curveTo(19.24f, 4.81f, 19.725f, 5.475f, 20.145f, 6.2f)
-            close()
-            // 顶部圆环（原底部）
-            moveTo(12f, 1.59f)
-            curveTo(12.825f, 1.59f, 13.643f, 1.69f, 14.31f, 1.865f)
-            curveTo(15.015f, 2.055f, 15.225f, 2.685f, 15.08f, 3.195f)
-            curveTo(14.95f, 3.625f, 14.485f, 3.965f, 13.825f, 3.795f)
-            curveTo(13.27f, 3.645f, 12.615f, 3.555f, 12f, 3.555f)
-            curveTo(11.315f, 3.555f, 10.678f, 3.64f, 10.13f, 3.795f)
-            curveTo(9.47f, 3.965f, 8.99f, 3.605f, 8.85f, 3.175f)
-            curveTo(8.71f, 2.715f, 8.92f, 2.085f, 9.625f, 1.865f)
-            curveTo(10.29f, 1.675f, 11.11f, 1.59f, 12f, 1.59f)
-            close()
-            // 左上装饰
-            moveTo(3.905f, 6.19f)
-            curveTo(4.325f, 5.465f, 4.79f, 4.805f, 5.305f, 4.295f)
-            curveTo(5.825f, 3.765f, 6.465f, 3.875f, 6.805f, 4.225f)
-            curveTo(7.125f, 4.575f, 7.175f, 5.135f, 6.675f, 5.625f)
-            curveTo(6.265f, 6.035f, 5.855f, 6.555f, 5.515f, 7.145f)
-            curveTo(5.175f, 7.735f, 4.93f, 8.35f, 4.79f, 8.86f)
-            curveTo(4.6f, 9.565f, 4.095f, 9.775f, 3.635f, 9.665f)
-            curveTo(3.165f, 9.555f, 2.74f, 9.075f, 2.94f, 8.345f)
-            curveTo(3.11f, 7.675f, 3.435f, 6.925f, 3.905f, 6.19f)
-            close()
-            // 左下装饰
-            moveTo(3.995f, 15.385f)
-            curveTo(3.575f, 14.66f, 3.25f, 13.87f, 3.09f, 13.22f)
-            curveTo(2.89f, 12.49f, 3.315f, 11.99f, 3.745f, 11.88f)
-            curveTo(4.155f, 11.77f, 4.67f, 12.01f, 4.86f, 12.735f)
-            curveTo(4.995f, 13.275f, 5.25f, 13.87f, 5.6f, 14.445f)
-            curveTo(5.93f, 15.02f, 6.355f, 15.545f, 6.77f, 15.97f)
-            curveTo(7.26f, 16.47f, 7.205f, 17.03f, 6.885f, 17.375f)
-            curveTo(6.545f, 17.74f, 5.915f, 17.84f, 5.395f, 17.295f)
-            curveTo(4.88f, 16.785f, 4.42f, 16.12f, 3.995f, 15.385f)
-            close()
-            // 中心画笔形状
-            moveTo(11.34f, 10.87f)
-            lineTo(10.125f, 11.075f)
-            curveTo(10.015f, 11.085f, 9.995f, 11.175f, 10.06f, 11.245f)
-            lineTo(11.91f, 13.575f)
-            curveTo(12.655f, 14.535f, 11.195f, 15.625f, 10.44f, 14.735f)
-            lineTo(8.54f, 12.375f)
-            curveTo(7.595f, 11.19f, 8.005f, 9.535f, 9.565f, 9.28f)
-            lineTo(11.08f, 9.03f)
-            curveTo(12.28f, 8.825f, 12.605f, 10.695f, 11.465f, 10.87f)
-            close()
-            // 顶部小圆弧
-            moveTo(11.91f, 5.715f)
-            curveTo(14.095f, 5.715f, 16.085f, 7.225f, 16.67f, 9.315f)
-            curveTo(16.84f, 9.905f, 16.395f, 10.485f, 15.78f, 10.485f)
-            curveTo(15.355f, 10.485f, 14.995f, 10.185f, 14.895f, 9.825f)
-            curveTo(14.515f, 8.505f, 13.28f, 7.555f, 11.84f, 7.555f)
-            curveTo(11.325f, 7.555f, 10.915f, 7.145f, 10.915f, 6.635f)
-            curveTo(10.915f, 6.125f, 11.325f, 5.715f, 11.84f, 5.715f)
+            // 笑脸嘴巴弧线（实心路径，利用 EvenOdd 在圆圈内显示）
+            moveTo(7.399f, 14.201f)
+            curveTo(7.841f, 13.869f, 8.468f, 13.958f, 8.799f, 14.4f)
+            curveTo(10.37f, 16.49f, 13.63f, 16.49f, 15.2f, 14.4f)
+            curveTo(15.532f, 13.958f, 16.159f, 13.869f, 16.601f, 14.201f)
+            curveTo(17.042f, 14.533f, 17.131f, 15.16f, 16.799f, 15.601f)
+            curveTo(14.429f, 18.757f, 9.571f, 18.757f, 7.201f, 15.601f)
+            curveTo(6.869f, 15.16f, 6.958f, 14.533f, 7.399f, 14.201f)
             close()
         }
     }.build()
