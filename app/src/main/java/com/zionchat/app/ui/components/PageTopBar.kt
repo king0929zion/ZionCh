@@ -1,16 +1,15 @@
 package com.zionchat.app.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -43,14 +42,15 @@ fun Modifier.headerActionButtonShadow(
 )
 
 @Composable
-fun Modifier.settingsBottomInsets(): Modifier = this.windowInsetsPadding(WindowInsets.navigationBars)
+fun Modifier.settingsBottomInsets(): Modifier =
+    this.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
 
 @Composable
 fun PageTopBar(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    containerColor: Color = Surface.copy(alpha = 0.72f),
+    containerColor: Color = Surface.copy(alpha = 0.6f),
     trailing: (@Composable () -> Unit)? = null
 ) {
     val topBarBackdrop = rememberLayerBackdrop()
@@ -62,14 +62,13 @@ fun PageTopBar(
                 backdrop = topBarBackdrop,
                 shape = RectangleShape,
                 overlayColor = containerColor,
-                fallbackColor = Surface.copy(alpha = 0.86f),
+                fallbackColor = Surface.copy(alpha = 0.68f),
                 blurRadius = 24.dp,
                 refractionHeight = 4.dp,
                 refractionAmount = 8.dp,
                 highlightAlpha = 0.18f,
                 shadowAlpha = 0f
             )
-            .border(width = 0.6.dp, color = Color.Black.copy(alpha = 0.05f), shape = RoundedCornerShape(0.dp))
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(horizontal = 16.dp, vertical = 16.dp)
     ) {

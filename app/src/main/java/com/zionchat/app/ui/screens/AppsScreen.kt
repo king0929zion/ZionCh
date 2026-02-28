@@ -38,7 +38,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -134,6 +133,7 @@ import com.zionchat.app.ui.components.AppHtmlWebView
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.rememberAppHtmlWebViewState
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.SourceSans3
@@ -423,7 +423,7 @@ fun AppsScreen(navController: NavController) {
     val visibleApps = remember(sortedApps, selectedCategory) {
         filterAppsByCategory(sortedApps, selectedCategory)
     }
-    val listBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val listBottomInset = 8.dp
     val preloadCandidateApp = remember(visibleApps, sortedApps) {
         visibleApps.firstOrNull() ?: sortedApps.firstOrNull()
     }
@@ -461,8 +461,8 @@ fun AppsScreen(navController: NavController) {
                 )
 
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = listBottomInset + 8.dp),
+                    modifier = Modifier.fillMaxSize().settingsBottomInsets(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = listBottomInset),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     if (!runtimeShellInstalled) {

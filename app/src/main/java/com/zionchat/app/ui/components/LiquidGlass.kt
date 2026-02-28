@@ -44,11 +44,6 @@ import com.zionchat.app.ui.theme.TextSecondary
 
 private fun supportsLiquidGlassBlur(): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
-    if (Build.VERSION.SDK_INT >= 36) return false
-
-    val manufacturer = Build.MANUFACTURER.orEmpty().lowercase()
-    val brand = Build.BRAND.orEmpty().lowercase()
-    if (manufacturer.contains("vivo") || brand.contains("vivo") || brand.contains("iqoo")) return false
     return true
 }
 
