@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -59,6 +60,7 @@ fun Modifier.liquidGlass(
     shadowAlpha: Float = 0.10f
 ): Modifier {
     val supportsBlur = supportsLiquidGlassBlur()
+    val supportsLens = shape is CornerBasedShape
     if (!supportsBlur) {
         return this
             .background(fallbackColor, shape)
@@ -70,11 +72,13 @@ fun Modifier.liquidGlass(
         shape = { shape },
         effects = {
             blur(blurRadius.toPx())
-            lens(
-                refractionHeight = refractionHeight.toPx(),
-                refractionAmount = refractionAmount.toPx(),
-                chromaticAberration = true
-            )
+            if (supportsLens) {
+                lens(
+                    refractionHeight = refractionHeight.toPx(),
+                    refractionAmount = refractionAmount.toPx(),
+                    chromaticAberration = true
+                )
+            }
         },
         highlight = { Highlight.Ambient.copy(alpha = highlightAlpha) },
         shadow = { Shadow(radius = 24.dp, color = Color.Black.copy(alpha = shadowAlpha)) },

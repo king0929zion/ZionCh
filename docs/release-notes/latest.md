@@ -1,5 +1,7 @@
 ## ZionChat Android 版本说明
 
+- 关键稳定性修复：`liquidGlass` 增加 shape 类型兜底，遇到不受 `lens` 支持的形状时自动降级为仅模糊渲染，彻底避免进入设置页时因 shape 不兼容导致的闪退。
+- 设置页玻璃头部稳定性增强：即使个别页面误传了不兼容 shape，也不会再触发 `UnsupportedOperationException` 崩溃。
 - CI 构建提速：新增项目级增量缓存（Kotlin/Javac 中间产物缓存恢复），降低重复构建时的全量编译开销。
 - Kotlin 编译参数优化：启用/强化增量与类路径快照缓存，并提升 Gradle/Kotlin Daemon 内存配置以缩短 `compileReleaseKotlin` 耗时。
 - 修复设置页崩溃：`PageTopBar` 玻璃化效果改用 `RoundedCornerShape(0.dp)`，避免 `RectangleShape` 触发 `lens` 不支持异常导致进入设置页闪退。
