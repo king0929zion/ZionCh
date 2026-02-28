@@ -42,6 +42,7 @@ fun Modifier.headerActionButtonShadow(
     spotColor = Color.Black.copy(alpha = 0.14f)
 )
 
+@Composable
 fun Modifier.settingsBottomInsets(): Modifier = this.windowInsetsPadding(WindowInsets.navigationBars)
 
 @Composable
