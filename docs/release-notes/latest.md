@@ -1,5 +1,6 @@
 ## ZionChat Android 版本说明
 
+- 修复设置页崩溃：`PageTopBar` 玻璃化效果改用 `RoundedCornerShape(0.dp)`，避免 `RectangleShape` 触发 `lens` 不支持异常导致进入设置页闪退。
 - 修复构建回归：补齐 `PageTopBar` 中 `WindowInsets.union` 导入，恢复设置页改动后的 CI 编译通过。
 - 修复设置页 Header 视觉回归：移除顶部不应出现的分割线，恢复无硬边界的玻璃化顶栏表现。
 - 修复高版本系统下 Header 未模糊问题：放开模糊能力限制，设置页顶部改为真正半透明模糊效果。
