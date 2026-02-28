@@ -329,6 +329,29 @@ fun SettingsScreen(navController: NavController) {
 
         // Floating gradient header – overlays on top of scrollable content
         SettingsTopBar(navController)
+
+        // Appearance 菜单 — inside root Box so it layers above header & content
+        AppearanceMenu(
+            visible = showAppearanceMenu,
+            selected = selectedAppearance,
+            anchorY = appearanceAnchorY,
+            backdrop = screenBackdrop,
+            onDismiss = { showAppearanceMenu = false },
+            onSelect = { selectedAppearance = it }
+        )
+
+        // Accent Color 菜单
+        AccentColorMenu(
+            visible = showAccentColorMenu,
+            selected = appAccentColor,
+            anchorY = accentColorAnchorY,
+            anchorHeight = accentColorAnchorHeight,
+            backdrop = screenBackdrop,
+            onDismiss = { showAccentColorMenu = false },
+            onSelect = { key ->
+                scope.launch { repository.setAppAccentColor(key) }
+            }
+        )
     }
 
     // 编辑资料弹窗
@@ -342,29 +365,6 @@ fun SettingsScreen(navController: NavController) {
                 repository.setNickname(newNickname)
                 repository.setAvatarUri(newAvatarUri)
             }
-        }
-    )
-
-    // Appearance 菜单
-    AppearanceMenu(
-        visible = showAppearanceMenu,
-        selected = selectedAppearance,
-        anchorY = appearanceAnchorY,
-        backdrop = screenBackdrop,
-        onDismiss = { showAppearanceMenu = false },
-        onSelect = { selectedAppearance = it }
-    )
-
-    // Accent Color 菜单
-    AccentColorMenu(
-        visible = showAccentColorMenu,
-        selected = appAccentColor,
-        anchorY = accentColorAnchorY,
-        anchorHeight = accentColorAnchorHeight,
-        backdrop = screenBackdrop,
-        onDismiss = { showAccentColorMenu = false },
-        onSelect = { key ->
-            scope.launch { repository.setAppAccentColor(key) }
         }
     )
 }

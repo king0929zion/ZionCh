@@ -41,3 +41,5 @@
 - 编译告警治理：批量清理数据层 `?. / ?: / !!` 冗余与多处 Compose 弃用告警（`Divider`→`HorizontalDivider`、`FlowPreview`/序列化 `OptIn`、兼容路径抑制），显著降低 `compileReleaseKotlin` 警告噪音。
 - 修复一次 Kotlin 编译回归：`listAntigravityModels` 的 `lastError` 改为可空安全处理，避免 `compileReleaseKotlin` 因可空类型实参报错失败。
 - 修复 GitHub Actions 中 `gradlew` 执行权限问题，并提升 Gradle 并行参数以缩短构建时间。
+- 修复设置页 Appearance/Accent Color 选择器弹出菜单分层错位问题：将弹出菜单移入主 Box 内部，确保 liquidGlass 效果正确渲染且菜单始终浮于顶栏之上。
+- CI 构建提速优化：降低 JVM/Kotlin Daemon 内存以避免 CI 环境 swap，使用 `--no-daemon` 消除守护进程开销，缓存 key 改为基于源码 hash 提升增量编译命中率，GC 策略调整为 ParallelGC。
