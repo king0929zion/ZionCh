@@ -53,6 +53,7 @@ import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.R
 import com.zionchat.app.ui.components.AssetIcon
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
@@ -322,20 +323,21 @@ private fun SaveAction(
     Box(
         modifier =
             Modifier
-                .height(40.dp)
-                .background(
-                    color = if (enabled) Surface else GrayLighter,
-                    shape = RoundedCornerShape(20.dp)
-                ).pressableScale(pressedScale = 0.96f) {
+                .size(40.dp)
+                .headerActionButtonShadow(CircleShape)
+                .clip(CircleShape)
+                .background(Surface, CircleShape)
+                .pressableScale(pressedScale = 0.96f) {
                     if (!enabled) return@pressableScale
                     onClick()
-                }.padding(horizontal = 14.dp),
+                },
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = stringResource(R.string.common_save),
-            color = if (enabled) TextPrimary else TextSecondary,
-            fontFamily = SourceSans3
+        Icon(
+            imageVector = AppIcons.Check,
+            contentDescription = stringResource(R.string.common_save),
+            tint = if (enabled) TextPrimary else TextSecondary,
+            modifier = Modifier.size(22.dp)
         )
     }
 }

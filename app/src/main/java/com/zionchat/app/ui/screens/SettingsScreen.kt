@@ -372,7 +372,7 @@ fun SettingsTopBar(navController: NavController) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsPageBackgroundColor.copy(alpha = 0.95f))
+            .background(SettingsPageBackgroundColor)
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(horizontal = 16.dp, vertical = 16.dp)
     ) {

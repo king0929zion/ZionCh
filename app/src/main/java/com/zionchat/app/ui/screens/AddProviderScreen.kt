@@ -191,7 +191,7 @@ fun AddProviderScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(Color(0xFFFFFFFF))
     ) {
         PageTopBar(
             title = "Add provider",

@@ -69,12 +69,12 @@ fun McpDetailScreen(
     }
 
     if (mcpListOrNull == null) {
-        Box(modifier = Modifier.fillMaxSize().background(Background))
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF)))
         return
     }
 
     if (mcp == null) {
-        Box(modifier = Modifier.fillMaxSize().background(Background))
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF)))
         return
     }
 
@@ -101,7 +101,7 @@ fun McpDetailScreen(
             .collect()
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Background)) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF))) {
         Column(modifier = Modifier.fillMaxSize()) {
             PageTopBar(
                 title = mcp.name,

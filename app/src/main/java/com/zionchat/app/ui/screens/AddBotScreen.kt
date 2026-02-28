@@ -43,6 +43,7 @@ import com.zionchat.app.data.BotConfig
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
@@ -107,7 +108,7 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(Color(0xFFFFFFFF))
     ) {
         PageTopBar(
             title = if (botId != null) stringResource(R.string.group_bot_edit_title) else stringResource(R.string.group_bot_add_title),
@@ -115,8 +116,10 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
             trailing = {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (canSave) Color(0xFF1C1C1E) else GrayLight)
+                        .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
+                        .clip(CircleShape)
+                        .background(Surface, CircleShape)
                         .pressableScale(
                             pressedScale = 0.96f,
                             onClick = {
@@ -139,15 +142,14 @@ fun AddBotScreen(navController: NavController, botId: String? = null) {
                                     navController.popBackStack()
                                 }
                             }
-                        )
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = stringResource(R.string.common_save),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (canSave) Color.White else TextSecondary
+                    Icon(
+                        imageVector = AppIcons.Check,
+                        contentDescription = stringResource(R.string.common_save),
+                        tint = if (canSave) TextPrimary else TextSecondary,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }

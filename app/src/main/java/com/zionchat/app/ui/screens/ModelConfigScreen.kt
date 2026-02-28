@@ -59,7 +59,6 @@ import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
-import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.SourceSans3
@@ -135,7 +134,7 @@ fun ModelConfigScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Background)) {
+    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF))) {
         PageTopBar(
             title = "Model configuration",
             onBack = { navController.popBackStack() },
@@ -306,7 +305,7 @@ fun ModelConfigScreen(
             }
 
             BottomFadeScrim(
-                color = Background,
+                color = Color(0xFFFFFFFF),
                 height = 44.dp,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )

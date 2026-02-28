@@ -51,9 +51,9 @@ import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
-import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.SourceSans3
@@ -100,7 +100,7 @@ fun CreateGroupChatScreen(navController: NavController, groupId: String? = null)
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(Color(0xFFFFFFFF))
     ) {
         PageTopBar(
             title = if (isEditMode) stringResource(R.string.group_chat_edit_title) else stringResource(R.string.group_chat_create_title),
@@ -108,8 +108,10 @@ fun CreateGroupChatScreen(navController: NavController, groupId: String? = null)
             trailing = {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (canSave) Color(0xFF1C1C1E) else GrayLight)
+                        .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
+                        .clip(CircleShape)
+                        .background(Surface, CircleShape)
                         .pressableScale(
                             pressedScale = 0.96f,
                             onClick = {
@@ -160,15 +162,15 @@ fun CreateGroupChatScreen(navController: NavController, groupId: String? = null)
                                     }
                                 }
                             }
-                        )
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (isEditMode) stringResource(R.string.common_save) else stringResource(R.string.group_chat_create),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (canSave) Color.White else TextSecondary
+                    Icon(
+                        imageVector = AppIcons.Check,
+                        contentDescription =
+                            if (isEditMode) stringResource(R.string.common_save) else stringResource(R.string.group_chat_create),
+                        tint = if (canSave) TextPrimary else TextSecondary,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }

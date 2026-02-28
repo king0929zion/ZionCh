@@ -130,6 +130,7 @@ import com.zionchat.app.data.SavedApp
 import com.zionchat.app.data.WebHostingConfig
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.AppHtmlWebView
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.rememberAppHtmlWebViewState
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
@@ -710,8 +711,9 @@ private fun AppsTopBar(
         Box(
             modifier = Modifier
                 .size(40.dp)
+                .headerActionButtonShadow(CircleShape)
                 .clip(CircleShape)
-                .background(Color(0xFFF5F5F7), CircleShape)
+                .background(Color.White, CircleShape)
                 .pressableScale(pressedScale = 0.95f, onClick = onBack),
             contentAlignment = Alignment.Center
         ) {
@@ -738,8 +740,9 @@ private fun AppsTopBar(
         Box(
             modifier = Modifier
                 .size(40.dp)
+                .headerActionButtonShadow(CircleShape)
                 .clip(CircleShape)
-                .background(Color(0xFFF5F5F7), CircleShape)
+                .background(Color.White, CircleShape)
                 .pressableScale(pressedScale = 0.95f, onClick = onAdd),
             contentAlignment = Alignment.Center
         ) {

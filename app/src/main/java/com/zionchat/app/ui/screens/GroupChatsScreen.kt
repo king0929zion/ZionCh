@@ -45,7 +45,6 @@ import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
-import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.Surface
@@ -65,7 +64,7 @@ fun GroupChatsScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(Color(0xFFFFFFFF))
     ) {
         PageTopBar(
             title = stringResource(R.string.group_chats_title),

@@ -29,11 +29,11 @@ import com.zionchat.app.ui.theme.TextPrimary
 fun Modifier.headerActionButtonShadow(
     shape: Shape = CircleShape
 ): Modifier = this.shadow(
-    elevation = 10.dp,
+    elevation = 12.dp,
     shape = shape,
     clip = false,
-    ambientColor = Color.Black.copy(alpha = 0.12f),
-    spotColor = Color.Black.copy(alpha = 0.08f)
+    ambientColor = Color.Black.copy(alpha = 0.16f),
+    spotColor = Color.Black.copy(alpha = 0.11f)
 )
 
 @Composable
@@ -41,7 +41,7 @@ fun PageTopBar(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    containerColor: Color = Surface.copy(alpha = 0.96f),
+    containerColor: Color = Surface,
     trailing: (@Composable () -> Unit)? = null
 ) {
     Box(

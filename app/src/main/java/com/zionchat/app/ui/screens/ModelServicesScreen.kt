@@ -52,7 +52,11 @@ import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
-import com.zionchat.app.ui.theme.*
+import com.zionchat.app.ui.theme.GrayLight
+import com.zionchat.app.ui.theme.SourceSans3
+import com.zionchat.app.ui.theme.Surface
+import com.zionchat.app.ui.theme.TextPrimary
+import com.zionchat.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -95,7 +99,7 @@ fun ModelServicesScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(Color(0xFFFFFFFF))
     ) {
         PageTopBar(
             title = stringResource(R.string.model_services),

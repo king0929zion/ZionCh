@@ -448,9 +448,15 @@ fun McpEditSheetContent(
                 )
             }
             
-            Button(
-                onClick = {
-                    if (name.isNotBlank() && url.isNotBlank()) {
+            val saveEnabled = name.isNotBlank() && url.isNotBlank()
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Surface, CircleShape)
+                    .pressableScale(pressedScale = 0.95f) {
+                        if (!saveEnabled) return@pressableScale
                         onSave(
                             McpConfig(
                                 id = mcp?.id ?: java.util.UUID.randomUUID().toString(),
@@ -470,21 +476,14 @@ fun McpEditSheetContent(
                                 lastSyncAt = mcp?.lastSyncAt ?: 0L
                             )
                         )
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = TextPrimary,
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(12.dp),
-                enabled = name.isNotBlank() && url.isNotBlank()
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = stringResource(R.string.common_save),
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(vertical = 6.dp)
+                Icon(
+                    imageVector = AppIcons.Check,
+                    contentDescription = stringResource(R.string.common_save),
+                    tint = if (saveEnabled) TextPrimary else TextSecondary,
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }

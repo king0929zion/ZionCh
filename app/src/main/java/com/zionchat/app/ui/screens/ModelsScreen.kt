@@ -90,7 +90,6 @@ import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
-import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.SourceSans3
@@ -212,7 +211,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
         onRefresh = { fetchedSignature = null }
     )
 
-    Box(modifier = Modifier.fillMaxSize().background(Background)) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF))) {
         Column(modifier = Modifier.fillMaxSize()) {
             PageTopBar(
                 title = stringResource(R.string.models),
@@ -342,7 +341,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                 )
 
                 BottomFadeScrim(
-                    color = Background,
+                    color = Color(0xFFFFFFFF),
                     height = 44.dp,
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )

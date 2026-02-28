@@ -49,6 +49,7 @@ import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.buildModelStorageId
 import com.zionchat.app.data.findProviderPreset
 import com.zionchat.app.ui.components.AssetIcon
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.components.pressableScale
@@ -172,7 +173,7 @@ fun AddOAuthProviderScreen(
                 }
             )
         },
-        containerColor = Color(0xFFF5F5F7)
+        containerColor = Color(0xFFFFFFFF)
     ) { padding ->
         Column(
             modifier = Modifier
@@ -517,7 +518,7 @@ private fun AddProviderTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFF5F5F7).copy(alpha = 0.95f))
+            .background(Color(0xFFFFFFFF))
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
@@ -525,6 +526,7 @@ private fun AddProviderTopBar(
         Box(
             modifier = Modifier
                 .size(40.dp)
+                .headerActionButtonShadow(CircleShape)
                 .clip(CircleShape)
                 .background(Color.White)
                 .pressableScale(pressedScale = 0.95f, onClick = onBack)
@@ -553,6 +555,7 @@ private fun AddProviderTopBar(
         Box(
             modifier = Modifier
                 .size(40.dp)
+                .headerActionButtonShadow(CircleShape)
                 .clip(CircleShape)
                 .background(Color.White)
                 .pressableScale(pressedScale = 0.95f, onClick = onSave)
