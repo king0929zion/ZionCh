@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.core.animateFloatAsState
@@ -38,7 +40,6 @@ import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.SourceSans3
-import com.zionchat.app.ui.theme.Surface
 import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -73,7 +74,7 @@ fun LanguageScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(androidx.compose.ui.graphics.Color(0xFFFFFFFF))
     ) {
         PageTopBar(
             title = stringResource(R.string.language_title),
@@ -137,7 +138,8 @@ private fun LanguageOptionItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(if (isPressed) Background.copy(alpha = 0.4f) else Surface)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (isPressed) androidx.compose.ui.graphics.Color(0xFFE5E5EA) else androidx.compose.ui.graphics.Color(0xFFF1F1F1))
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -159,13 +161,7 @@ private fun LanguageOptionItem(
         }
 
         if (showDivider) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .height(1.dp)
-                    .background(TextSecondary.copy(alpha = 0.12f))
-            )
+            Spacer(modifier = Modifier.height(2.dp))
         }
     }
 }

@@ -35,7 +35,7 @@ fun MemoriesScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(Color(0xFFFFFFFF))
     ) {
         PageTopBar(
             title = "Memories",
@@ -91,7 +91,7 @@ fun MemoriesScreen(navController: NavController) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .pressableScale(pressedScale = 0.98f, onClick = { }),
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(26.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
                     ) {
                         Row(

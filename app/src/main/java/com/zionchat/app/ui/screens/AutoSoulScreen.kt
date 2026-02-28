@@ -178,7 +178,7 @@ fun AutoSoulScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(Color(0xFFFFFFFF))
     ) {
         PageTopBar(
             title = stringResource(R.string.settings_item_autosoul),
@@ -471,7 +471,7 @@ private fun AutoSoulSectionTitle(text: String) {
 private fun AutoSoulCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
     ) {
         Column(

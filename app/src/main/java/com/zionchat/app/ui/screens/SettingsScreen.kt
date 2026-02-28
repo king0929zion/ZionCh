@@ -498,7 +498,7 @@ fun UserProfileSection(
     }
 }
 
-@OptIn(ExperimentalAnimationApi::class)
+@OptIn(ExperimentalAnimationApi::class, FlowPreview::class)
 @Composable
 fun EditProfileModal(
     visible: Boolean,
@@ -860,7 +860,7 @@ fun SettingsItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 54.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(if (isPressed) SettingsItemPressedColor else SettingsItemContainerColor)
                 .padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically

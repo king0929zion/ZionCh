@@ -59,7 +59,7 @@ fun McpScreen(navController: NavController) {
     var showAddModal by remember { mutableStateOf(false) }
     var editingMcp by remember { mutableStateOf<McpConfig?>(null) }
     
-    Box(modifier = Modifier.fillMaxSize().background(Background)) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF))) {
         Column(modifier = Modifier.fillMaxSize()) {
             PageTopBar(
                 title = stringResource(R.string.settings_item_mcp_tools),
@@ -204,7 +204,7 @@ fun McpListItem(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(26.dp))
     ) {
         Box(
             modifier = Modifier

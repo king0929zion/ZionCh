@@ -49,7 +49,7 @@ fun AboutScreen(navController: NavController) {
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf<UpdateInfo?>(null) }
 
-    Box(modifier = Modifier.fillMaxSize().background(Background)) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF))) {
         Column(modifier = Modifier.fillMaxSize()) {
             PageTopBar(
                 title = stringResource(R.string.about_title),
@@ -238,9 +238,9 @@ fun AboutGroup(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-            .shadow(0.dp, RoundedCornerShape(20.dp)),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
+            .shadow(0.dp, RoundedCornerShape(26.dp)),
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFFFF))
         ) {
             Column {
                 content()
@@ -282,7 +282,8 @@ fun AboutItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(if (isPressed) Color(0xFFE5E5EA) else Surface)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (isPressed) Color(0xFFE5E5EA) else Color(0xFFF1F1F1))
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -323,14 +324,7 @@ fun AboutItem(
         }
 
         if (showDivider) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .height(1.dp)
-                    .background(Color.White)
-                    .shadow(0.5.dp, spotColor = Color(0xFFE5E5EA), ambientColor = Color(0xFFE5E5EA))
-            )
+            Spacer(modifier = Modifier.height(2.dp))
         }
     }
 }

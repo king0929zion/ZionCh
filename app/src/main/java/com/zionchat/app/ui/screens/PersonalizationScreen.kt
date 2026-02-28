@@ -84,7 +84,7 @@ fun PersonalizationScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(Color(0xFFFFFFFF))
     ) {
         PageTopBar(
             title = stringResource(R.string.settings_item_personalization),
@@ -102,7 +102,7 @@ fun PersonalizationScreen(navController: NavController) {
             SectionTitle(title = stringResource(R.string.personalization_nickname))
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(26.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
             ) {
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
@@ -138,7 +138,7 @@ fun PersonalizationScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 280.dp),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(26.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
             ) {
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
@@ -177,7 +177,7 @@ fun PersonalizationScreen(navController: NavController) {
             SectionTitle(title = stringResource(R.string.personalization_memory))
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(26.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
             ) {
                 Row(
