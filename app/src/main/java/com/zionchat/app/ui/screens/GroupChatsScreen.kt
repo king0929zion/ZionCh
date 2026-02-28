@@ -42,6 +42,7 @@ import com.zionchat.app.R
 import com.zionchat.app.data.BotConfig
 import com.zionchat.app.data.GroupChatConfig
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
@@ -73,6 +74,7 @@ fun GroupChatsScreen(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
                         .clip(CircleShape)
                         .background(Surface, CircleShape)
                         .pressableScale(pressedScale = 0.95f, onClick = { navController.navigate("create_group_chat") }),

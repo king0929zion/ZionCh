@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.TopFadeScrim
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.liquidGlass
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.components.pressableScale
@@ -379,6 +380,7 @@ fun SettingsTopBar(navController: NavController) {
         Box(
             modifier = Modifier
                 .size(40.dp)
+                .headerActionButtonShadow(CircleShape)
                 .clip(CircleShape)
                 .background(Surface, CircleShape)
                 .pressableScale(pressedScale = 0.95f) { navController.navigateUp() }

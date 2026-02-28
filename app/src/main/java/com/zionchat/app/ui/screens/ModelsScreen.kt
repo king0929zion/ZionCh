@@ -86,6 +86,7 @@ import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.BottomFadeScrim
 import com.zionchat.app.ui.components.LiquidGlassSwitch
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
@@ -224,6 +225,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
+                                .headerActionButtonShadow(CircleShape)
                                 .clip(CircleShape)
                                 .background(Surface, CircleShape)
                                 .pressableScale(pressedScale = 0.95f) { showTestModal = true },
@@ -239,6 +241,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
+                                .headerActionButtonShadow(CircleShape)
                                 .clip(CircleShape)
                                 .background(Surface, CircleShape)
                                 .pressableScale(pressedScale = 0.95f) { showAddModal = true },

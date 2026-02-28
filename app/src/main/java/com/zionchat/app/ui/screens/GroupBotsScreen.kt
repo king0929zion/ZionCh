@@ -29,6 +29,7 @@ import com.zionchat.app.data.BotConfig
 import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
@@ -57,6 +58,7 @@ fun GroupBotsScreen(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
                         .clip(CircleShape)
                         .background(Surface, CircleShape)
                         .pressableScale(

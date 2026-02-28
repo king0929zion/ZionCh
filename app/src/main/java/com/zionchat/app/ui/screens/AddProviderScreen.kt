@@ -36,6 +36,7 @@ import com.zionchat.app.data.findProviderPreset
 import com.zionchat.app.data.resolveProviderIconAsset
 import com.zionchat.app.ui.components.AssetIcon
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.liquidGlass
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
@@ -199,6 +200,7 @@ fun AddProviderScreen(
                 Box(
                     modifier = Modifier
                         .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
                         .clip(CircleShape)
                         .background(Surface, CircleShape)
                         .pressableScale(pressedScale = 0.95f) {

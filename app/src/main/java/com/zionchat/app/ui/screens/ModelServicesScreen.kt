@@ -48,6 +48,7 @@ import com.zionchat.app.data.isGrok2ApiProvider
 import com.zionchat.app.data.resolveProviderIconAsset
 import com.zionchat.app.ui.components.AssetIcon
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
@@ -103,6 +104,7 @@ fun ModelServicesScreen(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
                         .clip(CircleShape)
                         .background(Surface, CircleShape)
                         .pressableScale(pressedScale = 0.95f) {

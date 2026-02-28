@@ -107,6 +107,7 @@ fun AboutScreen(navController: NavController) {
                         label = stringResource(R.string.about_official_website),
                         value = stringResource(R.string.about_coming_soon),
                         showChevron = false,
+                        showDivider = true,
                         onClick = { }
                     )
                     AboutItem(
@@ -114,6 +115,7 @@ fun AboutScreen(navController: NavController) {
                         label = stringResource(R.string.about_check_update),
                         value = if (isCheckingUpdate) stringResource(R.string.about_checking) else null,
                         showChevron = !isCheckingUpdate,
+                        showDivider = true,
                         onClick = {
                             if (!isCheckingUpdate) {
                                 scope.launch {
