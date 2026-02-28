@@ -1,5 +1,7 @@
 ## ZionChat Android 版本说明
 
+- CI 构建提速：新增项目级增量缓存（Kotlin/Javac 中间产物缓存恢复），降低重复构建时的全量编译开销。
+- Kotlin 编译参数优化：启用/强化增量与类路径快照缓存，并提升 Gradle/Kotlin Daemon 内存配置以缩短 `compileReleaseKotlin` 耗时。
 - 修复设置页崩溃：`PageTopBar` 玻璃化效果改用 `RoundedCornerShape(0.dp)`，避免 `RectangleShape` 触发 `lens` 不支持异常导致进入设置页闪退。
 - 修复构建回归：补齐 `PageTopBar` 中 `WindowInsets.union` 导入，恢复设置页改动后的 CI 编译通过。
 - 修复设置页 Header 视觉回归：移除顶部不应出现的分割线，恢复无硬边界的玻璃化顶栏表现。
