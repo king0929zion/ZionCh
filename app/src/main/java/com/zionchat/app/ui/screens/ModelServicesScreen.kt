@@ -51,6 +51,7 @@ import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.SourceSans3
@@ -59,6 +60,8 @@ import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+
+private val SettingsCardGray = Color(0xFFF1F1F1)
 
 @Composable
 fun ModelServicesScreen(navController: NavController) {
@@ -131,6 +134,7 @@ fun ModelServicesScreen(navController: NavController) {
                 .fillMaxWidth()
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
+                .settingsBottomInsets()
                 .padding(horizontal = 16.dp)
                 .padding(top = 12.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -208,8 +212,8 @@ private fun ProviderItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
-            .background(Color(0xFFF1F1F1), RoundedCornerShape(20.dp))
+            .height(60.dp)
+            .background(SettingsCardGray, RoundedCornerShape(20.dp))
             .clip(RoundedCornerShape(20.dp))
             .pressableScale(pressedScale = 0.98f, onClick = onClick)
             .padding(horizontal = 16.dp),
@@ -225,7 +229,7 @@ private fun ProviderItem(
         Text(
             text = provider.name,
             fontSize = 17.sp,
-            fontWeight = FontWeight.Normal,
+            fontWeight = FontWeight.Medium,
             fontFamily = SourceSans3,
             color = TextPrimary,
             maxLines = 1
@@ -273,7 +277,7 @@ private fun SwipeableConfiguredProviderItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(60.dp)
             .clip(RoundedCornerShape(20.dp))
     ) {
         Box(
@@ -311,7 +315,7 @@ private fun SwipeableConfiguredProviderItem(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(swipeableState.offset.value.roundToInt(), 0) }
-                .background(Color(0xFFF1F1F1), RoundedCornerShape(20.dp))
+                .background(SettingsCardGray, RoundedCornerShape(20.dp))
                 .swipeable(
                     state = swipeableState,
                     anchors = anchors,
@@ -341,7 +345,7 @@ private fun SwipeableConfiguredProviderItem(
             Text(
                 text = provider.name,
                 fontSize = 17.sp,
-                fontWeight = FontWeight.Normal,
+                fontWeight = FontWeight.Medium,
                 fontFamily = SourceSans3,
                 color = TextPrimary,
                 maxLines = 1,

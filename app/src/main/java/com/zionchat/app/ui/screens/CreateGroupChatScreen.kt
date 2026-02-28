@@ -53,6 +53,7 @@ import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
@@ -180,6 +181,7 @@ fun CreateGroupChatScreen(navController: NavController, groupId: String? = null)
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .settingsBottomInsets()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {

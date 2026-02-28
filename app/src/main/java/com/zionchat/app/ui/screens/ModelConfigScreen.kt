@@ -52,12 +52,12 @@ import com.zionchat.app.data.isCodexProvider
 import com.zionchat.app.data.isGrok2ApiProvider
 import com.zionchat.app.data.isLikelyVisionModel
 import com.zionchat.app.data.normalizeInputModality
-import com.zionchat.app.ui.components.BottomFadeScrim
 import com.zionchat.app.ui.components.EditableHeader
 import com.zionchat.app.ui.components.HeadersEditorCard
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
@@ -163,6 +163,7 @@ fun ModelConfigScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
+                    .settingsBottomInsets()
                     .padding(horizontal = 16.dp)
                     .padding(top = 12.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -303,12 +304,6 @@ fun ModelConfigScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
             }
-
-            BottomFadeScrim(
-                color = Color(0xFFFFFFFF),
-                height = 44.dp,
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
         }
     }
 }

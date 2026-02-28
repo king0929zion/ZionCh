@@ -56,11 +56,11 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import com.zionchat.app.data.extractRemoteModelId
-import com.zionchat.app.ui.components.TopFadeScrim
-import com.zionchat.app.ui.components.headerActionButtonShadow
+import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.liquidGlass
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.FlowPreview
@@ -142,6 +142,7 @@ fun SettingsScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
+                    .settingsBottomInsets()
             ) {
                 // User Profile Section
                 UserProfileSection(
@@ -322,10 +323,6 @@ fun SettingsScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(32.dp))
             }
 
-            TopFadeScrim(
-                color = SettingsPageBackgroundColor,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
         }
     }
 
@@ -369,42 +366,10 @@ fun SettingsScreen(navController: NavController) {
 
 @Composable
 fun SettingsTopBar(navController: NavController) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SettingsPageBackgroundColor)
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 16.dp, vertical = 16.dp)
-    ) {
-        // 返回按钮
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .headerActionButtonShadow(CircleShape)
-                .clip(CircleShape)
-                .background(Surface, CircleShape)
-                .pressableScale(pressedScale = 0.95f) { navController.navigateUp() }
-                .align(Alignment.CenterStart),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = AppIcons.Back,
-                contentDescription = "Back",
-                tint = TextPrimary,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        // 标题
-        Text(
-            text = stringResource(R.string.settings),
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = SourceSans3,
-            color = TextPrimary,
-            modifier = Modifier.align(Alignment.Center)
-        )
-    }
+    PageTopBar(
+        title = stringResource(R.string.settings),
+        onBack = { navController.navigateUp() }
+    )
 }
 
 @Composable
@@ -772,8 +737,7 @@ fun EditProfileModal(
                                 },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(48.dp)
-                                    .shadow(3.dp, RoundedCornerShape(12.dp)),
+                                    .height(48.dp),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFFFFF))
                             ) {
@@ -786,8 +750,7 @@ fun EditProfileModal(
                                     onDismiss()
                                 },
                                 modifier = Modifier
-                                    .size(48.dp)
-                                    .shadow(3.dp, RoundedCornerShape(24.dp)),
+                                    .size(48.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFFFFF)),
                                 contentPadding = PaddingValues(0.dp)

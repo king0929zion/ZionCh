@@ -129,6 +129,7 @@ import com.zionchat.app.data.RuntimeShellPlugin
 import com.zionchat.app.data.SavedApp
 import com.zionchat.app.data.WebHostingConfig
 import com.zionchat.app.data.extractRemoteModelId
+import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.AppHtmlWebView
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.rememberAppHtmlWebViewState
@@ -700,60 +701,28 @@ private fun AppsTopBar(
     onBack: () -> Unit,
     onAdd: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White)
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .headerActionButtonShadow(CircleShape)
-                .clip(CircleShape)
-                .background(Color.White, CircleShape)
-                .pressableScale(pressedScale = 0.95f, onClick = onBack),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = AppIcons.Back,
-                contentDescription = "Back",
-                tint = Color(0xFF1C1C1E),
-                modifier = Modifier.size(22.dp)
-            )
+    PageTopBar(
+        title = stringResource(R.string.apps),
+        onBack = onBack,
+        trailing = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Color.White, CircleShape)
+                    .pressableScale(pressedScale = 0.95f, onClick = onAdd),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Plus,
+                    contentDescription = "Add",
+                    tint = Color(0xFF1C1C1E),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
-
-        Box(
-            modifier = Modifier.weight(1f),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = stringResource(R.string.apps),
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF1C1C1E)
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .headerActionButtonShadow(CircleShape)
-                .clip(CircleShape)
-                .background(Color.White, CircleShape)
-                .pressableScale(pressedScale = 0.95f, onClick = onAdd),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = AppIcons.Plus,
-                contentDescription = "Add",
-                tint = Color(0xFF1C1C1E),
-                modifier = Modifier.size(22.dp)
-            )
-        }
-    }
+    )
 }
 
 @Composable

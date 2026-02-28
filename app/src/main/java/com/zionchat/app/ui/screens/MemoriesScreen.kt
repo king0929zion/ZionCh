@@ -22,6 +22,7 @@ import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -46,6 +47,7 @@ fun MemoriesScreen(navController: NavController) {
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .settingsBottomInsets()
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -61,7 +63,8 @@ fun MemoriesScreen(navController: NavController) {
             ) {
                 Text(
                     text = "${items.size} memories",
-                    fontSize = 15.sp,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
                     fontFamily = SourceSans3,
                     color = TextSecondary,
                     modifier = Modifier.padding(start = 8.dp)
@@ -69,8 +72,8 @@ fun MemoriesScreen(navController: NavController) {
                 TextButton(onClick = { scope.launch { repository.clearMemories() } }) {
                     Text(
                         text = "Clear All",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
                         fontFamily = SourceSans3,
                         color = Color(0xFFFF3B30)
                     )
@@ -84,12 +87,13 @@ fun MemoriesScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 items.forEach { item ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 72.dp)
                             .pressableScale(pressedScale = 0.98f, onClick = { }),
                         shape = RoundedCornerShape(26.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
@@ -97,21 +101,22 @@ fun MemoriesScreen(navController: NavController) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                .padding(horizontal = 18.dp, vertical = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
                             verticalAlignment = Alignment.Top
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = item.content,
-                                    fontSize = 16.sp,
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Medium,
                                     color = TextPrimary,
-                                    lineHeight = 22.sp
+                                    lineHeight = 24.sp
                                 )
                             }
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(38.dp)
                                     .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null
@@ -124,7 +129,7 @@ fun MemoriesScreen(navController: NavController) {
                                     imageVector = AppIcons.Trash,
                                     contentDescription = "Delete",
                                     tint = Color(0xFF8E8E93),
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(21.dp)
                                 )
                             }
                         }

@@ -27,6 +27,7 @@ import androidx.navigation.NavController
 import com.zionchat.app.R
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.flow.collect
@@ -96,6 +97,7 @@ fun PersonalizationScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
+                .settingsBottomInsets()
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -200,6 +202,7 @@ fun PersonalizationScreen(navController: NavController) {
                     Text(
                         text = stringResource(R.string.personalization_memories),
                         fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
                         fontFamily = SourceSans3,
                         color = TextPrimary,
                         modifier = Modifier.weight(1f)

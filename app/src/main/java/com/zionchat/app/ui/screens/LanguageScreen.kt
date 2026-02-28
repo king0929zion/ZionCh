@@ -37,8 +37,8 @@ import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.R
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
-import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
@@ -86,7 +86,8 @@ fun LanguageScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
                 .padding(top = 2.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .settingsBottomInsets(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             SettingsGroup(

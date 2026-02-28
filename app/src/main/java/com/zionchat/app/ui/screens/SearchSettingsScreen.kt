@@ -55,6 +55,7 @@ import com.zionchat.app.ui.components.AssetIcon
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.Background
 import com.zionchat.app.ui.theme.GrayLight
@@ -157,9 +158,10 @@ fun SearchSettingsScreen(navController: NavController) {
         Column(
             modifier =
                 Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .settingsBottomInsets()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             SearchSectionTitle(stringResource(R.string.settings_group_general))
@@ -173,7 +175,7 @@ fun SearchSettingsScreen(navController: NavController) {
                         color = TextPrimary,
                         fontFamily = SourceSans3,
                         fontSize = 17.sp,
-                        fontWeight = FontWeight.Normal,
+                        fontWeight = FontWeight.Medium,
                         modifier = Modifier.weight(1f)
                     )
                     SearchOutlineSwitch(
@@ -267,9 +269,10 @@ fun SearchProviderConfigScreen(
         Column(
             modifier =
                 Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .settingsBottomInsets()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             SearchSectionTitle(stringResource(R.string.search_settings_api_key))
@@ -431,7 +434,7 @@ private fun SearchProviderItem(
             Text(
                 text = item.title,
                 fontSize = 17.sp,
-                fontWeight = FontWeight.Normal,
+                fontWeight = FontWeight.Medium,
                 color = TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

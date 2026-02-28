@@ -31,6 +31,7 @@ import com.zionchat.app.ui.components.AppModalBottomSheet
 import com.zionchat.app.ui.components.LiquidGlassSwitch
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.FlowPreview
@@ -112,6 +113,7 @@ fun McpDetailScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
+                    .settingsBottomInsets()
                     .padding(horizontal = 16.dp)
                     .padding(top = 8.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)

@@ -83,12 +83,12 @@ import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.buildModelStorageId
 import com.zionchat.app.data.extractRemoteModelId
-import com.zionchat.app.ui.components.BottomFadeScrim
 import com.zionchat.app.ui.components.LiquidGlassSwitch
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
@@ -267,6 +267,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
+                        .settingsBottomInsets()
                         .padding(horizontal = 16.dp)
                         .padding(top = 12.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -338,12 +339,6 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                         .padding(top = 4.dp),
                     contentColor = TextPrimary,
                     backgroundColor = Surface
-                )
-
-                BottomFadeScrim(
-                    color = Color(0xFFFFFFFF),
-                    height = 44.dp,
-                    modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
         }

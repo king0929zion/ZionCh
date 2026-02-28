@@ -35,6 +35,7 @@ import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -97,6 +98,7 @@ fun DefaultModelScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
+                .settingsBottomInsets()
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -225,6 +227,7 @@ private fun DefaultModelSection(
             Text(
                 text = if (isEmpty) type.emptyLabel else display.orEmpty(),
                 fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
                 color = if (isEmpty) Color(0xFFC7C7CC) else TextPrimary,
                 modifier = Modifier.weight(1f)
             )
@@ -393,6 +396,7 @@ private fun DefaultModelOptionRow(
         Text(
             text = model.displayName,
             fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
             color = TextPrimary
         )
         androidx.compose.material3.Icon(
@@ -426,6 +430,7 @@ private fun DefaultModelNoneOptionRow(
         Text(
             text = "Not set",
             fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
             color = TextPrimary
         )
         androidx.compose.material3.Icon(

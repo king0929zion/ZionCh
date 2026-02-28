@@ -42,6 +42,7 @@ import com.zionchat.app.ui.components.LiquidGlassSwitch
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -95,6 +96,7 @@ fun McpScreen(navController: NavController) {
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
+                        .settingsBottomInsets()
                         .padding(horizontal = 16.dp)
                         .padding(top = 12.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -174,6 +176,7 @@ fun McpEmptyState() {
         Text(
             text = stringResource(R.string.mcp_no_tools),
             fontSize = 17.sp,
+            fontWeight = FontWeight.Medium,
             color = TextSecondary
         )
         
@@ -205,7 +208,7 @@ fun McpListItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(60.dp)
             .clip(RoundedCornerShape(26.dp))
     ) {
         Box(
@@ -281,7 +284,7 @@ fun McpListItem(
             Text(
                 text = mcp.name.trim().ifBlank { "Unnamed" },
                 fontSize = 17.sp,
-                fontWeight = FontWeight.Normal,
+                fontWeight = FontWeight.Medium,
                 fontFamily = SourceSans3,
                 color = if (mcp.enabled) TextPrimary else TextSecondary,
                 maxLines = 1,
@@ -452,7 +455,6 @@ fun McpEditSheetContent(
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .headerActionButtonShadow(CircleShape)
                     .clip(CircleShape)
                     .background(Surface, CircleShape)
                     .pressableScale(pressedScale = 0.95f) {

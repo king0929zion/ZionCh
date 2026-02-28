@@ -49,10 +49,12 @@ import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.buildModelStorageId
 import com.zionchat.app.data.findProviderPreset
 import com.zionchat.app.ui.components.AssetIcon
+import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.settingsBottomInsets
 import kotlinx.coroutines.launch
 
 // 页面状态
@@ -180,6 +182,7 @@ fun AddOAuthProviderScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
+                .settingsBottomInsets()
         ) {
             // 头像选择区
             AvatarSection(
@@ -515,61 +518,28 @@ private fun AddProviderTopBar(
     onBack: () -> Unit,
     onSave: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFFFFFFF))
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        // 返回按钮
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .headerActionButtonShadow(CircleShape)
-                .clip(CircleShape)
-                .background(Color.White)
-                .pressableScale(pressedScale = 0.95f, onClick = onBack)
-                .align(Alignment.CenterStart),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = AppIcons.Back,
-                contentDescription = "Back",
-                tint = Color(0xFF1C1C1E),
-                modifier = Modifier.size(20.dp)
-            )
+    PageTopBar(
+        title = stringResource(R.string.add_provider),
+        onBack = onBack,
+        trailing = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .headerActionButtonShadow(CircleShape)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .pressableScale(pressedScale = 0.95f, onClick = onSave),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Check,
+                    contentDescription = "Save",
+                    tint = Color(0xFF1C1C1E),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
-
-        // 标题
-        Text(
-            text = stringResource(R.string.add_provider),
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = SourceSans3,
-            color = Color(0xFF1C1C1E),
-            modifier = Modifier.align(Alignment.Center)
-        )
-
-        // 保存按钮
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .headerActionButtonShadow(CircleShape)
-                .clip(CircleShape)
-                .background(Color.White)
-                .pressableScale(pressedScale = 0.95f, onClick = onSave)
-                .align(Alignment.CenterEnd),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = AppIcons.Check,
-                contentDescription = "Save",
-                tint = Color(0xFF1C1C1E),
-                modifier = Modifier.size(22.dp)
-            )
-        }
-    }
+    )
 }
 
 @Composable

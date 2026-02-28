@@ -32,6 +32,7 @@ import coil3.compose.AsyncImage
 import com.zionchat.app.BuildConfig
 import com.zionchat.app.R
 import com.zionchat.app.ui.components.PageTopBar
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +61,7 @@ fun AboutScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
+                    .settingsBottomInsets()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
@@ -301,6 +303,7 @@ fun AboutItem(
             Text(
                 text = label,
                 fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
                 fontFamily = SourceSans3,
                 color = TextPrimary,
                 modifier = Modifier.weight(1f)
