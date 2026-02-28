@@ -1,6 +1,5 @@
 package com.zionchat.app.ui.components
 
-import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -31,20 +30,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.Shadow
 import com.zionchat.app.ui.theme.Surface
 import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
-
-private fun supportsLiquidGlassBlur(): Boolean {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
-    return true
-}
 
 @Suppress("UNUSED_PARAMETER")
 fun Modifier.liquidGlass(
@@ -58,23 +47,9 @@ fun Modifier.liquidGlass(
     highlightAlpha: Float = 0.35f,
     shadowAlpha: Float = 0.10f
 ): Modifier {
-    val supportsBlur = supportsLiquidGlassBlur()
-    if (!supportsBlur) {
-        return this
-            .background(fallbackColor, shape)
-            .clip(shape)
-    }
-
-    return this.drawBackdrop(
-        backdrop = backdrop,
-        shape = { shape },
-        effects = {
-            blur(blurRadius.toPx())
-        },
-        highlight = { Highlight.Ambient.copy(alpha = highlightAlpha) },
-        shadow = { Shadow(radius = 24.dp, color = Color.Black.copy(alpha = shadowAlpha)) },
-        onDrawSurface = { drawRect(overlayColor) }
-    )
+    return this
+        .background(overlayColor, shape)
+        .clip(shape)
 }
 
 @Composable
@@ -118,7 +93,6 @@ fun LiquidGlassSwitch(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(trackBackdrop)
                 .clip(trackShape)
                 .background(trackColor, trackShape)
                 .border(
