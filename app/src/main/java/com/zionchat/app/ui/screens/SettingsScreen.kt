@@ -177,7 +177,7 @@ fun SettingsScreen(navController: NavController) {
                         appearanceAnchorY = coordinates.positionInWindow().y
                     }) {
                         SettingsItem(
-                            icon = { Icon(AppIcons.Appearance, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
+                            icon = { Icon(AppIcons.Sun, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                             label = stringResource(R.string.settings_item_appearance),
                             value = when(selectedAppearance) {
                                 "system" -> stringResource(R.string.appearance_option_system)
@@ -210,7 +210,7 @@ fun SettingsScreen(navController: NavController) {
                         )
                     }
                     SettingsItem(
-                        icon = { Icon(AppIcons.Language, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
+                        icon = { Icon(AppIcons.Globe, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_language),
                         value = languageLabel,
                         showChevron = true,
@@ -763,9 +763,10 @@ fun EditProfileModal(
                                 },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(48.dp),
+                                    .height(48.dp)
+                                    .shadow(3.dp, RoundedCornerShape(12.dp)),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = GrayLight)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFFFFF))
                             ) {
                                 Text(text = stringResource(R.string.common_cancel), fontSize = 17.sp, color = TextPrimary)
                             }
@@ -776,12 +777,18 @@ fun EditProfileModal(
                                     onDismiss()
                                 },
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = TextPrimary)
+                                    .size(48.dp)
+                                    .shadow(3.dp, RoundedCornerShape(24.dp)),
+                                shape = RoundedCornerShape(24.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFFFFF)),
+                                contentPadding = PaddingValues(0.dp)
                             ) {
-                                Text(text = stringResource(R.string.common_save), fontSize = 17.sp, color = Surface)
+                                Icon(
+                                    imageVector = AppIcons.Check,
+                                    contentDescription = stringResource(R.string.common_save),
+                                    tint = TextPrimary,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
                         }
                     }
@@ -806,15 +813,15 @@ fun SettingsGroup(
             fontSize = 14.sp,
             fontWeight = FontWeight.Normal,
             fontFamily = SourceSans3,
-            color = TextSecondary,
-            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+            color = Color(0xFF6B6B6B),
+            modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
         )
 
         // 分组内容 - 使用更圆角与留白分隔
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(0.dp, RoundedCornerShape(SettingsGroupCornerRadius)),
+                .shadow(2.dp, RoundedCornerShape(SettingsGroupCornerRadius)),
             shape = RoundedCornerShape(SettingsGroupCornerRadius),
             colors = CardDefaults.cardColors(containerColor = SettingsPageBackgroundColor)
         ) {

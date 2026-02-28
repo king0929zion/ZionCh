@@ -322,7 +322,7 @@ private fun DefaultModelSelectorModal(
                         if (!required) {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 colors = CardDefaults.cardColors(containerColor = NeutralSelectorCard)
                             ) {
                                 DefaultModelNoneOptionRow(
@@ -343,7 +343,7 @@ private fun DefaultModelSelectorModal(
                                 )
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     colors = CardDefaults.cardColors(containerColor = NeutralSelectorCard)
                                 ) {
                                     providerModels.forEachIndexed { index, model ->

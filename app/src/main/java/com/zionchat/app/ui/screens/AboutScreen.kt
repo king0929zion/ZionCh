@@ -231,14 +231,14 @@ fun AboutGroup(
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             fontFamily = SourceSans3,
-            color = TextSecondary,
-            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+            color = Color(0xFF6B6B6B),
+            modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
         )
 
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-            .shadow(0.dp, RoundedCornerShape(26.dp)),
+            .shadow(2.dp, RoundedCornerShape(26.dp)),
             shape = RoundedCornerShape(26.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFFFF))
         ) {

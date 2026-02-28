@@ -231,7 +231,7 @@ private fun SectionTitle(title: String) {
         fontSize = 13.sp,
         fontWeight = FontWeight.Medium,
         fontFamily = SourceSans3,
-        color = TextSecondary,
-        modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+        color = Color(0xFF6B6B6B),
+        modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
     )
 }

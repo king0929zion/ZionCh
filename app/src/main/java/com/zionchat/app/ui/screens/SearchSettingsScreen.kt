@@ -344,11 +344,11 @@ private fun SaveAction(
 private fun SearchSectionTitle(text: String) {
     Text(
         text = text,
-        color = TextSecondary,
+        color = Color(0xFF6B6B6B),
         fontFamily = SourceSans3,
         fontSize = 13.sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(start = 4.dp)
+        modifier = Modifier.padding(start = 12.dp)
     )
 }
 
