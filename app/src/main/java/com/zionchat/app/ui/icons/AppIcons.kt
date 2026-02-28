@@ -1814,97 +1814,95 @@ object AppIcons {
         }
     }.build()
 
-    // Sun 图标 - Light appearance
-    val Sun = ImageVector.Builder(
-        name = "sun",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f
-    ).apply {
-        path(
-            fill = SolidColor(Color(0xFF1C1C1E)),
-            stroke = null
-        ) {
-            // 太阳图标路径
-            moveTo(12f, 1f)
-            curveTo(12.552f, 1f, 13f, 1.448f, 13f, 2f)
-            verticalLineTo(4f)
-            curveTo(13f, 4.552f, 12.552f, 5f, 12f, 5f)
-            curveTo(11.448f, 5f, 11f, 4.552f, 11f, 4f)
-            verticalLineTo(2f)
-            curveTo(11f, 1.448f, 11.448f, 1f, 12f, 1f)
-            close()
-            moveTo(4.222f, 4.222f)
-            curveTo(4.611f, 3.833f, 5.239f, 3.833f, 5.636f, 4.222f)
-            lineTo(7.05f, 5.636f)
-            curveTo(7.439f, 6.025f, 7.439f, 6.653f, 7.05f, 7.05f)
-            curveTo(6.661f, 7.439f, 6.025f, 7.439f, 5.636f, 7.05f)
-            lineTo(4.222f, 5.636f)
-            curveTo(3.833f, 5.247f, 3.833f, 4.611f, 4.222f, 4.222f)
-            close()
-            moveTo(19.778f, 4.222f)
-            curveTo(20.167f, 4.611f, 20.167f, 5.247f, 19.778f, 5.636f)
-            lineTo(18.364f, 7.05f)
-            curveTo(17.975f, 7.439f, 17.339f, 7.439f, 16.95f, 7.05f)
-            curveTo(16.561f, 6.661f, 16.561f, 6.025f, 16.95f, 5.636f)
-            lineTo(18.364f, 4.222f)
-            curveTo(18.753f, 3.833f, 19.389f, 3.833f, 19.778f, 4.222f)
-            close()
-            moveTo(12f, 9f)
-            curveTo(13.657f, 9f, 15f, 10.343f, 15f, 12f)
-            curveTo(15f, 13.657f, 13.657f, 15f, 12f, 15f)
-            curveTo(10.343f, 15f, 9f, 13.657f, 9f, 12f)
-            curveTo(9f, 10.343f, 10.343f, 9f, 12f, 9f)
-            close()
-            moveTo(7f, 12f)
-            curveTo(7f, 9.239f, 9.239f, 7f, 12f, 7f)
-            curveTo(14.761f, 7f, 17f, 9.239f, 17f, 12f)
-            curveTo(17f, 14.761f, 14.761f, 17f, 12f, 17f)
-            curveTo(9.239f, 17f, 7f, 14.761f, 7f, 12f)
-            close()
-            moveTo(1f, 12f)
-            curveTo(1f, 11.448f, 1.448f, 11f, 2f, 11f)
-            horizontalLineTo(4f)
-            curveTo(4.552f, 11f, 5f, 11.448f, 5f, 12f)
-            curveTo(5f, 12.552f, 4.552f, 13f, 4f, 13f)
-            horizontalLineTo(2f)
-            curveTo(1.448f, 13f, 1f, 12.552f, 1f, 12f)
-            close()
-            moveTo(19f, 12f)
-            curveTo(19f, 11.448f, 19.448f, 11f, 20f, 11f)
-            horizontalLineTo(22f)
-            curveTo(22.552f, 11f, 23f, 11.448f, 23f, 12f)
-            curveTo(23f, 12.552f, 22.552f, 13f, 22f, 13f)
-            horizontalLineTo(20f)
-            curveTo(19.448f, 13f, 19f, 12.552f, 19f, 12f)
-            close()
-            moveTo(7.05f, 16.95f)
-            curveTo(7.439f, 17.339f, 7.439f, 17.975f, 7.05f, 18.364f)
-            lineTo(5.636f, 19.778f)
-            curveTo(5.247f, 20.167f, 4.611f, 20.167f, 4.222f, 19.778f)
-            curveTo(3.833f, 19.389f, 3.833f, 18.753f, 4.222f, 18.364f)
-            lineTo(5.636f, 16.95f)
-            curveTo(6.025f, 16.561f, 6.661f, 16.561f, 7.05f, 16.95f)
-            close()
-            moveTo(16.95f, 16.95f)
-            curveTo(17.339f, 16.561f, 17.975f, 16.561f, 18.364f, 16.95f)
-            lineTo(19.778f, 18.364f)
-            curveTo(20.167f, 18.753f, 20.167f, 19.389f, 19.778f, 19.778f)
-            curveTo(19.389f, 20.167f, 18.753f, 20.167f, 18.364f, 19.778f)
-            lineTo(16.95f, 18.364f)
-            curveTo(16.561f, 17.975f, 16.561f, 17.339f, 16.95f, 16.95f)
-            close()
-            moveTo(12f, 19f)
-            curveTo(12.552f, 19f, 13f, 19.448f, 13f, 20f)
-            verticalLineTo(22f)
-            curveTo(13f, 22.552f, 12.552f, 23f, 12f, 23f)
-            curveTo(11.448f, 23f, 11f, 22.552f, 11f, 22f)
-            verticalLineTo(20f)
-            curveTo(11f, 19.448f, 11.448f, 19f, 12f, 19f)
-            close()
-        }
-    }.build()
+     // Sun 图标 - Light appearance (Lucide Sun, fillType=evenodd)
+     val Sun = ImageVector.Builder(
+         name = "sun",
+         defaultWidth = 24.dp,
+         defaultHeight = 24.dp,
+         viewportWidth = 24f,
+         viewportHeight = 24f
+     ).apply {
+         path(
+             fill = SolidColor(Color(0xFF1C1C1E)),
+             fillAlpha = 1f,
+             stroke = null,
+             pathFillType = PathFillType.EvenOdd
+         ) {
+             // 顶部射线 (12,1) → (12,5)
+             moveTo(12f, 1f)
+             arcToRelative(1f, 1f, 0f, false, true, 1f, 1f)
+             verticalLineToRelative(2f)
+             arcToRelative(1f, 1f, 0f, true, true, -2f, 0f)
+             verticalLineTo(2f)
+             arcToRelative(1f, 1f, 0f, false, true, 1f, -1f)
+             close()
+             // 左上射线
+             moveTo(4.222f, 4.222f)
+             arcToRelative(1f, 1f, 0f, false, true, 1.414f, 0f)
+             lineTo(7.05f, 5.636f)
+             arcToRelative(1f, 1f, 0f, true, true, -1.414f, 1.414f)
+             lineTo(4.222f, 5.636f)
+             arcToRelative(1f, 1f, 0f, false, true, 0f, -1.414f)
+             close()
+             // 右上射线
+             moveTo(19.778f, 4.222f)
+             arcToRelative(1f, 1f, 0f, false, true, 0f, 1.414f)
+             lineTo(18.364f, 7.05f)
+             arcToRelative(1f, 1f, 0f, false, true, -1.414f, -1.414f)
+             lineToRelative(1.414f, -1.414f)
+             arcToRelative(1f, 1f, 0f, false, true, 1.414f, 0f)
+             close()
+             // 中心圆 (内圈 r=3, evenodd 挖空) + 外圈 r=5
+             moveTo(12f, 9f)
+             arcToRelative(3f, 3f, 0f, true, false, 0f, 6f)
+             arcToRelative(3f, 3f, 0f, false, false, 0f, -6f)
+             close()
+             moveTo(7f, 12f)
+             arcToRelative(5f, 5f, 0f, true, true, 10f, 0f)
+             arcToRelative(5f, 5f, 0f, false, true, -10f, 0f)
+             close()
+             // 左射线
+             moveTo(1f, 12f)
+             arcToRelative(1f, 1f, 0f, false, true, 1f, -1f)
+             horizontalLineToRelative(2f)
+             arcToRelative(1f, 1f, 0f, true, true, 0f, 2f)
+             horizontalLineTo(2f)
+             arcToRelative(1f, 1f, 0f, false, true, -1f, -1f)
+             close()
+             // 右射线
+             moveTo(19f, 12f)
+             arcToRelative(1f, 1f, 0f, false, true, 1f, -1f)
+             horizontalLineToRelative(2f)
+             arcToRelative(1f, 1f, 0f, true, true, 0f, 2f)
+             horizontalLineToRelative(-2f)
+             arcToRelative(1f, 1f, 0f, false, true, -1f, -1f)
+             close()
+             // 左下射线
+             moveTo(7.05f, 16.95f)
+             arcToRelative(1f, 1f, 0f, false, true, 0f, 1.414f)
+             lineToRelative(-1.414f, 1.414f)
+             arcToRelative(1f, 1f, 0f, false, true, -1.414f, -1.414f)
+             lineToRelative(1.414f, -1.414f)
+             arcToRelative(1f, 1f, 0f, false, true, 1.414f, 0f)
+             close()
+             // 右下射线
+             moveTo(16.95f, 16.95f)
+             arcToRelative(1f, 1f, 0f, false, true, 1.414f, 0f)
+             lineToRelative(1.414f, 1.414f)
+             arcToRelative(1f, 1f, 0f, false, true, -1.414f, 1.414f)
+             lineToRelative(-1.414f, -1.414f)
+             arcToRelative(1f, 1f, 0f, false, true, 0f, -1.414f)
+             close()
+             // 底部射线
+             moveTo(12f, 19f)
+             arcToRelative(1f, 1f, 0f, false, true, 1f, 1f)
+             verticalLineToRelative(2f)
+             arcToRelative(1f, 1f, 0f, true, true, -2f, 0f)
+             verticalLineToRelative(-2f)
+             arcToRelative(1f, 1f, 0f, false, true, 1f, -1f)
+             close()
+         }
+     }.build()
 
     // Moon 图标 - Dark appearance (使用太阳图标)
     val Moon = ImageVector.Builder(

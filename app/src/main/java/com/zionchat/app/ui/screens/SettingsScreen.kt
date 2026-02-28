@@ -481,7 +481,14 @@ fun UserProfileSection(
         // 编辑资料按钮
         Button(
             onClick = onEditClick,
-            modifier = Modifier.height(34.dp),
+            modifier = Modifier
+                .height(34.dp)
+                .shadow(
+                    elevation = 6.dp,
+                    shape = RoundedCornerShape(17.dp),
+                    spotColor = Color.Black.copy(alpha = 0.10f),
+                    ambientColor = Color.Black.copy(alpha = 0.06f)
+                ),
             shape = RoundedCornerShape(17.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Surface
@@ -807,21 +814,21 @@ fun SettingsGroup(
     Column(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // 分组标题
-        Text(
-            text = title.uppercase(),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Normal,
-            fontFamily = SourceSans3,
-            color = Color(0xFF6B6B6B),
-            modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
-        )
+         // 分组标题
+         Text(
+             text = title.uppercase(),
+             fontSize = 14.sp,
+             fontWeight = FontWeight.SemiBold,
+             fontFamily = SourceSans3,
+             color = Color(0xFF6B6B6B),
+             modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
+         )
 
         // 分组内容 - 使用更圆角与留白分隔
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(2.dp, RoundedCornerShape(SettingsGroupCornerRadius)),
+                .shadow(0.dp, RoundedCornerShape(SettingsGroupCornerRadius)),
             shape = RoundedCornerShape(SettingsGroupCornerRadius),
             colors = CardDefaults.cardColors(containerColor = SettingsPageBackgroundColor)
         ) {

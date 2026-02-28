@@ -229,7 +229,7 @@ fun AboutGroup(
         Text(
             text = title.uppercase(),
             fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.SemiBold,
             fontFamily = SourceSans3,
             color = Color(0xFF6B6B6B),
             modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
@@ -238,7 +238,7 @@ fun AboutGroup(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-            .shadow(2.dp, RoundedCornerShape(26.dp)),
+            .shadow(0.dp, RoundedCornerShape(26.dp)),
             shape = RoundedCornerShape(26.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFFFF))
         ) {
