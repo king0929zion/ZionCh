@@ -74,7 +74,7 @@ jobs:
         if [ "${{ github.event_name }}" = "pull_request" ]; then
           ./gradlew :app:assembleDebug --stacktrace --max-workers=2 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -PCI_FAST_BUILD=true
         else
-          ./gradlew :app:assembleRelease --stacktrace --max-workers=2 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
+          ./gradlew :app:assembleRelease --stacktrace --max-workers=2 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=false -Pkotlin.incremental.useClasspathSnapshot=false -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
         fi
 
     - name: Run tests
