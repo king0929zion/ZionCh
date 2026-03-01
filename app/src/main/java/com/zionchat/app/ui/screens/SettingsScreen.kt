@@ -997,11 +997,6 @@ fun AppearanceMenu(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(Color(0xFFFFFFFF))
-                                    .border(
-                                        width = if (isSelected) 1.dp else 0.dp,
-                                        color = if (isSelected) Color(0xFFD9D9D9) else Color.Transparent,
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
                                     .clickable {
                                         onSelect(key)
                                         onDismiss()
@@ -1164,11 +1159,6 @@ fun AccentColorMenu(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(Color(0xFFFFFFFF))
-                                    .border(
-                                        width = if (isSelected) 1.dp else 0.dp,
-                                        color = if (isSelected) Color(0xFFD9D9D9) else Color.Transparent,
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
                                     .clickable {
                                         onSelect(key)
                                         onDismiss()
