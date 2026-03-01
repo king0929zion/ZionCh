@@ -1,5 +1,7 @@
 ## ZionChat Android 版本说明
 
+- 修复 CI 编译回归：将群聊 `@` 悬浮面板改为聊天页文件内顶层组件，避免局部函数可见性导致的 `Unresolved reference MentionPickerFloatingPanel`，恢复 Release Kotlin 编译通过。
+- 群聊提及交互稳定性增强：`@` 候选浮窗继续保持“输入栏上方独立浮层”模式，不参与输入栏高度计算，避免悬浮窗位移和输入框被遮挡回归。
 - 群聊 `@` 悬浮窗稳定性重构：提及面板从输入组件内部抽离为聊天页独立浮层锚定，彻底避免参与输入栏高度测量，修复“悬浮窗乱飞/输入框被遮挡”问题。
 - Model Services 视觉统一：`Token/Device` 徽标背景灰色统一到主设置页同款灰（`#F1F1F1`），减少页面灰阶不一致。
 - Add Provider 布局重组：头像+名称合并为第一块灰色圆角卡片，Provider Type + API Key + API URL 合并为第二块灰色圆角卡片，Models 保持独立第三块卡片。

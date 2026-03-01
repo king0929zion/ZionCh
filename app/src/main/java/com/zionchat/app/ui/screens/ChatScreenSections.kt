@@ -5103,7 +5103,7 @@ internal fun BottomInputArea(
 }
 
 @Composable
-internal fun MentionPickerFloatingPanel(
+fun MentionPickerFloatingPanel(
     visible: Boolean,
     mentionCandidates: List<MentionCandidate>,
     onMentionSelect: (MentionCandidate) -> Unit,

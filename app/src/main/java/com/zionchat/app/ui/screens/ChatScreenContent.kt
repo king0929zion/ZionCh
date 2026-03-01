@@ -4668,6 +4668,65 @@ internal fun ChatScreenContent(
         }
     }
 }
+
+@Composable
+private fun MentionPickerFloatingPanel(
+    visible: Boolean,
+    mentionCandidates: List<MentionCandidate>,
+    onMentionSelect: (MentionCandidate) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val visibleMentionItems = remember(mentionCandidates) { mentionCandidates.take(6) }
+    val mentionPopupShape = RoundedCornerShape(16.dp)
+    val mentionItemShape = RoundedCornerShape(12.dp)
+    AnimatedVisibility(
+        visible = visible && visibleMentionItems.isNotEmpty(),
+        modifier = modifier,
+        enter = fadeIn(animationSpec = tween(150, easing = FastOutSlowInEasing)),
+        exit = fadeOut(animationSpec = tween(110, easing = FastOutSlowInEasing))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 12.dp,
+                    shape = mentionPopupShape,
+                    ambientColor = Color.Black.copy(alpha = 0.12f),
+                    spotColor = Color.Black.copy(alpha = 0.12f)
+                )
+                .clip(mentionPopupShape)
+                .background(Color.White, mentionPopupShape)
+                .border(1.dp, Color.Black.copy(alpha = 0.05f), mentionPopupShape)
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+        ) {
+            visibleMentionItems.forEachIndexed { index, candidate ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(mentionItemShape)
+                        .background(Color.White, mentionItemShape)
+                        .pressableScale(
+                            pressedScale = 0.98f,
+                            onClick = { onMentionSelect(candidate) }
+                        )
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(
+                        text = candidate.label,
+                        color = Color(0xFF007AFF),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                if (index < visibleMentionItems.lastIndex) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+            }
+        }
+    }
+}
+
 private data class GroupDispatchOutcome(
     val replies: List<Message>,
     val nextRoundRobinCursor: Int? = null,
