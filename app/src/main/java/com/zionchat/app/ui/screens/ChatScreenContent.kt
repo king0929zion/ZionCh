@@ -4705,6 +4705,7 @@ private suspend fun selectDynamicGroupResponders(
     responders: List<GroupResponder>,
     allModels: List<ModelConfig>,
     providers: List<ProviderConfig>,
+    conversationMessages: List<Message>,
     userMessage: Message,
     systemTimeText: String
 ): List<GroupResponder> {
@@ -4727,16 +4728,41 @@ private suspend fun selectDynamicGroupResponders(
             val token = buildBotMentionToken(responder.bot)
             "- bot_id=${responder.bot.id} | token=@$token | bot_name=${responder.bot.name} | model_name=${responder.model.displayName}"
         }
+    val conversationContextText =
+        conversationMessages
+            .takeLast(24)
+            .mapNotNull { msg ->
+                val clean =
+                    stripMcpTagMarkers(msg.content)
+                        .replace(Regex("\\s+"), " ")
+                        .trim()
+                if (clean.isBlank()) {
+                    null
+                } else {
+                    val roleLabel =
+                        when (msg.role.trim().lowercase()) {
+                            "assistant" -> msg.speakerName?.trim()?.takeIf { it.isNotBlank() } ?: "assistant"
+                            "user" -> "user"
+                            "system" -> "system"
+                            else -> msg.role.trim().ifBlank { "message" }
+                        }
+                    "[$roleLabel] ${clean.take(280)}"
+                }
+            }
+            .joinToString("\n")
+            .ifBlank { "(no_context)" }
     val selectorPrompt =
         buildString {
-            appendLine("你是群聊调度器，需要从候选 Bot 中选择最适合回复本条消息的 1~2 个。")
+            appendLine("你是群聊调度器，需要基于完整上下文，从候选 Bot 中选择最适合回复本条消息的 1~2 个。")
             append("当前系统时间：")
             appendLine(systemTimeText)
             appendLine("请只返回 JSON 数组，数组元素必须是 bot_id、token 或 bot_name。")
             appendLine("候选 Bot：")
             appendLine(optionsText)
-            appendLine("用户消息：")
-            appendLine(userMessage.content.trim())
+            appendLine("最近对话上下文（按时间顺序）：")
+            appendLine(conversationContextText)
+            appendLine("当前用户消息：")
+            appendLine(userMessage.content.trim().ifBlank { "(empty_user_message)" })
         }.trim()
 
     val schedulerReply =
@@ -4819,22 +4845,21 @@ private suspend fun runGroupChatDispatch(
                 )
             aliases.any { mentionKeys.contains(it) }
         }
+    val strategyKey = group.strategy.trim().lowercase()
 
     val scheduledResponders =
-        when (group.strategy.trim().lowercase()) {
+        when (strategyKey) {
             "round_robin" -> {
                 val responderCount = responders.size
-                val index =
+                val startIndex =
                     if (responderCount == 0) {
                         0
                     } else {
                         ((group.roundRobinCursor % responderCount) + responderCount) % responderCount
                     }
-                listOf(responders[index])
-            }
-            "random" -> {
-                val picked = responders.randomOrNull()
-                if (picked == null) emptyList() else listOf(picked)
+                List(responderCount) { offset ->
+                    responders[(startIndex + offset) % responderCount]
+                }
             }
             else -> {
                 selectDynamicGroupResponders(
@@ -4844,20 +4869,32 @@ private suspend fun runGroupChatDispatch(
                     responders = responders,
                     allModels = allModels,
                     providers = providers,
+                    conversationMessages = conversationMessages,
                     userMessage = userMessage,
                     systemTimeText = systemTimeText
                 )
             }
         }
 
-    val ordered = LinkedHashMap<String, GroupResponder>()
-    mentionedResponders.forEach { responder -> ordered[responder.bot.id] = responder }
-    scheduledResponders.forEach { responder -> ordered[responder.bot.id] = responder }
-    if (ordered.isEmpty()) {
-        val first = responders.first()
-        ordered[first.bot.id] = first
+    val selectedResponders =
+        if (strategyKey == "round_robin") {
+            if (scheduledResponders.isEmpty()) responders else scheduledResponders
+        } else {
+            val ordered = LinkedHashMap<String, GroupResponder>()
+            mentionedResponders.forEach { responder -> ordered[responder.bot.id] = responder }
+            scheduledResponders.forEach { responder -> ordered[responder.bot.id] = responder }
+            if (ordered.isEmpty()) {
+                val first = responders.first()
+                ordered[first.bot.id] = first
+            }
+            ordered.values.toList()
+        }
+    if (selectedResponders.isEmpty()) {
+        return GroupDispatchOutcome(
+            replies = emptyList(),
+            warning = "群聊暂无可用回复成员。"
+        )
     }
-    val selectedResponders = ordered.values.toList()
 
     val cleanHistory =
         conversationMessages.takeLast(16).mapNotNull { msg ->
@@ -4878,7 +4915,7 @@ private suspend fun runGroupChatDispatch(
         if (provider == null || provider.apiUrl.isBlank() || provider.apiKey.isBlank()) {
             val fallbackText = "暂时无法回复（模型提供方未配置）。"
             val batchId = java.util.UUID.randomUUID().toString()
-            replies += Message(
+            val fallbackReply = Message(
                 role = "assistant",
                 content = fallbackText,
                 speakerBotId = bot.id,
@@ -4887,12 +4924,14 @@ private suspend fun runGroupChatDispatch(
                 speakerAvatarAssetName = bot.avatarAssetName,
                 speakerBatchId = batchId
             )
+            replies += fallbackReply
+            rollingHistory += fallbackReply.copy(reasoning = null, tags = null, attachments = null)
             return@forEach
         }
         val resolvedProvider = runCatching { providerAuthManager.ensureValidProvider(provider) }.getOrElse {
             val fallbackText = "暂时无法回复（鉴权失败）。"
             val batchId = java.util.UUID.randomUUID().toString()
-            replies += Message(
+            val fallbackReply = Message(
                 role = "assistant",
                 content = fallbackText,
                 speakerBotId = bot.id,
@@ -4901,6 +4940,8 @@ private suspend fun runGroupChatDispatch(
                 speakerAvatarAssetName = bot.avatarAssetName,
                 speakerBatchId = batchId
             )
+            replies += fallbackReply
+            rollingHistory += fallbackReply.copy(reasoning = null, tags = null, attachments = null)
             return@forEach
         }
 
@@ -4964,7 +5005,7 @@ private suspend fun runGroupChatDispatch(
     }
 
     val nextCursor =
-        if (group.strategy.trim().lowercase() == "round_robin" && responders.isNotEmpty()) {
+        if (strategyKey == "round_robin" && responders.isNotEmpty()) {
             val responderCount = responders.size
             val current =
                 ((group.roundRobinCursor % responderCount) + responderCount) % responderCount

@@ -319,7 +319,6 @@ class AppRepository(context: Context) {
         val strategy =
             when (safeTrim(group.strategy).lowercase()) {
                 "round_robin", "round-robin", "roundrobin" -> "round_robin"
-                "random", "rand" -> "random"
                 else -> "dynamic"
             }
 

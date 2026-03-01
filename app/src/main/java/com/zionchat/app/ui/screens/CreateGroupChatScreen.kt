@@ -65,7 +65,6 @@ import kotlinx.coroutines.launch
 
 private const val GROUP_STRATEGY_DYNAMIC = "dynamic"
 private const val GROUP_STRATEGY_ROUND_ROBIN = "round_robin"
-private const val GROUP_STRATEGY_RANDOM = "random"
 
 @Composable
 fun CreateGroupChatScreen(navController: NavController, groupId: String? = null) {
@@ -308,12 +307,6 @@ private fun GroupStrategySection(strategy: String, onChange: (String) -> Unit) {
                 text = stringResource(R.string.group_chat_strategy_round_robin),
                 selected = strategy == GROUP_STRATEGY_ROUND_ROBIN,
                 onClick = { onChange(GROUP_STRATEGY_ROUND_ROBIN) },
-                modifier = Modifier.weight(1f)
-            )
-            StrategyCapsule(
-                text = stringResource(R.string.group_chat_strategy_random),
-                selected = strategy == GROUP_STRATEGY_RANDOM,
-                onClick = { onChange(GROUP_STRATEGY_RANDOM) },
                 modifier = Modifier.weight(1f)
             )
         }
