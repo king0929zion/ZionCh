@@ -49,6 +49,7 @@ import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.BorderStroke
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -65,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -91,7 +93,6 @@ import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
-import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.Surface
 import com.zionchat.app.ui.theme.TextPrimary
@@ -100,6 +101,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.material3.Surface as M3Surface
+
+private val ModelModalCardGray = Color(0xFFF1F1F1)
+private val ModelModalInputBorder = Color(0xFF44464D)
+private val ModelModalHint = Color(0xFF74747D)
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
@@ -619,7 +624,7 @@ private fun AddModelModal(
                             indication = null,
                             onClick = { }
                         ),
-                    color = Surface,
+                    color = Color.White,
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
                 ) {
                     Column(
@@ -676,10 +681,16 @@ private fun AddModelModal(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(48.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = GrayLight)
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ModelModalCardGray)
                             ) {
-                                Text(text = "Cancel", fontSize = 17.sp, color = TextPrimary)
+                                Text(
+                                    text = "Cancel",
+                                    fontSize = 17.sp,
+                                    fontFamily = SourceSans3,
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
 
                             Button(
@@ -693,10 +704,16 @@ private fun AddModelModal(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(48.dp),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = TextPrimary)
                             ) {
-                                Text(text = "Add", fontSize = 17.sp, color = Surface)
+                                Text(
+                                    text = "Add",
+                                    fontSize = 17.sp,
+                                    fontFamily = SourceSans3,
+                                    color = Surface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         }
                     }
@@ -713,17 +730,16 @@ private fun FieldBlock(
     onValueChange: (String) -> Unit,
     placeholder: String
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = label,
-            fontSize = 13.sp,
-            fontFamily = SourceSans3,
-            color = TextSecondary
-        )
+    val shape = RoundedCornerShape(16.dp)
+    val hasValue = value.trim().isNotEmpty()
+    Box(modifier = Modifier.fillMaxWidth()) {
         M3Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = GrayLighter,
-            shape = RoundedCornerShape(14.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(4.dp, shape)
+                .border(width = 1.dp, color = ModelModalInputBorder, shape = shape),
+            color = ModelModalCardGray,
+            shape = shape
         ) {
             TextField(
                 value = value,
@@ -732,24 +748,56 @@ private fun FieldBlock(
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp),
                 placeholder = {
-                    Text(
-                        text = placeholder,
-                        fontSize = 17.sp,
-                        color = TextSecondary
-                    )
+                    if (!hasValue) {
+                        Text(
+                            text = placeholder,
+                            fontSize = 17.sp,
+                            fontFamily = SourceSans3,
+                            color = ModelModalHint
+                        )
+                    }
                 },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
                     focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    cursorColor = TextPrimary
                 ),
                 textStyle = TextStyle(
                     fontSize = 17.sp,
+                    fontFamily = SourceSans3,
                     color = TextPrimary
                 ),
                 singleLine = true
             )
+        }
+
+        AnimatedVisibility(
+            visible = hasValue,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = 14.dp, y = (-8).dp),
+            enter = fadeIn(animationSpec = tween(140)),
+            exit = fadeOut(animationSpec = tween(100))
+        ) {
+            Box(
+                modifier = Modifier
+                    .background(ModelModalCardGray, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 12.sp,
+                    fontFamily = SourceSans3,
+                    color = ModelModalHint,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 }
@@ -773,6 +821,9 @@ private fun ModelConnectionTestModal(
     val density = LocalDensity.current
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
     val dismissThresholdPx = remember(density) { with(density) { 120.dp.toPx() } }
+    val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val navBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val sheetBottomInset = maxOf(imeBottomPadding, navBottomPadding)
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -802,6 +853,7 @@ private fun ModelConnectionTestModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
+                        .padding(bottom = sheetBottomInset)
                         .offset { IntOffset(0, dragOffsetPx.roundToInt()) }
                         .draggable(
                             orientation = Orientation.Vertical,
@@ -835,7 +887,7 @@ private fun ModelConnectionTestModal(
                             indication = null,
                             onClick = { }
                         ),
-                    color = Surface,
+                    color = Color.White,
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
                 ) {
                     Column(
@@ -874,7 +926,7 @@ private fun ModelConnectionTestModal(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(42.dp),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 colors =
                                     ButtonDefaults.buttonColors(
                                         containerColor = TextPrimary,
@@ -894,10 +946,11 @@ private fun ModelConnectionTestModal(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(42.dp),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, Color(0xFFDADAE0)),
                                 colors =
                                     ButtonDefaults.buttonColors(
-                                        containerColor = GrayLighter,
+                                        containerColor = Color.White,
                                         disabledContainerColor = GrayLight
                                     )
                             ) {
@@ -939,20 +992,19 @@ private fun ModelConnectionTestModal(
                                     val selected = selectedModelId == model.id
                                     val result = results[model.id]
                                     val isRunning = testingModelId == model.id
-                                    val neutralOptionCard = Color(0xFFF2F2F2)
+                                    val optionShape = RoundedCornerShape(12.dp)
 
                                     Column(
                                         modifier =
                                             Modifier
                                                 .fillMaxWidth()
-                                                .background(
-                                                    neutralOptionCard,
-                                                    RoundedCornerShape(12.dp)
-                                                )
+                                                .shadow(if (selected) 5.dp else 3.dp, optionShape)
+                                                .clip(optionShape)
+                                                .background(Color.White, optionShape)
                                                 .border(
-                                                    width = if (selected) 1.dp else 0.dp,
-                                                    color = if (selected) Color.Black.copy(alpha = 0.12f) else Color.Transparent,
-                                                    shape = RoundedCornerShape(12.dp)
+                                                    width = 1.dp,
+                                                    color = Color(0xFFE0E0E5),
+                                                    shape = optionShape
                                                 )
                                                 .pressableScale(pressedScale = 0.98f, onClick = { onSelectModel(model.id) })
                                                 .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -967,7 +1019,7 @@ private fun ModelConnectionTestModal(
                                                 fontSize = 14.sp,
                                                 fontFamily = SourceSans3,
                                                 color = TextPrimary,
-                                                fontWeight = FontWeight.Medium,
+                                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                                                 modifier = Modifier.weight(1f)
                                             )
                                             val statusColor =

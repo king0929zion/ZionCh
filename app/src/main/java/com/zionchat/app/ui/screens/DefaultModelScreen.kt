@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,9 +54,10 @@ private enum class DefaultModelType(
     APP_BUILDER(title = "App Development", required = false, selectorTitle = "Select App Development")
 }
 
-private val NeutralSelectorCard = Color(0xFFF3F3F3)
+private val NeutralSelectorCard = Color(0xFFF1F1F1)
 private val NeutralSelectorDivider = Color(0xFFE4E4E4)
 private val NeutralHandle = Color(0xFFE0E0E0)
+private val NeutralSelectorSheet = Color(0xFFF1F1F1)
 
 @Composable
 fun DefaultModelScreen(navController: NavController) {
@@ -277,7 +279,7 @@ private fun DefaultModelSelectorModal(
                         indication = null,
                         onClick = { }
                     ),
-                color = Surface,
+                color = NeutralSelectorSheet,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
             ) {
                 Column(
@@ -308,6 +310,22 @@ private fun DefaultModelSelectorModal(
                             .fillMaxWidth()
                             .padding(bottom = 16.dp),
                     )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        NeutralSelectorSheet.copy(alpha = 0.9f),
+                                        NeutralSelectorSheet.copy(alpha = 0.2f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     val grouped = remember(providers, models) { groupModelsByProvider(providers, models) }
 

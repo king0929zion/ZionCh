@@ -59,6 +59,7 @@ val PRESET_AVATARS = listOf(
     "avatar_6.jpg", "avatar_7.jpg", "avatar_8.jpg", "avatar_10.jpg",
     "avatar_11.jpg", "avatar_12.jpg"
 )
+private val ModelSelectorGray = Color(0xFFF1F1F1)
 
 @Composable
 fun AddBotScreen(navController: NavController, botId: String? = null) {
@@ -567,7 +568,7 @@ private fun BotModelSelectorModal(
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter),
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                colors = CardDefaults.cardColors(containerColor = Surface)
+                colors = CardDefaults.cardColors(containerColor = ModelSelectorGray)
             ) {
                 Column(
                     modifier = Modifier
@@ -603,8 +604,8 @@ private fun BotModelSelectorModal(
                             .background(
                                 Brush.verticalGradient(
                                     colors = listOf(
-                                        Surface.copy(alpha = 0.88f),
-                                        Surface.copy(alpha = 0.18f),
+                                        ModelSelectorGray.copy(alpha = 0.88f),
+                                        ModelSelectorGray.copy(alpha = 0.18f),
                                         Color.Transparent
                                     )
                                 )
@@ -642,7 +643,7 @@ private fun BotModelSelectorModal(
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = CardDefaults.cardColors(containerColor = GrayLighter)
+                                    colors = CardDefaults.cardColors(containerColor = ModelSelectorGray)
                                 ) {
                                     providerModels.forEachIndexed { index, model ->
                                         val isSelected = selectedModelId == model.id

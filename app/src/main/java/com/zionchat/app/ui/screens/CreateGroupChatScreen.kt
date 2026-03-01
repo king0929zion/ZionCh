@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -65,6 +66,7 @@ import kotlinx.coroutines.launch
 
 private const val GROUP_STRATEGY_DYNAMIC = "dynamic"
 private const val GROUP_STRATEGY_ROUND_ROBIN = "round_robin"
+private val GroupModelSelectorGray = Color(0xFFF1F1F1)
 
 @Composable
 fun CreateGroupChatScreen(navController: NavController, groupId: String? = null) {
@@ -603,7 +605,7 @@ private fun CoordinatorModelSelectorModal(
                         indication = null,
                         onClick = { }
                     ),
-                color = Surface,
+                color = GroupModelSelectorGray,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
             ) {
                 Column(
@@ -634,6 +636,22 @@ private fun CoordinatorModelSelectorModal(
                             .fillMaxWidth()
                             .padding(bottom = 16.dp)
                     )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        GroupModelSelectorGray.copy(alpha = 0.88f),
+                                        GroupModelSelectorGray.copy(alpha = 0.18f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     val providerNameById = remember(providers) {
                         providers.associateBy({ it.id }, { it.name })
@@ -675,7 +693,7 @@ private fun CoordinatorModelSelectorModal(
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = CardDefaults.cardColors(containerColor = GrayLighter)
+                                    colors = CardDefaults.cardColors(containerColor = GroupModelSelectorGray)
                                 ) {
                                     providerModels.forEachIndexed { index, model ->
                                         val isSelected = selectedModelId == model.id

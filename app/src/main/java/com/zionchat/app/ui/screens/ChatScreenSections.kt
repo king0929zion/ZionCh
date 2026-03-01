@@ -1795,7 +1795,7 @@ fun SidebarContent(
                     imageVector = AppIcons.NewChat,
                     contentDescription = "New Chat",
                     tint = TextPrimary,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
@@ -1805,12 +1805,12 @@ fun SidebarContent(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             SidebarMenuItem(
-                icon = { Icon(AppIcons.NewChat, null, Modifier.size(22.dp), TextPrimary) },
+                icon = { Icon(AppIcons.NewChat, null, Modifier.size(24.dp), TextPrimary) },
                 label = stringResource(R.string.new_chat),
                 onClick = onNewChat
             )
             SidebarMenuItem(
-                icon = { Icon(AppIcons.ChatGPTLogo, null, Modifier.size(22.dp), TextPrimary) },
+                icon = { Icon(AppIcons.ChatGPTLogo, null, Modifier.size(24.dp), TextPrimary) },
                 label = stringResource(R.string.images),
                 onClick = { }
             )
@@ -1819,7 +1819,7 @@ fun SidebarContent(
                     Icon(
                         painter = rememberResourceDrawablePainter(R.drawable.ic_group_chat),
                         contentDescription = null,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = TextPrimary
                     )
                 },
@@ -1886,7 +1886,7 @@ fun SidebarContent(
                     Icon(
                         painter = rememberResourceDrawablePainter(R.drawable.ic_apps),
                         contentDescription = null,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = Color.Unspecified
                     )
                 },
@@ -2007,16 +2007,16 @@ fun SidebarMenuItem(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
-            modifier = Modifier.size(26.dp),
+            modifier = Modifier.size(28.dp),
             contentAlignment = Alignment.Center
         ) {
             icon()
         }
         Text(
             text = label,
-            fontSize = 17.sp,
+            fontSize = 18.sp,
             fontFamily = SourceSans3,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.SemiBold,
             color = TextPrimary
         )
     }
@@ -2334,7 +2334,7 @@ internal fun ToolMenuPanel(
     var panelExpandPx by remember { mutableFloatStateOf(0f) }
     val dismissThresholdPx = remember(density) { with(density) { 120.dp.toPx() } }
     val panelExpandLimitPx = remember(density, panelExpandLimitDp) { with(density) { panelExpandLimitDp.toPx() } }
-    val expandSnapThresholdPx = remember(panelExpandLimitPx) { panelExpandLimitPx * 0.45f }
+    val expandSnapThresholdPx = remember(panelExpandLimitPx) { panelExpandLimitPx * 0.35f }
     val dragProgress = remember(panelOffsetPx, dismissThresholdPx) {
         (panelOffsetPx.coerceAtLeast(0f) / dismissThresholdPx).coerceIn(0f, 1f)
     }
@@ -2343,20 +2343,16 @@ internal fun ToolMenuPanel(
     }
     val panelDragState = rememberDraggableState { delta ->
         if (delta < 0f) {
-            val expandProgress = if (panelExpandLimitPx <= 1f) 1f else (panelExpandPx / panelExpandLimitPx).coerceIn(0f, 1f)
-            val resistance = 1f - (expandProgress * 0.55f)
             panelExpandPx =
-                (panelExpandPx + (-delta * resistance)).coerceIn(0f, panelExpandLimitPx)
+                (panelExpandPx + (-delta)).coerceIn(0f, panelExpandLimitPx)
             return@rememberDraggableState
         }
 
         var remainingDelta = delta
         if (panelExpandPx > 0f) {
-            val collapseProgress = if (panelExpandLimitPx <= 1f) 1f else (panelExpandPx / panelExpandLimitPx).coerceIn(0f, 1f)
-            val collapseResistance = 0.6f + (collapseProgress * 0.25f)
-            val collapseAmount = (remainingDelta * collapseResistance).coerceAtMost(panelExpandPx)
+            val collapseAmount = remainingDelta.coerceAtMost(panelExpandPx)
             panelExpandPx = (panelExpandPx - collapseAmount).coerceAtLeast(0f)
-            remainingDelta -= collapseAmount / collapseResistance
+            remainingDelta -= collapseAmount
         }
 
         if (remainingDelta > 0f) {
@@ -2431,52 +2427,45 @@ internal fun ToolMenuPanel(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = currentPanelMaxHeight)
+                            .draggable(
+                                orientation = Orientation.Vertical,
+                                state = panelDragState,
+                                onDragStopped = { velocity ->
+                                    val shouldDismiss = panelOffsetPx > dismissThresholdPx || velocity > 2000f
+                                    if (shouldDismiss) {
+                                        onDismiss()
+                                        panelOffsetPx = 0f
+                                        panelExpandPx = 0f
+                                    } else {
+                                        val shouldExpand =
+                                            panelExpandPx > expandSnapThresholdPx || velocity < -900f
+                                        val targetExpand = if (shouldExpand) panelExpandLimitPx else 0f
+                                        scope.launch {
+                                            animate(
+                                                initialValue = panelOffsetPx,
+                                                targetValue = 0f,
+                                                animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing)
+                                            ) { value, _ ->
+                                                panelOffsetPx = value
+                                            }
+                                        }
+                                        scope.launch {
+                                            animate(
+                                                initialValue = panelExpandPx,
+                                                targetValue = targetExpand,
+                                                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                                            ) { value, _ ->
+                                                panelExpandPx = value
+                                            }
+                                        }
+                                    }
+                                }
+                            )
                             .background(Surface)
                             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
                     ) {
                         Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .draggable(
-                                    orientation = Orientation.Vertical,
-                                    state = panelDragState,
-                                    onDragStopped = { velocity ->
-                                        val shouldDismiss = panelOffsetPx > dismissThresholdPx || velocity > 2200f
-                                        if (shouldDismiss) {
-                                            onDismiss()
-                                            panelOffsetPx = 0f
-                                            panelExpandPx = 0f
-                                        } else {
-                                            val shouldExpand =
-                                                panelExpandPx > expandSnapThresholdPx || velocity < -1200f
-                                            val targetExpand = if (shouldExpand) panelExpandLimitPx else 0f
-                                            scope.launch {
-                                                animate(
-                                                    initialValue = panelOffsetPx,
-                                                    targetValue = 0f,
-                                                    animationSpec = spring(
-                                                        dampingRatio = 0.9f,
-                                                        stiffness = Spring.StiffnessMedium
-                                                    )
-                                                ) { value, _ ->
-                                                    panelOffsetPx = value
-                                                }
-                                            }
-                                            scope.launch {
-                                                animate(
-                                                    initialValue = panelExpandPx,
-                                                    targetValue = targetExpand,
-                                                    animationSpec = spring(
-                                                        dampingRatio = 0.86f,
-                                                        stiffness = Spring.StiffnessLow
-                                                    )
-                                                ) { value, _ ->
-                                                    panelExpandPx = value
-                                                }
-                                            }
-                                        }
-                                    }
-                                ),
+                            modifier = Modifier.fillMaxWidth(),
                             contentAlignment = Alignment.Center
                         ) {
                             Box(

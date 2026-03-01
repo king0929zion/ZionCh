@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -82,6 +83,7 @@ import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 
 private const val SHIZUKU_PERMISSION_REQUEST_CODE = 4102
+private val AutoSoulModelSelectorGray = Color(0xFFF1F1F1)
 
 private const val DEFAULT_AUTOSOUL_SCRIPT = """
 [
@@ -435,7 +437,7 @@ fun AutoSoulScreen(navController: NavController) {
     if (showModelPicker) {
         ModalBottomSheet(
             onDismissRequest = { showModelPicker = false },
-            containerColor = Surface,
+            containerColor = AutoSoulModelSelectorGray,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             AutoSoulVisionModelPickerContent(
@@ -634,6 +636,22 @@ private fun AutoSoulVisionModelPickerContent(
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(10.dp)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            AutoSoulModelSelectorGray.copy(alpha = 0.88f),
+                            AutoSoulModelSelectorGray.copy(alpha = 0.18f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
         Column(
             modifier =
                 Modifier
@@ -644,7 +662,7 @@ private fun AutoSoulVisionModelPickerContent(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = GrayLighter)
+                colors = CardDefaults.cardColors(containerColor = AutoSoulModelSelectorGray)
             ) {
                 Row(
                     modifier =
@@ -692,7 +710,7 @@ private fun AutoSoulVisionModelPickerContent(
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = GrayLighter)
+                            colors = CardDefaults.cardColors(containerColor = AutoSoulModelSelectorGray)
                         ) {
                             providerModels.forEachIndexed { index, model ->
                                 Row(
