@@ -386,7 +386,7 @@ private fun DeviceBadge() {
     Box(
         modifier = Modifier
             .height(22.dp)
-            .background(Color(0xFFF3F4F6), RoundedCornerShape(11.dp))
+            .background(SettingsCardGray, RoundedCornerShape(11.dp))
             .border(width = 1.dp, color = Color(0xFF111111), shape = RoundedCornerShape(11.dp))
             .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center
@@ -407,7 +407,7 @@ private fun TokenBadge() {
     Box(
         modifier = Modifier
             .height(22.dp)
-            .background(Color(0xFFF3F4F6), RoundedCornerShape(11.dp))
+            .background(SettingsCardGray, RoundedCornerShape(11.dp))
             .border(width = 1.dp, color = Color(0xFF111111), shape = RoundedCornerShape(11.dp))
             .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center

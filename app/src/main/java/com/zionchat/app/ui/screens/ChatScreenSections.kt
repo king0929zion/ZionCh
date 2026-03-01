@@ -4749,10 +4749,7 @@ internal fun BottomInputArea(
     mcpSelectedCount: Int,
     webSearchEngine: String,
     attachments: List<PendingImageAttachment>,
-    mentionCandidates: List<MentionCandidate>,
-    showMentionPicker: Boolean,
     onRemoveAttachment: (Int) -> Unit,
-    onMentionSelect: (MentionCandidate) -> Unit,
     onToolToggle: () -> Unit,
     onClearTool: () -> Unit,
     messageText: String,
@@ -4835,12 +4832,6 @@ internal fun BottomInputArea(
         )
     }
     val bottomPadding = bottomInputBottomPadding(imeVisible)
-    val density = LocalDensity.current
-    var inputRowHeightPx by remember { mutableStateOf(0) }
-    val mentionPopupGapPx = with(density) { 8.dp.roundToPx() }
-    val visibleMentionItems = remember(mentionCandidates) { mentionCandidates.take(6) }
-    val mentionPopupShape = RoundedCornerShape(16.dp)
-    val mentionItemShape = RoundedCornerShape(12.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -4850,11 +4841,9 @@ internal fun BottomInputArea(
         Box(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.BottomStart
-        ) mentionLayerHost@{
+        ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onSizeChanged { inputRowHeightPx = it.height },
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
@@ -5109,61 +5098,62 @@ internal fun BottomInputArea(
                     }
                 }
             }
-            Box(modifier = with(this@mentionLayerHost) { Modifier.matchParentSize() }) {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = showMentionPicker && visibleMentionItems.isNotEmpty(),
+        }
+    }
+}
+
+@Composable
+internal fun MentionPickerFloatingPanel(
+    visible: Boolean,
+    mentionCandidates: List<MentionCandidate>,
+    onMentionSelect: (MentionCandidate) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val visibleMentionItems = remember(mentionCandidates) { mentionCandidates.take(6) }
+    val mentionPopupShape = RoundedCornerShape(16.dp)
+    val mentionItemShape = RoundedCornerShape(12.dp)
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible && visibleMentionItems.isNotEmpty(),
+        modifier = modifier,
+        enter = fadeIn(animationSpec = tween(150, easing = FastOutSlowInEasing)),
+        exit = fadeOut(animationSpec = tween(110, easing = FastOutSlowInEasing))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 12.dp,
+                    shape = mentionPopupShape,
+                    ambientColor = Color.Black.copy(alpha = 0.12f),
+                    spotColor = Color.Black.copy(alpha = 0.12f)
+                )
+                .clip(mentionPopupShape)
+                .background(Color.White, mentionPopupShape)
+                .border(1.dp, Color.Black.copy(alpha = 0.05f), mentionPopupShape)
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+        ) {
+            visibleMentionItems.forEachIndexed { index, candidate ->
+                Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .offset {
-                            val baseRowHeightPx =
-                                if (inputRowHeightPx > 0) inputRowHeightPx else with(density) { 46.dp.roundToPx() }
-                            IntOffset(0, -(baseRowHeightPx + mentionPopupGapPx))
-                        }
                         .fillMaxWidth()
-                        .padding(start = 58.dp, end = 2.dp)
-                        .zIndex(3f),
-                    enter = fadeIn(animationSpec = tween(150, easing = FastOutSlowInEasing)),
-                    exit = fadeOut(animationSpec = tween(110, easing = FastOutSlowInEasing))
+                        .clip(mentionItemShape)
+                        .background(Color.White, mentionItemShape)
+                        .pressableScale(
+                            pressedScale = 0.98f,
+                            onClick = { onMentionSelect(candidate) }
+                        )
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(
-                                elevation = 12.dp,
-                                shape = mentionPopupShape,
-                                ambientColor = Color.Black.copy(alpha = 0.12f),
-                                spotColor = Color.Black.copy(alpha = 0.12f)
-                            )
-                            .clip(mentionPopupShape)
-                            .background(Color.White, mentionPopupShape)
-                            .border(1.dp, Color.Black.copy(alpha = 0.05f), mentionPopupShape)
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
-                    ) {
-                        visibleMentionItems.forEachIndexed { index, candidate ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(mentionItemShape)
-                                    .background(Color.White, mentionItemShape)
-                                    .pressableScale(
-                                        pressedScale = 0.98f,
-                                        onClick = { onMentionSelect(candidate) }
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                Text(
-                                    text = candidate.label,
-                                    color = Color(0xFF007AFF),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                            if (index < visibleMentionItems.lastIndex) {
-                                Spacer(modifier = Modifier.height(2.dp))
-                            }
-                        }
-                    }
+                    Text(
+                        text = candidate.label,
+                        color = Color(0xFF007AFF),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                if (index < visibleMentionItems.lastIndex) {
+                    Spacer(modifier = Modifier.height(2.dp))
                 }
             }
         }

@@ -4367,16 +4367,11 @@ internal fun ChatScreenContent(
                         mcpSelectedCount = selectedMcpServerIds.size,
                         webSearchEngine = webSearchConfig.engine,
                         attachments = imageAttachments,
-                        mentionCandidates = visibleMentionCandidates,
-                        showMentionPicker = showMentionPicker,
                         onRemoveAttachment = { index ->
                             if (index < 0 || index >= imageAttachments.size) return@BottomInputArea
                             val updated = imageAttachments.toMutableList()
                             updated.removeAt(index)
                             imageAttachments = updated.toList()
-                        },
-                        onMentionSelect = { candidate ->
-                            messageText = replaceTrailingMentionWithToken(messageText, candidate.token)
                         },
                         onToolToggle = {
                             if (showToolMenu) {
@@ -4416,6 +4411,20 @@ internal fun ChatScreenContent(
                     )
                 }
             }
+
+            MentionPickerFloatingPanel(
+                visible = showMentionPicker && !showToolMenu,
+                mentionCandidates = visibleMentionCandidates,
+                onMentionSelect = { candidate ->
+                    messageText = replaceTrailingMentionWithToken(messageText, candidate.token)
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = inputBottomInset + bottomBarHeightDp + 8.dp)
+                    .fillMaxWidth()
+                    .padding(start = 74.dp, end = 18.dp)
+                    .zIndex(12f)
+            )
 
             // 底部工具面板（覆盖在输入框上方）
             ToolMenuPanel(

@@ -26,8 +26,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavController
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.zionchat.app.R
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.data.ProviderConfig
@@ -103,6 +101,7 @@ fun AddProviderScreen(
     val credentialPlaceholder = if (isGrok2ApiProvider) "Enter Grok token" else "Enter API key"
     val grokDefaultApiUrl = "https://grok.com"
     val apiUrlPlaceholder = if (isGrok2ApiProvider) grokDefaultApiUrl else "https://api.example.com/v1"
+    val settingsGroupColor = Color(0xFFF1F1F1)
 
     LaunchedEffect(editingProvider?.id) {
         editingProvider?.let {
@@ -248,156 +247,165 @@ fun AddProviderScreen(
             horizontalAlignment = Alignment.Start
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.Top
+                    color = settingsGroupColor,
+                    shape = RoundedCornerShape(20.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.width(72.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.Top
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(GrayLighter, RoundedCornerShape(16.dp))
-                                .pressableScale(pressedScale = 0.95f) { showAvatarModal = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (selectedIconAsset.isNotEmpty()) {
-                                AssetIcon(
-                                    assetFileName = selectedIconAsset,
-                                    contentDescription = providerName.ifBlank { "Provider" },
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop,
-                                    error = {
-                                        Icon(
-                                            painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
-                                            contentDescription = "Select Avatar",
-                                            tint = TextPrimary,
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                    }
-                                )
-                            } else {
-                                Icon(
-                                    painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
-                                    contentDescription = "Select Avatar",
-                                    tint = TextPrimary,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Avatar",
-                            fontSize = 12.sp,
-                            fontFamily = SourceSans3,
-                            color = TextSecondary
-                        )
-                    }
-
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        FormField(
-                            label = "Provider Name",
-                            value = providerName,
-                            onValueChange = { providerName = it },
-                            placeholder = "Enter provider name"
-                        )
-                    }
-                }
-
-                if (!isGrok2ApiProvider) {
-                    Column {
-                        Text(
-                            text = "Provider Type",
-                            fontSize = 13.sp,
-                            fontFamily = SourceSans3,
-                            color = TextSecondary,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        val typeBackdrop = rememberLayerBackdrop()
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
+                        Column(
+                            modifier = Modifier.width(72.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .layerBackdrop(typeBackdrop)
-                                    .background(Color.White, RoundedCornerShape(20.dp))
-                                    .border(width = 1.dp, color = Color(0xFFE8E8ED), shape = RoundedCornerShape(20.dp))
-                            )
-
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    .size(64.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color(0xFFE5E5EA), RoundedCornerShape(16.dp))
+                                    .pressableScale(pressedScale = 0.95f) { showAvatarModal = true },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    TypeOption(
-                                        text = "OpenAI",
-                                        selected = selectedType == "openai",
-                                        onClick = { selectedType = "openai" },
-                                        modifier = Modifier.weight(1f)
+                                if (selectedIconAsset.isNotEmpty()) {
+                                    AssetIcon(
+                                        assetFileName = selectedIconAsset,
+                                        contentDescription = providerName.ifBlank { "Provider" },
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop,
+                                        error = {
+                                            Icon(
+                                                painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
+                                                contentDescription = "Select Avatar",
+                                                tint = TextPrimary,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
                                     )
-                                    TypeOption(
-                                        text = "Anthropic",
-                                        selected = selectedType == "anthropic",
-                                        onClick = { selectedType = "anthropic" },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    TypeOption(
-                                        text = "Google",
-                                        selected = selectedType == "google",
-                                        onClick = { selectedType = "google" },
-                                        modifier = Modifier.weight(1f)
+                                } else {
+                                    Icon(
+                                        painter = rememberResourceDrawablePainter(R.drawable.ic_provider_custom_default),
+                                        contentDescription = "Select Avatar",
+                                        tint = TextPrimary,
+                                        modifier = Modifier.size(28.dp)
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Avatar",
+                                fontSize = 12.sp,
+                                fontFamily = SourceSans3,
+                                color = TextSecondary
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            FormField(
+                                label = "Provider Name",
+                                value = providerName,
+                                onValueChange = { providerName = it },
+                                placeholder = "Enter provider name",
+                                containerColor = Color(0xFFE5E5EA)
+                            )
                         }
                     }
                 }
 
-                AnimatedContent(
-                    targetState = credentialLabel to credentialPlaceholder,
-                    transitionSpec = {
-                        (fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 5 })) togetherWith
-                            (fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { -it / 5 }))
-                    },
-                    label = "credential_field_transition"
-                ) { ui ->
-                    FormField(
-                        label = ui.first,
-                        value = apiKey,
-                        onValueChange = { apiKey = it },
-                        placeholder = ui.second
-                    )
-                }
-
-                AnimatedVisibility(
-                    visible = !isGrok2ApiProvider,
-                    enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 3 }),
-                    exit = fadeOut(tween(140)) + slideOutVertically(targetOffsetY = { it / 3 })
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = settingsGroupColor,
+                    shape = RoundedCornerShape(20.dp)
                 ) {
-                    FormField(
-                        label = "API URL",
-                        value = apiUrl,
-                        onValueChange = { apiUrl = it },
-                        placeholder = apiUrlPlaceholder
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (!isGrok2ApiProvider) {
+                            Column {
+                                Text(
+                                    text = "Provider Type",
+                                    fontSize = 13.sp,
+                                    fontFamily = SourceSans3,
+                                    color = TextSecondary,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(Color(0xFFE5E5EA), RoundedCornerShape(20.dp))
+                                        .padding(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        TypeOption(
+                                            text = "OpenAI",
+                                            selected = selectedType == "openai",
+                                            onClick = { selectedType = "openai" },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        TypeOption(
+                                            text = "Anthropic",
+                                            selected = selectedType == "anthropic",
+                                            onClick = { selectedType = "anthropic" },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        TypeOption(
+                                            text = "Google",
+                                            selected = selectedType == "google",
+                                            onClick = { selectedType = "google" },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        AnimatedContent(
+                            targetState = credentialLabel to credentialPlaceholder,
+                            transitionSpec = {
+                                (fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 5 })) togetherWith
+                                    (fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { -it / 5 }))
+                            },
+                            label = "credential_field_transition"
+                        ) { ui ->
+                            FormField(
+                                label = ui.first,
+                                value = apiKey,
+                                onValueChange = { apiKey = it },
+                                placeholder = ui.second,
+                                containerColor = Color(0xFFE5E5EA)
+                            )
+                        }
+
+                        AnimatedVisibility(
+                            visible = !isGrok2ApiProvider,
+                            enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 3 }),
+                            exit = fadeOut(tween(140)) + slideOutVertically(targetOffsetY = { it / 3 })
+                        ) {
+                            FormField(
+                                label = "API URL",
+                                value = apiUrl,
+                                onValueChange = { apiUrl = it },
+                                placeholder = apiUrlPlaceholder,
+                                containerColor = Color(0xFFE5E5EA)
+                            )
+                        }
+                    }
                 }
 
                 // Models Section
@@ -646,7 +654,8 @@ fun FormField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
-    placeholder: String
+    placeholder: String,
+    containerColor: Color = Color(0xFFF1F1F1)
 ) {
     Column {
         Text(
@@ -659,7 +668,7 @@ fun FormField(
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = Color(0xFFF1F1F1),
+            color = containerColor,
             shape = RoundedCornerShape(20.dp)
         ) {
             TextField(
