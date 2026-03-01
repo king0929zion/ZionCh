@@ -4760,10 +4760,45 @@ private fun buildBotMentionToken(bot: com.zionchat.app.data.BotConfig): String {
     return bot.name.trim().replace(Regex("\\s+"), "_")
 }
 
+private val groupReplyListMarkerRegex = Regex("""^\s*(?:[-*]|[0-9]+[\.\)])\s+""")
+
 private fun splitGroupReplySegments(raw: String): List<String> {
-    return raw.split('¦')
+    val normalized = raw.replace("\r\n", "\n").replace('\r', '\n').trim()
+    if (normalized.isBlank()) return emptyList()
+
+    val byDelimiter = normalized.split('¦')
         .map { it.trim() }
         .filter { it.isNotBlank() }
+    if (byDelimiter.size > 1) return byDelimiter
+
+    val byJsonArray = parseJsonStringArray(normalized)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    if (byJsonArray.size > 1) return byJsonArray
+    if (byJsonArray.size == 1 && normalized.startsWith("[") && normalized.endsWith("]")) {
+        return byJsonArray
+    }
+
+    val byParagraph = normalized
+        .split(Regex("\\n\\s*\\n+"))
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    if (byParagraph.size > 1) return byParagraph
+
+    val lines = normalized.lines()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    if (lines.size > 1) {
+        val hasListMarkers = lines.count { groupReplyListMarkerRegex.containsMatchIn(it) }
+        val cleanedLines = lines.map { line ->
+            line.replace(groupReplyListMarkerRegex, "").trim()
+        }.filter { it.isNotBlank() }
+        val shortLineCount = cleanedLines.count { it.length <= 80 }
+        val shouldSplitByLine = hasListMarkers > 0 || shortLineCount >= cleanedLines.size - 1
+        if (shouldSplitByLine) return cleanedLines
+    }
+
+    return listOf(normalized)
 }
 
 private suspend fun selectDynamicGroupResponders(

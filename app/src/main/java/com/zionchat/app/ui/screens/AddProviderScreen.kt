@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavController
-import com.kyant.backdrop.Backdrop
 import com.zionchat.app.R
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.data.ProviderConfig
@@ -36,7 +35,6 @@ import com.zionchat.app.ui.components.AssetIcon
 import com.zionchat.app.ui.components.PageTopBarContentTopPadding
 import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
-import com.zionchat.app.ui.components.liquidGlass
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
@@ -98,9 +96,7 @@ fun AddProviderScreen(
             normalizedEditingPresetId == "grok"
     }
     val credentialLabel = if (isGrok2ApiProvider) "Token" else "API Key"
-    val credentialPlaceholder = if (isGrok2ApiProvider) "Enter Grok token" else "Enter API key"
     val grokDefaultApiUrl = "https://grok.com"
-    val apiUrlPlaceholder = if (isGrok2ApiProvider) grokDefaultApiUrl else "https://api.example.com/v1"
     val settingsGroupColor = Color(0xFFF1F1F1)
 
     LaunchedEffect(editingProvider?.id) {
@@ -297,13 +293,6 @@ fun AddProviderScreen(
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Avatar",
-                                fontSize = 12.sp,
-                                fontFamily = SourceSans3,
-                                color = TextSecondary
-                            )
                         }
 
                         Column(
@@ -311,11 +300,11 @@ fun AddProviderScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             FormField(
-                                label = "Provider Name",
+                                label = "Name",
                                 value = providerName,
                                 onValueChange = { providerName = it },
-                                placeholder = "Enter provider name",
-                                containerColor = Color(0xFFE5E5EA)
+                                placeholder = "Name",
+                                containerColor = settingsGroupColor
                             )
                         }
                     }
@@ -341,54 +330,46 @@ fun AddProviderScreen(
                                     color = TextSecondary,
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(Color(0xFFE5E5EA), RoundedCornerShape(20.dp))
-                                        .padding(6.dp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        TypeOption(
-                                            text = "OpenAI",
-                                            selected = selectedType == "openai",
-                                            onClick = { selectedType = "openai" },
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        TypeOption(
-                                            text = "Anthropic",
-                                            selected = selectedType == "anthropic",
-                                            onClick = { selectedType = "anthropic" },
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        TypeOption(
-                                            text = "Google",
-                                            selected = selectedType == "google",
-                                            onClick = { selectedType = "google" },
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
+                                    TypeOption(
+                                        text = "OpenAI",
+                                        selected = selectedType == "openai",
+                                        onClick = { selectedType = "openai" },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TypeOption(
+                                        text = "Anthropic",
+                                        selected = selectedType == "anthropic",
+                                        onClick = { selectedType = "anthropic" },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TypeOption(
+                                        text = "Google",
+                                        selected = selectedType == "google",
+                                        onClick = { selectedType = "google" },
+                                        modifier = Modifier.weight(1f)
+                                    )
                                 }
                             }
                         }
 
                         AnimatedContent(
-                            targetState = credentialLabel to credentialPlaceholder,
+                            targetState = credentialLabel,
                             transitionSpec = {
                                 (fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 5 })) togetherWith
                                     (fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { -it / 5 }))
                             },
                             label = "credential_field_transition"
-                        ) { ui ->
+                        ) { credentialFieldLabel ->
                             FormField(
-                                label = ui.first,
+                                label = credentialFieldLabel,
                                 value = apiKey,
                                 onValueChange = { apiKey = it },
-                                placeholder = ui.second,
-                                containerColor = Color(0xFFE5E5EA)
+                                placeholder = credentialFieldLabel,
+                                containerColor = settingsGroupColor
                             )
                         }
 
@@ -398,11 +379,11 @@ fun AddProviderScreen(
                             exit = fadeOut(tween(140)) + slideOutVertically(targetOffsetY = { it / 3 })
                         ) {
                             FormField(
-                                label = "API URL",
+                                label = "Base URL",
                                 value = apiUrl,
                                 onValueChange = { apiUrl = it },
-                                placeholder = apiUrlPlaceholder,
-                                containerColor = Color(0xFFE5E5EA)
+                                placeholder = "Base URL",
+                                containerColor = settingsGroupColor
                             )
                         }
                     }
@@ -657,19 +638,15 @@ fun FormField(
     placeholder: String,
     containerColor: Color = Color(0xFFF1F1F1)
 ) {
-    Column {
-        Text(
-            text = label,
-            fontSize = 13.sp,
-            fontFamily = SourceSans3,
-            color = TextSecondary,
-            modifier = Modifier.padding(bottom = 6.dp)
-        )
-
+    val shape = RoundedCornerShape(20.dp)
+    val hasValue = value.trim().isNotEmpty()
+    Box(modifier = Modifier.fillMaxWidth()) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(width = 2.dp, color = Color(0xFFD1D1D7), shape = shape),
             color = containerColor,
-            shape = RoundedCornerShape(20.dp)
+            shape = shape
         ) {
             TextField(
                 value = value,
@@ -678,18 +655,25 @@ fun FormField(
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp),
                 placeholder = {
-                    Text(
-                        text = placeholder,
-                        fontSize = 17.sp,
-                        fontFamily = SourceSans3,
-                        color = TextSecondary
-                    )
+                    if (!hasValue) {
+                        Text(
+                            text = placeholder,
+                            fontSize = 17.sp,
+                            fontFamily = SourceSans3,
+                            color = TextSecondary
+                        )
+                    }
                 },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
                     focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    cursorColor = TextPrimary
                 ),
                 textStyle = androidx.compose.ui.text.TextStyle(
                     fontSize = 17.sp,
@@ -699,6 +683,28 @@ fun FormField(
                 singleLine = true
             )
         }
+
+        AnimatedVisibility(
+            visible = hasValue,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = 14.dp, y = (-9).dp),
+            enter = fadeIn(animationSpec = tween(140)),
+            exit = fadeOut(animationSpec = tween(100))
+        ) {
+            Box(
+                modifier = Modifier
+                    .background(containerColor, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 12.sp,
+                    fontFamily = SourceSans3,
+                    color = TextSecondary
+                )
+            }
+        }
     }
 }
 
@@ -707,17 +713,16 @@ fun TypeOption(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    backdrop: Backdrop? = null
+    modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(16.dp)
-    val bgColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (selected) TextPrimary else Color.White,
+    val borderColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (selected) Color(0xFF9C9CA3) else Color(0xFFD3D3D8),
         animationSpec = tween(durationMillis = 180),
-        label = "type_option_bg"
+        label = "type_option_border"
     )
     val textColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (selected) Surface else TextPrimary,
+        targetValue = if (selected) TextPrimary else TextSecondary,
         animationSpec = tween(durationMillis = 180),
         label = "type_option_text"
     )
@@ -734,23 +739,8 @@ fun TypeOption(
                 scaleY = pressedScale
             }
             .clip(shape)
-            .then(
-                when {
-                    !selected -> Modifier.background(bgColor, shape)
-                    backdrop != null -> Modifier.liquidGlass(
-                        backdrop = backdrop,
-                        shape = shape,
-                        overlayColor = TextPrimary.copy(alpha = 0.88f),
-                        fallbackColor = TextPrimary,
-                        blurRadius = 16.dp,
-                        refractionHeight = 4.dp,
-                        refractionAmount = 8.dp,
-                        highlightAlpha = 0.18f,
-                        shadowAlpha = 0.06f
-                    )
-                    else -> Modifier.background(bgColor, shape)
-                }
-            )
+            .background(Color.White, shape)
+            .border(width = 1.5.dp, color = borderColor, shape = shape)
             .pressableScale(pressedScale = 0.95f, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
