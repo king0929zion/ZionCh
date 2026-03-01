@@ -971,32 +971,37 @@ fun AppearanceMenu(
                 Box(
                     modifier = Modifier
                         .widthIn(max = 200.dp)
-                        .shadow(elevation = 16.dp, shape = shape, clip = false)
+                        .shadow(elevation = 10.dp, shape = shape, clip = false)
                         .liquidGlass(
                             backdrop = backdrop,
                             shape = shape,
-                            overlayColor = Color(0xFFF5F5F5),
-                            fallbackColor = Color(0xFFF5F5F5),
+                            overlayColor = Color(0xFFFFFFFF),
+                            fallbackColor = Color(0xFFFFFFFF),
                             blurRadius = 24.dp,
                             refractionHeight = 6.dp,
                             refractionAmount = 10.dp,
                             highlightAlpha = 0.22f,
                             shadowAlpha = 0f
                         )
-                        .border(width = 1.dp, color = Color(0xFFE7E7E7), shape = shape)
+                        .border(width = 1.dp, color = Color(0xFFE2E2E2), shape = shape)
                 ) {
                     Column(
                         modifier = Modifier.padding(6.dp),
                         verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
-                        appearanceOptions.forEachIndexed { index, option ->
+                        appearanceOptions.forEach { option ->
                             val key = option.key
                             val isSelected = key == selected
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isSelected) Color(0xFFECECEC) else Color.Transparent)
+                                    .background(Color(0xFFFFFFFF))
+                                    .border(
+                                        width = if (isSelected) 1.dp else 0.dp,
+                                        color = if (isSelected) Color(0xFFD9D9D9) else Color.Transparent,
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
                                     .clickable {
                                         onSelect(key)
                                         onDismiss()
@@ -1021,7 +1026,7 @@ fun AppearanceMenu(
                                         Text(
                                             text = stringResource(option.labelRes),
                                             fontSize = 15.sp,
-                                            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                                             color = TextPrimary
                                         )
                                     }
@@ -1046,15 +1051,6 @@ fun AppearanceMenu(
                                         )
                                     }
                                 }
-                            }
-                            if (index < appearanceOptions.lastIndex) {
-                                Spacer(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(1.dp)
-                                        .padding(horizontal = 8.dp)
-                                        .background(Color(0xFFE6E6E6))
-                                )
                             }
                         }
                     }
@@ -1141,25 +1137,25 @@ fun AccentColorMenu(
                 Box(
                     modifier = Modifier
                         .widthIn(max = 200.dp)
-                        .shadow(elevation = 16.dp, shape = shape, clip = false)
+                        .shadow(elevation = 10.dp, shape = shape, clip = false)
                         .liquidGlass(
                             backdrop = backdrop,
                             shape = shape,
-                            overlayColor = Color(0xFFF5F5F5),
-                            fallbackColor = Color(0xFFF5F5F5),
+                            overlayColor = Color(0xFFFFFFFF),
+                            fallbackColor = Color(0xFFFFFFFF),
                             blurRadius = 24.dp,
                             refractionHeight = 6.dp,
                             refractionAmount = 10.dp,
                             highlightAlpha = 0.22f,
                             shadowAlpha = 0f
                         )
-                        .border(width = 1.dp, color = Color(0xFFE7E7E7), shape = shape)
+                        .border(width = 1.dp, color = Color(0xFFE2E2E2), shape = shape)
                 ) {
                     Column(
                         modifier = Modifier.padding(6.dp),
                         verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
-                        accentColorOptions.forEachIndexed { index, option ->
+                        accentColorOptions.forEach { option ->
                             val key = option.key
                             val color = option.color
                             val isSelected = key == selected
@@ -1167,7 +1163,12 @@ fun AccentColorMenu(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isSelected) Color(0xFFECECEC) else Color.Transparent)
+                                    .background(Color(0xFFFFFFFF))
+                                    .border(
+                                        width = if (isSelected) 1.dp else 0.dp,
+                                        color = if (isSelected) Color(0xFFD9D9D9) else Color.Transparent,
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
                                     .clickable {
                                         onSelect(key)
                                         onDismiss()
@@ -1194,7 +1195,7 @@ fun AccentColorMenu(
                                         Text(
                                             text = stringResource(option.labelRes),
                                             fontSize = 15.sp,
-                                            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                                             color = TextPrimary
                                         )
                                     }
@@ -1219,15 +1220,6 @@ fun AccentColorMenu(
                                         )
                                     }
                                 }
-                            }
-                            if (index < accentColorOptions.lastIndex) {
-                                Spacer(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(1.dp)
-                                        .padding(horizontal = 8.dp)
-                                        .background(Color(0xFFE6E6E6))
-                                )
                             }
                         }
                     }

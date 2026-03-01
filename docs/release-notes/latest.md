@@ -1,5 +1,7 @@
 ## ZionChat Android 版本说明
 
+- 设置选择器视觉修复：`Appearance` 与 `Accent Color` 弹出卡片统一改为纯白底，去除分割线，边缘增强为清晰浅边框并补充轻阴影。
+- 文字层级优化：`Accent Color` 全部选项文字统一加粗（未选中 Medium、选中 SemiBold），保持可读性与一致性。
 - CI 编译参数三次优化：在 Release 构建中关闭 Kotlin 增量编译与 classpath snapshot（仅 CI release 路径），减少 `compileReleaseKotlin` 在一次性构建场景的增量计算开销。
 - 构建策略说明：不改变工作流发布能力与产物逻辑，仅针对 `:app:compileReleaseKotlin` 进行参数级提速试验。
 - CI 编译卡顿二次优化：将 Kotlin 编译策略从 `in-process` 调整回 `daemon`，并将构建并发 worker 下调到 `2`、移除 `--parallel`，减少 `compileReleaseKotlin` 阶段的内存争抢与假死概率。
