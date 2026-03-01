@@ -640,11 +640,13 @@ fun FormField(
 ) {
     val shape = RoundedCornerShape(20.dp)
     val hasValue = value.trim().isNotEmpty()
+    val fieldBorderColor = Color(0xFFB8B8C2)
+    val fieldHintColor = Color(0xFF74747D)
     Box(modifier = Modifier.fillMaxWidth()) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(width = 2.dp, color = Color(0xFFD1D1D7), shape = shape),
+                .border(width = 2.dp, color = fieldBorderColor, shape = shape),
             color = containerColor,
             shape = shape
         ) {
@@ -660,7 +662,7 @@ fun FormField(
                             text = placeholder,
                             fontSize = 17.sp,
                             fontFamily = SourceSans3,
-                            color = TextSecondary
+                            color = fieldHintColor
                         )
                     }
                 },
@@ -701,7 +703,7 @@ fun FormField(
                     text = label,
                     fontSize = 12.sp,
                     fontFamily = SourceSans3,
-                    color = TextSecondary
+                    color = fieldHintColor
                 )
             }
         }

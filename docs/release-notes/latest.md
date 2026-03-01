@@ -1,5 +1,6 @@
 ## ZionChat Android 版本说明
 
+- Add Provider 视觉微调：输入框边框颜色进一步加深，`Name / API Key / Base URL` 的占位提示与浮动标签颜色同步加深，提升灰底场景下可读性与边界识别度。
 - Add Provider 交互重构：第一分组移除固定 `Avatar/Provider Name` 文案，`Name` 为空时仅显示灰色占位提示，输入后自动切换为左上角浮动标签。
 - Add Provider 表单样式升级：`Name / API Key / Base URL` 全部改为“灰底 + 粗圆角线框”输入区，输入中与已输入状态保持同色背景，标签浮动显示更清晰。
 - Provider Type 视觉修复：移除灰蓝底分段底板，改为白底轻边框选项，避免发灰发蓝分层感。
