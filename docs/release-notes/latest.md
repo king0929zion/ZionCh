@@ -1,5 +1,7 @@
 ## ZionChat Android 版本说明
 
+- 修复群聊 `@` 选择器显示异常：重构输入区与提及弹层的对齐关系，避免弹层出现分层错位，候选卡片统一为纯白实底、清晰边缘与轻阴影。
+- 修复唤起 `@` 选择器时输入框偶发“消失”问题：输入行固定底部对齐，提及弹层仅在上方浮出，交互过程中输入框持续可见。
 - 设置选择器视觉修复：`Appearance` 与 `Accent Color` 弹出卡片统一改为纯白底，去除分割线，边缘增强为清晰浅边框并补充轻阴影。
 - 文字层级优化：`Accent Color` 全部选项文字统一加粗（未选中 Medium、选中 SemiBold），保持可读性与一致性。
 - CI 编译参数三次优化：在 Release 构建中关闭 Kotlin 增量编译与 classpath snapshot（仅 CI release 路径），减少 `compileReleaseKotlin` 在一次性构建场景的增量计算开销。
