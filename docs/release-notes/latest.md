@@ -1,5 +1,6 @@
 ## ZionChat Android 版本说明
 
+- 修复一次 CI 编译回归：更正 `Models` 页测试弹窗按钮描边的 `BorderStroke` 导入路径，恢复 `compileReleaseKotlin` 正常通过。
 - 模型选择器视觉统一：`Default Model`、`Add Bot`、`Create Group Chat`、`AutoSoul` 等设置相关模型选择器统一为主设置页同款灰阶（`#F1F1F1`），并补齐顶部柔和过渡层。
 - Memories 交互更新：具体记忆内容恢复常规字重，移除右侧固定删除按钮，改为左滑唤出删除操作，交互与供应商页一致。
 - Models 页弹窗 UI 修复：`Add Model` 与 `Test Model` 改为白底卡片 + 轻阴影，输入区改为深灰细边与浮动标签，选项卡片去除突兀选中描边，并补齐底部安全区避免遮挡。
