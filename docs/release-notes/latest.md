@@ -1,5 +1,7 @@
 ## ZionChat Android 版本说明
 
+- CI 编译卡顿二次优化：将 Kotlin 编译策略从 `in-process` 调整回 `daemon`，并将构建并发 worker 下调到 `2`、移除 `--parallel`，减少 `compileReleaseKotlin` 阶段的内存争抢与假死概率。
+- 构建稳定性增强：保留现有工作流能力与发布逻辑不变，仅优化执行参数，重点提升 `:app:compileReleaseKotlin` 在 GitHub Runner 上的稳定完成率。
 - 修复设置页 Appearance / Accent Color 选择器分层问题：弹出面板改为单层实底卡片，去掉半透明叠层观感，统一选中态底色与分割线，视觉更稳定。
 - CI 编译卡顿优化：针对 `:app:compileReleaseKotlin` 长时间卡顿，调整为 Gradle daemon + Kotlin in-process 编译策略，降低并发 worker 并提升 JVM/Kotlin 内存上限，同时优化增量缓存 key（按分支 + 构建配置）提升命中率。
 - CI 并发策略优化：移除 GitHub Actions 的 `concurrency` 分组限制，同一分支的多次提交现在可并行构建，不再强制排队等待。

@@ -21,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI_FAST_BUILD: "true"
-      GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=3 -Dorg.gradle.jvmargs=-Xmx6g -Dkotlin.daemon.jvm.options=-Xmx3072m"
 
     steps:
     - name: Checkout code
@@ -73,14 +72,14 @@ jobs:
     - name: Build APK
       run: |
         if [ "${{ github.event_name }}" = "pull_request" ]; then
-          ./gradlew :app:assembleDebug --stacktrace --parallel --max-workers=3 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=in-process -PCI_FAST_BUILD=true
+          ./gradlew :app:assembleDebug --stacktrace --max-workers=2 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -PCI_FAST_BUILD=true
         else
-          ./gradlew :app:assembleRelease --stacktrace --parallel --max-workers=3 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=in-process -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
+          ./gradlew :app:assembleRelease --stacktrace --max-workers=2 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
         fi
 
     - name: Run tests
       if: github.event_name == 'pull_request'
-      run: ./gradlew :app:testDebugUnitTest --stacktrace --parallel --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=in-process -PCI_FAST_BUILD=true
+      run: ./gradlew :app:testDebugUnitTest --stacktrace --max-workers=2 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -PCI_FAST_BUILD=true
       continue-on-error: true
 
     - name: Get version from build.gradle
