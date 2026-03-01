@@ -68,6 +68,7 @@ private const val GITHUB_COPILOT_PRESET_ID = "github_copilot"
 private const val GITHUB_COPILOT_NAME = "GitHub Copilot"
 private const val GITHUB_COPILOT_ICON = "github.svg"
 private const val GITHUB_COPILOT_API_URL = "https://api.githubcopilot.com"
+private val DeviceSupplierCardGray = Color(0xFFF1F1F1)
 
 private enum class DeviceStep {
     STEP_1_CONNECT,
@@ -141,7 +142,7 @@ fun AddDeviceProviderScreen(
         ) {
             M3Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = Surface,
+                color = DeviceSupplierCardGray,
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Row(
@@ -263,7 +264,7 @@ fun AddDeviceProviderScreen(
                     val start = deviceStart
                     M3Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Surface,
+                        color = DeviceSupplierCardGray,
                         shape = RoundedCornerShape(20.dp)
                     ) {
                         Column(
@@ -381,7 +382,7 @@ fun AddDeviceProviderScreen(
                 DeviceStep.STEP_3_COMPLETED -> {
                     M3Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Surface,
+                        color = DeviceSupplierCardGray,
                         shape = RoundedCornerShape(20.dp)
                     ) {
                         Row(
@@ -435,7 +436,7 @@ fun AddDeviceProviderScreen(
 
             M3Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = Color.White,
+                color = DeviceSupplierCardGray,
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Row(

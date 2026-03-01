@@ -64,6 +64,10 @@ private enum class OAuthStep {
     STEP_3_COMPLETED
 }
 
+private val SupplierCardGray = Color(0xFFF1F1F1)
+private val SupplierFieldBorder = Color(0xFF44464D)
+private val SupplierHintColor = Color(0xFF74747D)
+
 @Composable
 fun AddOAuthProviderScreen(
     navController: NavController,
@@ -780,7 +784,7 @@ private fun ProviderNameInput(
     onValueChange: (String) -> Unit
 ) {
     Surface(
-        color = Color.White,
+        color = SupplierCardGray,
         shape = RoundedCornerShape(20.dp)
     ) {
         Column(
@@ -789,35 +793,45 @@ private fun ProviderNameInput(
             Text(
                 text = stringResource(R.string.add_oauth_provider_name),
                 fontSize = 13.sp,
-                color = Color(0xFF8E8E93),
+                color = SupplierHintColor,
                 fontFamily = SourceSans3
             )
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = androidx.compose.ui.text.TextStyle(
-                    fontSize = 17.sp,
-                    color = Color(0xFF1C1C1E),
-                    fontFamily = SourceSans3
-                ),
-                decorationBox = { innerTextField ->
-                    Box {
-                        if (value.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.add_oauth_provider_name_placeholder),
-                                fontSize = 17.sp,
-                                color = Color(0xFFC7C7CC),
-                                fontFamily = SourceSans3
-                            )
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(width = 1.2.dp, color = SupplierFieldBorder, shape = RoundedCornerShape(16.dp)),
+                color = SupplierCardGray,
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 17.sp,
+                        color = Color(0xFF1C1C1E),
+                        fontFamily = SourceSans3
+                    ),
+                    decorationBox = { innerTextField ->
+                        Box {
+                            if (value.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.add_oauth_provider_name_placeholder),
+                                    fontSize = 17.sp,
+                                    color = SupplierHintColor,
+                                    fontFamily = SourceSans3
+                                )
+                            }
+                            innerTextField()
                         }
-                        innerTextField()
                     }
-                }
-            )
+                )
+            }
         }
     }
 }
@@ -834,7 +848,7 @@ private fun OAuthSection(
     onReset: () -> Unit
 ) {
     Surface(
-        color = Color.White,
+        color = SupplierCardGray,
         shape = RoundedCornerShape(20.dp)
     ) {
         Column(
@@ -1052,7 +1066,10 @@ private fun Step2Content(
         if (showCallbackInput) {
             // 输入框
             Surface(
-                color = Color(0xFFF5F5F7),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(width = 1.2.dp, color = SupplierFieldBorder, shape = RoundedCornerShape(14.dp)),
+                color = SupplierCardGray,
                 shape = RoundedCornerShape(14.dp)
             ) {
                 BasicTextField(
@@ -1072,7 +1089,7 @@ private fun Step2Content(
                                 Text(
                                     text = "https://your-app.com/oauth/callback",
                                     fontSize = 16.sp,
-                                    color = Color(0xFFC7C7CC),
+                                    color = SupplierHintColor,
                                     fontFamily = SourceSans3
                                 )
                             }
@@ -1083,13 +1100,16 @@ private fun Step2Content(
             }
         } else {
             Surface(
-                color = Color(0xFFF5F5F7),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(width = 1.2.dp, color = SupplierFieldBorder, shape = RoundedCornerShape(14.dp)),
+                color = SupplierCardGray,
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Text(
                     text = stringResource(R.string.add_oauth_step2_device_hint),
                     fontSize = 14.sp,
-                    color = Color(0xFF6B6B6B),
+                    color = SupplierHintColor,
                     fontFamily = SourceSans3,
                     modifier = Modifier
                         .fillMaxWidth()
