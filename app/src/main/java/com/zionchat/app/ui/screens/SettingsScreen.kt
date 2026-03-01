@@ -975,7 +975,7 @@ fun AppearanceMenu(
                         .liquidGlass(
                             backdrop = backdrop,
                             shape = shape,
-                            overlayColor = Color(0xFFF5F5F5).copy(alpha = 0.72f),
+                            overlayColor = Color(0xFFF5F5F5),
                             fallbackColor = Color(0xFFF5F5F5),
                             blurRadius = 24.dp,
                             refractionHeight = 6.dp,
@@ -983,19 +983,20 @@ fun AppearanceMenu(
                             highlightAlpha = 0.22f,
                             shadowAlpha = 0f
                         )
+                        .border(width = 1.dp, color = Color(0xFFE7E7E7), shape = shape)
                 ) {
                     Column(
                         modifier = Modifier.padding(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
-                        appearanceOptions.forEach { option ->
+                        appearanceOptions.forEachIndexed { index, option ->
                             val key = option.key
                             val isSelected = key == selected
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color.Transparent)
+                                    .background(if (isSelected) Color(0xFFECECEC) else Color.Transparent)
                                     .clickable {
                                         onSelect(key)
                                         onDismiss()
@@ -1045,6 +1046,15 @@ fun AppearanceMenu(
                                         )
                                     }
                                 }
+                            }
+                            if (index < appearanceOptions.lastIndex) {
+                                Spacer(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(1.dp)
+                                        .padding(horizontal = 8.dp)
+                                        .background(Color(0xFFE6E6E6))
+                                )
                             }
                         }
                     }
@@ -1135,7 +1145,7 @@ fun AccentColorMenu(
                         .liquidGlass(
                             backdrop = backdrop,
                             shape = shape,
-                            overlayColor = Color(0xFFF5F5F5).copy(alpha = 0.72f),
+                            overlayColor = Color(0xFFF5F5F5),
                             fallbackColor = Color(0xFFF5F5F5),
                             blurRadius = 24.dp,
                             refractionHeight = 6.dp,
@@ -1143,12 +1153,13 @@ fun AccentColorMenu(
                             highlightAlpha = 0.22f,
                             shadowAlpha = 0f
                         )
+                        .border(width = 1.dp, color = Color(0xFFE7E7E7), shape = shape)
                 ) {
                     Column(
                         modifier = Modifier.padding(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
-                        accentColorOptions.forEach { option ->
+                        accentColorOptions.forEachIndexed { index, option ->
                             val key = option.key
                             val color = option.color
                             val isSelected = key == selected
@@ -1156,7 +1167,7 @@ fun AccentColorMenu(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color.Transparent)
+                                    .background(if (isSelected) Color(0xFFECECEC) else Color.Transparent)
                                     .clickable {
                                         onSelect(key)
                                         onDismiss()
@@ -1208,6 +1219,15 @@ fun AccentColorMenu(
                                         )
                                     }
                                 }
+                            }
+                            if (index < accentColorOptions.lastIndex) {
+                                Spacer(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(1.dp)
+                                        .padding(horizontal = 8.dp)
+                                        .background(Color(0xFFE6E6E6))
+                                )
                             }
                         }
                     }

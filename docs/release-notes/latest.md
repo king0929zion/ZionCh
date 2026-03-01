@@ -1,5 +1,7 @@
 ## ZionChat Android 版本说明
 
+- 修复设置页 Appearance / Accent Color 选择器分层问题：弹出面板改为单层实底卡片，去掉半透明叠层观感，统一选中态底色与分割线，视觉更稳定。
+- CI 编译卡顿优化：针对 `:app:compileReleaseKotlin` 长时间卡顿，调整为 Gradle daemon + Kotlin in-process 编译策略，降低并发 worker 并提升 JVM/Kotlin 内存上限，同时优化增量缓存 key（按分支 + 构建配置）提升命中率。
 - CI 并发策略优化：移除 GitHub Actions 的 `concurrency` 分组限制，同一分支的多次提交现在可并行构建，不再强制排队等待。
 - 构建协作效率提升：多人/多次连续提交时，Actions 可同时执行，缩短整体等待时间并提升迭代反馈速度。
 - 关键稳定性修复：针对部分机型进入设置页时 `RenderThread(SIGSEGV)` 闪退，已彻底移除设置体系中的 Backdrop shader 渲染链路（`drawBackdrop/blur/lens`）。

@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI_FAST_BUILD: "true"
-      GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4 -Xmx2g"
+      GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=3 -Dorg.gradle.jvmargs=-Xmx6g -Dkotlin.daemon.jvm.options=-Xmx3072m"
 
     steps:
     - name: Checkout code
@@ -45,9 +45,10 @@ jobs:
           app/build/tmp/kotlin-classes
           app/build/intermediates/javac
           app/build/intermediates/compile_and_runtime_not_namespaced_r_class_jar
-        key: ${{ runner.os }}-kotlin-${{ hashFiles('app/src/**/*.kt', 'app/build.gradle', 'build.gradle', 'gradle.properties') }}
+        key: ${{ runner.os }}-project-incremental-${{ github.ref_name }}-${{ hashFiles('app/build.gradle', 'build.gradle', 'settings.gradle', 'settings.gradle.kts', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
         restore-keys: |
-          ${{ runner.os }}-kotlin-
+          ${{ runner.os }}-project-incremental-${{ github.ref_name }}-
+          ${{ runner.os }}-project-incremental-
 
     - name: Ensure Gradle wrapper executable
       run: chmod +x gradlew
@@ -72,14 +73,14 @@ jobs:
     - name: Build APK
       run: |
         if [ "${{ github.event_name }}" = "pull_request" ]; then
-          ./gradlew :app:assembleDebug --stacktrace --parallel --max-workers=4 --build-cache --configuration-cache --no-daemon -PCI_FAST_BUILD=true
+          ./gradlew :app:assembleDebug --stacktrace --parallel --max-workers=3 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=in-process -PCI_FAST_BUILD=true
         else
-          ./gradlew :app:assembleRelease --stacktrace --parallel --max-workers=4 --build-cache --configuration-cache --no-daemon -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
+          ./gradlew :app:assembleRelease --stacktrace --parallel --max-workers=3 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=in-process -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
         fi
 
     - name: Run tests
       if: github.event_name == 'pull_request'
-      run: ./gradlew :app:testDebugUnitTest --stacktrace --parallel --build-cache --configuration-cache --no-daemon -PCI_FAST_BUILD=true
+      run: ./gradlew :app:testDebugUnitTest --stacktrace --parallel --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=in-process -PCI_FAST_BUILD=true
       continue-on-error: true
 
     - name: Get version from build.gradle
