@@ -4850,7 +4850,7 @@ internal fun BottomInputArea(
         Box(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.BottomStart
-        ) {
+        ) mentionLayerHost@{
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -5109,7 +5109,7 @@ internal fun BottomInputArea(
                     }
                 }
             }
-            Box(modifier = Modifier.matchParentSize()) {
+            Box(modifier = with(this@mentionLayerHost) { Modifier.matchParentSize() }) {
                 androidx.compose.animation.AnimatedVisibility(
                     visible = showMentionPicker && visibleMentionItems.isNotEmpty(),
                     modifier = Modifier
