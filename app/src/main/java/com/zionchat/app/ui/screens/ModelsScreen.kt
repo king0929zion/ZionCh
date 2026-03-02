@@ -77,9 +77,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.LocalChatApiClient
 import com.zionchat.app.LocalProviderAuthManager
@@ -497,13 +494,11 @@ private fun ModelItem(
         animationSpec = tween(durationMillis = 180),
         label = "model_item_bg"
     )
-    val rowBackdrop = rememberLayerBackdrop()
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
             .animateContentSize(animationSpec = tween(durationMillis = 180))
-            .layerBackdrop(rowBackdrop)
             .background(cardColor, RoundedCornerShape(20.dp))
             .clip(RoundedCornerShape(20.dp))
             .pressableScale(pressedScale = 0.98f, onClick = onClick)
@@ -525,7 +520,6 @@ private fun ModelItem(
         ModelToggleSwitch(
             enabled = model.enabled,
             onToggle = onToggle,
-            backdrop = rowBackdrop
         )
     }
 }
@@ -534,13 +528,11 @@ private fun ModelItem(
 private fun ModelToggleSwitch(
     enabled: Boolean,
     onToggle: (Boolean) -> Unit,
-    backdrop: Backdrop,
     modifier: Modifier = Modifier
 ) {
     BackdropLiquidToggle(
         checked = enabled,
         onCheckedChange = onToggle,
-        backdrop = backdrop,
         modifier = modifier
     )
 }

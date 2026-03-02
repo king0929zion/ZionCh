@@ -30,14 +30,11 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
-import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberBackdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
@@ -48,7 +45,6 @@ import kotlinx.coroutines.flow.collectLatest
 fun BackdropLiquidToggle(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    backdrop: Backdrop,
     modifier: Modifier = Modifier,
     trackWidth: Dp = 52.dp,
     trackHeight: Dp = 30.dp,
@@ -145,27 +141,18 @@ fun BackdropLiquidToggle(
                 .semantics { role = Role.Switch }
                 .then(dampedDragAnimation.modifier)
                 .drawBackdrop(
-                    backdrop =
-                        rememberCombinedBackdrop(
-                            backdrop,
-                            rememberBackdrop(trackBackdrop) { drawTrackBackdrop ->
-                                val progress = dampedDragAnimation.pressProgress
-                                val scaleX = lerp(2f / 3f, 0.75f, progress)
-                                val scaleY = lerp(0f, 0.75f, progress)
-                                scale(scaleX, scaleY) {
-                                    drawTrackBackdrop()
-                                }
-                            }
-                        ),
+                    backdrop = rememberBackdrop(trackBackdrop) { drawTrackBackdrop ->
+                        val progress = dampedDragAnimation.pressProgress
+                        val scaleX = lerp(2f / 3f, 0.75f, progress)
+                        val scaleY = lerp(0f, 0.75f, progress)
+                        scale(scaleX, scaleY) {
+                            drawTrackBackdrop()
+                        }
+                    },
                     shape = { Capsule() },
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
                         blur(7f.dp.toPx() * (1f - progress * 0.75f))
-                        lens(
-                            4f.dp.toPx() * progress,
-                            8f.dp.toPx() * progress,
-                            chromaticAberration = false
-                        )
                     },
                     highlight = {
                         val progress = dampedDragAnimation.pressProgress
