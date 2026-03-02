@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -67,6 +68,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -85,7 +87,6 @@ import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.buildModelStorageId
 import com.zionchat.app.data.extractRemoteModelId
-import com.zionchat.app.ui.components.LiquidGlassSwitch
 import com.zionchat.app.ui.components.PageTopBarContentTopPadding
 import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
@@ -526,11 +527,88 @@ private fun ModelToggleSwitch(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LiquidGlassSwitch(
-        checked = enabled,
-        onCheckedChange = onToggle,
-        modifier = modifier
+    val progress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (enabled) 1f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "model_toggle_progress"
     )
+    val trackShape = RoundedCornerShape(16.dp)
+    val trackColor by animateColorAsState(
+        targetValue = if (enabled) Color(0xFF1F1F23) else Color(0xFFD1D1D8),
+        animationSpec = tween(durationMillis = 180),
+        label = "model_toggle_track"
+    )
+    val trackBorderColor by animateColorAsState(
+        targetValue = if (enabled) Color(0xFF2D2D31) else Color(0xFFBDBDC5),
+        animationSpec = tween(durationMillis = 180),
+        label = "model_toggle_track_border"
+    )
+    val knobOffset = 20.dp * progress
+
+    Box(
+        modifier = modifier
+            .width(48.dp)
+            .height(30.dp)
+            .clip(trackShape)
+            .background(trackColor, trackShape)
+            .border(1.dp, trackBorderColor, trackShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onToggle
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(trackShape)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = if (enabled) 0.14f else 0.28f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 2.dp)
+                .offset(x = knobOffset)
+                .size(26.dp)
+                .shadow(
+                    elevation = 8.dp,
+                    shape = CircleShape,
+                    clip = false,
+                    ambientColor = Color.Black.copy(alpha = 0.14f),
+                    spotColor = Color.Black.copy(alpha = 0.18f)
+                )
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.97f),
+                            Color(0xFFF4F4F7),
+                            Color(0xFFE8E9EE)
+                        )
+                    ),
+                    CircleShape
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.82f), CircleShape)
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 5.dp, top = 4.dp)
+                    .width(10.dp)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.White.copy(alpha = 0.56f))
+            )
+        }
+    }
 }
 
 private fun deriveModelDisplayNameFromId(rawModelId: String): String {
