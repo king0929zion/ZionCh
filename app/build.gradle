@@ -36,8 +36,8 @@ android {
         applicationId "com.zionchat.app"
         minSdk 24
         targetSdk 36
-        versionCode 364
-        versionName "0.31.41"
+        versionCode 365
+        versionName "0.31.42"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -127,6 +127,7 @@ dependencies {
     implementation 'io.ktor:ktor-serialization-kotlinx-json:3.4.0'
     implementation 'io.modelcontextprotocol:kotlin-sdk:0.8.3'
     implementation 'io.github.kyant0:backdrop:1.0.5'
+    implementation 'io.github.kyant0:shapes:1.2.0'
     implementation 'dev.rikka.shizuku:api:13.1.5'
     implementation 'dev.rikka.shizuku:provider:13.1.5'
 
