@@ -1,5 +1,7 @@
 ## ZionChat Android 版本说明
 
+- 模型管理页液态玻璃重做：`Models` 页面“是否开启模型”切换器改为基于 `AndroidLiquidGlass` 示例 `LiquidToggle` 的适配实现，使用真实 Backdrop 渲染（blur/lens/highlight/shadow），不再是仅阴影的伪玻璃效果。
+- 开关交互适配：模型卡片增加 `layerBackdrop` 背景采样层，启用拖拽与点击切换，开关状态改为按目标值直接写入，避免快速操作时反转错位。
 - 修复一次 CI 编译回归：模型管理页液态玻璃开关遮罩层从 `matchParentSize` 调整为兼容版本的 `fillMaxSize`，恢复 Release Kotlin 编译通过。
 - 模型管理页开关升级：`Models` 页面“是否开启模型”切换器改为液态玻璃风格，增强玻璃高光、立体层次与开关动效反馈。
 - 设置页模型选择器背景修复：恢复“灰色容器 + 白色模型卡片”层级，模型项重新具备清晰卡片背景与轻边界，不再出现背景消失感。
