@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,6 +85,8 @@ import rikka.shizuku.Shizuku
 
 private const val SHIZUKU_PERMISSION_REQUEST_CODE = 4102
 private val AutoSoulModelSelectorGray = Color(0xFFF1F1F1)
+private val AutoSoulModelSelectorCard = Color.White
+private val AutoSoulModelSelectorCardBorder = Color(0xFFE0E0E5)
 
 private const val DEFAULT_AUTOSOUL_SCRIPT = """
 [
@@ -660,9 +663,11 @@ private fun AutoSoulVisionModelPickerContent(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, AutoSoulModelSelectorCardBorder, RoundedCornerShape(12.dp)),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = AutoSoulModelSelectorGray)
+                colors = CardDefaults.cardColors(containerColor = AutoSoulModelSelectorCard)
             ) {
                 Row(
                     modifier =
@@ -708,9 +713,11 @@ private fun AutoSoulVisionModelPickerContent(
                             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
                         )
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, AutoSoulModelSelectorCardBorder, RoundedCornerShape(12.dp)),
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = AutoSoulModelSelectorGray)
+                            colors = CardDefaults.cardColors(containerColor = AutoSoulModelSelectorCard)
                         ) {
                             providerModels.forEachIndexed { index, model ->
                                 Row(

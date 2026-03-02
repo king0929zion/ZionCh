@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -54,7 +55,8 @@ private enum class DefaultModelType(
     APP_BUILDER(title = "App Development", required = false, selectorTitle = "Select App Development")
 }
 
-private val NeutralSelectorCard = Color(0xFFF1F1F1)
+private val NeutralSelectorCard = Color.White
+private val NeutralSelectorCardBorder = Color(0xFFE0E0E5)
 private val NeutralSelectorDivider = Color(0xFFE4E4E4)
 private val NeutralHandle = Color(0xFFE0E0E0)
 private val NeutralSelectorSheet = Color(0xFFF1F1F1)
@@ -337,7 +339,9 @@ private fun DefaultModelSelectorModal(
                     ) {
                         if (!required) {
                             Card(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, NeutralSelectorCardBorder, RoundedCornerShape(14.dp)),
                                 shape = RoundedCornerShape(14.dp),
                                 colors = CardDefaults.cardColors(containerColor = NeutralSelectorCard)
                             ) {
@@ -358,7 +362,9 @@ private fun DefaultModelSelectorModal(
                                     modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
                                 )
                                 Card(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, NeutralSelectorCardBorder, RoundedCornerShape(14.dp)),
                                     shape = RoundedCornerShape(14.dp),
                                     colors = CardDefaults.cardColors(containerColor = NeutralSelectorCard)
                                 ) {

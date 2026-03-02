@@ -255,7 +255,7 @@ fun AddProviderScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalAlignment = Alignment.Top
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(
                             modifier = Modifier.width(72.dp),
@@ -296,8 +296,11 @@ fun AddProviderScreen(
                         }
 
                         Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(vertical = 4.dp),
+                            verticalArrangement = Arrangement.Center
                         ) {
                             FormField(
                                 label = "Name",
@@ -319,7 +322,7 @@ fun AddProviderScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         if (!isGrok2ApiProvider) {
                             Column {
@@ -638,15 +641,16 @@ fun FormField(
     placeholder: String,
     containerColor: Color = Color(0xFFF1F1F1)
 ) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(24.dp)
     val hasValue = value.trim().isNotEmpty()
-    val fieldBorderColor = Color(0xFF44464D)
+    val fieldBorderColor = Color(0xFF5F616A)
     val fieldHintColor = Color(0xFF74747D)
     Box(modifier = Modifier.fillMaxWidth()) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(width = 1.2.dp, color = fieldBorderColor, shape = shape),
+                .heightIn(min = 58.dp)
+                .border(width = 0.9.dp, color = fieldBorderColor, shape = shape),
             color = containerColor,
             shape = shape
         ) {
@@ -655,7 +659,7 @@ fun FormField(
                 onValueChange = onValueChange,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
                 placeholder = {
                     if (!hasValue) {
                         Text(

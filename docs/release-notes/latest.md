@@ -1,5 +1,9 @@
 ## ZionChat Android 版本说明
 
+- 设置页模型选择器背景修复：恢复“灰色容器 + 白色模型卡片”层级，模型项重新具备清晰卡片背景与轻边界，不再出现背景消失感。
+- Add Provider 输入区微调：`Name / API Key / Base URL` 输入框圆角加大、纵向间距拉开，整体表单更舒展。
+- Add Provider 输入框线条优化：描边调整为更细、更浅的灰色线，保留边界同时降低生硬感。
+- Add Provider 首模块对齐修复：`Name` 输入区在头像同组模块内改为垂直居中，不再偏上。
 - 修复一次 CI 编译回归：更正 `Models` 页测试弹窗按钮描边的 `BorderStroke` 导入路径，恢复 `compileReleaseKotlin` 正常通过。
 - 模型选择器视觉统一：`Default Model`、`Add Bot`、`Create Group Chat`、`AutoSoul` 等设置相关模型选择器统一为主设置页同款灰阶（`#F1F1F1`），并补齐顶部柔和过渡层。
 - Memories 交互更新：具体记忆内容恢复常规字重，移除右侧固定删除按钮，改为左滑唤出删除操作，交互与供应商页一致。

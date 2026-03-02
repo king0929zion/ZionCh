@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -67,6 +68,8 @@ import kotlinx.coroutines.launch
 private const val GROUP_STRATEGY_DYNAMIC = "dynamic"
 private const val GROUP_STRATEGY_ROUND_ROBIN = "round_robin"
 private val GroupModelSelectorGray = Color(0xFFF1F1F1)
+private val GroupModelSelectorCard = Color.White
+private val GroupModelSelectorCardBorder = Color(0xFFE0E0E5)
 
 @Composable
 fun CreateGroupChatScreen(navController: NavController, groupId: String? = null) {
@@ -691,9 +694,11 @@ private fun CoordinatorModelSelectorModal(
                                     modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
                                 )
                                 Card(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, GroupModelSelectorCardBorder, RoundedCornerShape(10.dp)),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = CardDefaults.cardColors(containerColor = GroupModelSelectorGray)
+                                    colors = CardDefaults.cardColors(containerColor = GroupModelSelectorCard)
                                 ) {
                                     providerModels.forEachIndexed { index, model ->
                                         val isSelected = selectedModelId == model.id

@@ -7,6 +7,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -60,6 +61,8 @@ val PRESET_AVATARS = listOf(
     "avatar_11.jpg", "avatar_12.jpg"
 )
 private val ModelSelectorGray = Color(0xFFF1F1F1)
+private val ModelSelectorCard = Color.White
+private val ModelSelectorCardBorder = Color(0xFFE0E0E5)
 
 @Composable
 fun AddBotScreen(navController: NavController, botId: String? = null) {
@@ -641,9 +644,11 @@ private fun BotModelSelectorModal(
                                     modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
                                 )
                                 Card(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, ModelSelectorCardBorder, RoundedCornerShape(10.dp)),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = CardDefaults.cardColors(containerColor = ModelSelectorGray)
+                                    colors = CardDefaults.cardColors(containerColor = ModelSelectorCard)
                                 ) {
                                     providerModels.forEachIndexed { index, model ->
                                         val isSelected = selectedModelId == model.id
