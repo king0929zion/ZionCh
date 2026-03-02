@@ -77,6 +77,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.LocalChatApiClient
 import com.zionchat.app.LocalProviderAuthManager
@@ -216,6 +219,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
         refreshing = isFetchingRemote,
         onRefresh = { fetchedSignature = null }
     )
+    val screenBackdrop = rememberLayerBackdrop()
 
     SettingsPage(
         title = stringResource(R.string.models),
@@ -263,6 +267,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .layerBackdrop(screenBackdrop)
                 .pullRefresh(pullRefreshState)
         ) {
             Column(
@@ -321,6 +326,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                         sortedModels.forEach { model ->
                             ModelItem(
                                 model = model,
+                                backdrop = screenBackdrop,
                                 onToggle = { nextEnabled ->
                                     scope.launch { repository.upsertModel(model.copy(enabled = nextEnabled)) }
                                 },
@@ -485,6 +491,7 @@ private suspend fun runModelConnectionTest(
 @Composable
 private fun ModelItem(
     model: ModelConfig,
+    backdrop: Backdrop,
     onToggle: (Boolean) -> Unit,
     onClick: () -> Unit
 ) {
@@ -519,6 +526,7 @@ private fun ModelItem(
 
         ModelToggleSwitch(
             enabled = model.enabled,
+            backdrop = backdrop,
             onToggle = onToggle,
         )
     }
@@ -527,12 +535,14 @@ private fun ModelItem(
 @Composable
 private fun ModelToggleSwitch(
     enabled: Boolean,
+    backdrop: Backdrop,
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     BackdropLiquidToggle(
         checked = enabled,
         onCheckedChange = onToggle,
+        backdrop = backdrop,
         modifier = modifier
     )
 }

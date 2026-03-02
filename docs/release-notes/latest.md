@@ -1,5 +1,8 @@
 ## ZionChat Android 版本说明
 
+- 模型开关液态玻璃二次重做：按 `AndroidLiquidGlass` 思路恢复真实液态特征（背景采样 + blur + lens 折射 + 高光/阴影），不再是仅阴影的普通玻璃观感。
+- 修复开关点击串事件：模型管理页点击开关时不再触发整行进入模型详情，开关与列表跳转手势彻底解耦。
+- 稳定性处理：液态开关改为使用页面级 backdrop 采样，避免局部组合采样导致的渲染链路冲突。
 - 修复模型配置链路闪退：针对 `RenderThread(SIGSEGV)`，移除模型开关液态组件中会触发渲染递归的组合 backdrop 链路，改为稳定采样路径并保留玻璃质感，避免进入模型列表/配置时崩溃。
 - 修复本次液态开关 CI 编译失败：补充 `io.github.kyant0:shapes:1.2.0` 依赖以支持 `Capsule`，恢复 `compileReleaseKotlin` 正常通过链路。
 - 模型管理页液态玻璃重做：`Models` 页面“是否开启模型”切换器改为基于 `AndroidLiquidGlass` 示例 `LiquidToggle` 的适配实现，使用真实 Backdrop 渲染（blur/lens/highlight/shadow），不再是仅阴影的伪玻璃效果。
