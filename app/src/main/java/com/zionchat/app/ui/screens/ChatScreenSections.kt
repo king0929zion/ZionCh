@@ -77,6 +77,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.navigation.NavController
 import com.zionchat.app.R
 import com.zionchat.app.LocalAppRepository
@@ -149,6 +152,7 @@ import java.io.ByteArrayOutputStream
 import java.io.StringReader
 import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.compose.ui.unit.Velocity
 
 /**
  * Dynamic grid layout for message attachments
@@ -2341,22 +2345,53 @@ internal fun ToolMenuPanel(
     val currentPanelMaxHeight = remember(panelBaseMaxHeight, panelExpandPx, density) {
         panelBaseMaxHeight + with(density) { panelExpandPx.toDp() }
     }
-    val panelDragState = rememberDraggableState { delta ->
+    val applyPanelDragDelta: (Float) -> Unit = { delta ->
         if (delta < 0f) {
-            panelExpandPx =
-                (panelExpandPx + (-delta)).coerceIn(0f, panelExpandLimitPx)
-            return@rememberDraggableState
+            panelExpandPx = (panelExpandPx + (-delta)).coerceIn(0f, panelExpandLimitPx)
+        } else if (delta > 0f) {
+            panelOffsetPx = (panelOffsetPx + delta).coerceIn(0f, dismissThresholdPx * 2.4f)
+        }
+    }
+    suspend fun settlePanel(velocity: Float) {
+        val shouldDismiss = panelOffsetPx > dismissThresholdPx || velocity > 2000f
+        if (shouldDismiss) {
+            onDismiss()
+            return
+        }
+        val shouldExpand = panelExpandPx > expandSnapThresholdPx || velocity < -900f
+        val targetExpand = if (shouldExpand) panelExpandLimitPx else 0f
+        scope.launch {
+            animate(
+                initialValue = panelOffsetPx,
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing)
+            ) { value, _ ->
+                panelOffsetPx = value
+            }
+        }
+        scope.launch {
+            animate(
+                initialValue = panelExpandPx,
+                targetValue = targetExpand,
+                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+            ) { value, _ ->
+                panelExpandPx = value
+            }
+        }
+    }
+    val panelDragState = rememberDraggableState { delta ->
+        applyPanelDragDelta(delta)
+    }
+    val panelNestedScrollConnection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            if (available.y == 0f) return Offset.Zero
+            applyPanelDragDelta(available.y)
+            return Offset(0f, available.y)
         }
 
-        var remainingDelta = delta
-        if (panelExpandPx > 0f) {
-            val collapseAmount = remainingDelta.coerceAtMost(panelExpandPx)
-            panelExpandPx = (panelExpandPx - collapseAmount).coerceAtLeast(0f)
-            remainingDelta -= collapseAmount
-        }
-
-        if (remainingDelta > 0f) {
-            panelOffsetPx = (panelOffsetPx + remainingDelta).coerceIn(0f, dismissThresholdPx * 1.8f)
+        override suspend fun onPreFling(available: Velocity): Velocity {
+            settlePanel(available.y)
+            return available
         }
     }
     val scrimAlpha by animateFloatAsState(
@@ -2365,8 +2400,6 @@ internal fun ToolMenuPanel(
     )
     LaunchedEffect(visible) {
         if (!visible) {
-            panelOffsetPx = 0f
-            panelExpandPx = 0f
             onMcpPageChange(ToolMenuPage.Tools)
         } else {
             panelOffsetPx = 0f
@@ -2427,38 +2460,12 @@ internal fun ToolMenuPanel(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = currentPanelMaxHeight)
+                            .nestedScroll(panelNestedScrollConnection)
                             .draggable(
                                 orientation = Orientation.Vertical,
                                 state = panelDragState,
                                 onDragStopped = { velocity ->
-                                    val shouldDismiss = panelOffsetPx > dismissThresholdPx || velocity > 2000f
-                                    if (shouldDismiss) {
-                                        onDismiss()
-                                        panelOffsetPx = 0f
-                                        panelExpandPx = 0f
-                                    } else {
-                                        val shouldExpand =
-                                            panelExpandPx > expandSnapThresholdPx || velocity < -900f
-                                        val targetExpand = if (shouldExpand) panelExpandLimitPx else 0f
-                                        scope.launch {
-                                            animate(
-                                                initialValue = panelOffsetPx,
-                                                targetValue = 0f,
-                                                animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing)
-                                            ) { value, _ ->
-                                                panelOffsetPx = value
-                                            }
-                                        }
-                                        scope.launch {
-                                            animate(
-                                                initialValue = panelExpandPx,
-                                                targetValue = targetExpand,
-                                                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
-                                            ) { value, _ ->
-                                                panelExpandPx = value
-                                            }
-                                        }
-                                    }
+                                    scope.launch { settlePanel(velocity) }
                                 }
                             )
                             .background(Surface)
@@ -2504,11 +2511,9 @@ internal fun ToolMenuPanel(
                             label = "tool_menu_page_switch"
                         ) { currentPage ->
                             if (currentPage == ToolMenuPage.Tools) {
-                                val toolsScrollState = rememberScrollState()
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .verticalScroll(toolsScrollState)
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -2941,14 +2946,22 @@ internal fun ChatThinkingToggleButton(
     onToggle: (Boolean) -> Unit
 ) {
     val trackColor by animateColorAsState(
-        targetValue = if (enabled) Color(0xFF18181B) else Color(0xFFE4E4E7),
+        targetValue = if (enabled) Color(0xFF111111) else Color(0xFFD9D9DE),
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "thinking_switch_track"
     )
     val thumbOffsetX by animateDpAsState(
-        targetValue = if (enabled) 21.dp else 3.dp,
-        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        targetValue = if (enabled) 16.dp else 2.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
         label = "thinking_switch_thumb"
+    )
+    val thumbScale by animateFloatAsState(
+        targetValue = if (enabled) 1.02f else 1f,
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        label = "thinking_switch_thumb_scale"
     )
     Row(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -2962,26 +2975,31 @@ internal fun ChatThinkingToggleButton(
         )
         Box(
             modifier = Modifier
-                .width(44.dp)
-                .height(26.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(trackColor, RoundedCornerShape(8.dp))
+                .width(34.dp)
+                .height(20.dp)
+                .clip(CircleShape)
+                .background(trackColor, CircleShape)
+                .border(width = 0.6.dp, color = Color.Black.copy(alpha = 0.12f), shape = CircleShape)
                 .pressableScale(pressedScale = 0.98f, onClick = { onToggle(!enabled) })
         )
         {
             Box(
                 modifier = Modifier
-                    .offset(x = thumbOffsetX, y = 3.dp)
-                    .size(20.dp)
+                    .offset(x = thumbOffsetX, y = 2.dp)
+                    .size(16.dp)
+                    .graphicsLayer {
+                        scaleX = thumbScale
+                        scaleY = thumbScale
+                    }
                     .shadow(
                         elevation = 1.5.dp,
-                        shape = RoundedCornerShape(6.dp),
+                        shape = CircleShape,
                         clip = false,
                         ambientColor = Color.Black.copy(alpha = 0.15f),
                         spotColor = Color.Black.copy(alpha = 0.15f)
                     )
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color.White, RoundedCornerShape(6.dp))
+                    .clip(CircleShape)
+                    .background(Color.White, CircleShape)
             )
         }
     }
