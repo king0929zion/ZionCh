@@ -1,5 +1,6 @@
 ## ZionChat Android 版本说明
 
+- 修复一次 CI 编译回归：补齐 `AddDeviceProviderScreen` 的 `size` 布局导入，恢复 `compileReleaseKotlin` 正常通过。
 - Provider 配置页统一升级：`OAuth / Token / Device` 三类页面对齐同一套灰阶配色（主卡片 `#F1F1F1`）与模块化布局结构，视觉层级更一致。
 - OAuth 页面结构重排：将“头像 + Name”整合为首模块卡片，输入区边框/圆角与 Token 配置页统一，Models 跳转卡片改为同款灰色容器。
 - Device 页面样式同步：顶部 Provider 信息卡改为与 Token/OAuth 同款图标容器比例与间距，Models 区块改为“标题 + 副标题 + 右箭头”的统一信息结构。
