@@ -1,5 +1,9 @@
 ## ZionChat Android 版本说明
 
+- 应用图标更新：将你指定的 `1772543567097_d.png` 重新生成并替换为 `mipmap-mdpi ~ mipmap-xxxhdpi` 全套 `ic_launcher.png`，主图标已统一生效。
+- CI 构建流程重构（保留自动 APK + 自动 Release）：优化 `build.yml` 的 Kotlin 编译参数，恢复增量编译与 classpath snapshot，并提升 worker 并发，重点缩短 `:app:compileReleaseKotlin` 耗时。
+- 增量缓存策略优化：将工作流中的 Kotlin 增量缓存改为“按分支前缀恢复 + 按提交写入”模式，避免旧固定 key 导致缓存无法持续更新的问题，加快连续迭代构建。
+
 - 按最新需求回退视觉：移除设置体系中的“液态玻璃”样式，相关弹出选择菜单恢复为普通白底卡片，不再使用液态容器效果。
 - 开关样式统一回归默认：`Models` 与 `MCP` 页面的液态开关全部改回系统默认 `Switch`，交互逻辑保持不变。
 - 稳定性优先：删除高复杂度液态渲染链路后，页面渲染层级更简单，进一步降低兼容性与闪退风险。

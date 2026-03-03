@@ -35,19 +35,19 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
 
-    - name: Restore project incremental caches
+    - name: Restore Kotlin incremental caches
       uses: actions/cache@v4
       with:
         path: |
-          .gradle
+          .gradle/configuration-cache
           app/build/kotlin
-          app/build/tmp/kotlin-classes
-          app/build/intermediates/javac
-          app/build/intermediates/compile_and_runtime_not_namespaced_r_class_jar
-        key: ${{ runner.os }}-project-incremental-${{ github.ref_name }}-${{ hashFiles('app/build.gradle', 'build.gradle', 'settings.gradle', 'settings.gradle.kts', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
+          app/build/tmp/kotlin-classes/release
+          app/build/intermediates/javac/release
+          app/build/intermediates/compile_and_runtime_not_namespaced_r_class_jar/release
+        key: ${{ runner.os }}-kotlin-incremental-${{ github.ref_name }}-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-project-incremental-${{ github.ref_name }}-
-          ${{ runner.os }}-project-incremental-
+          ${{ runner.os }}-kotlin-incremental-${{ github.ref_name }}-
+          ${{ runner.os }}-kotlin-incremental-
 
     - name: Ensure Gradle wrapper executable
       run: chmod +x gradlew
@@ -72,14 +72,14 @@ jobs:
     - name: Build APK
       run: |
         if [ "${{ github.event_name }}" = "pull_request" ]; then
-          ./gradlew :app:assembleDebug --stacktrace --max-workers=2 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -PCI_FAST_BUILD=true
+          ./gradlew :app:assembleDebug --stacktrace --max-workers=3 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=true -Pkotlin.incremental.useClasspathSnapshot=true -PCI_FAST_BUILD=true
         else
-          ./gradlew :app:assembleRelease --stacktrace --max-workers=2 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=false -Pkotlin.incremental.useClasspathSnapshot=false -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
+          ./gradlew :app:assembleRelease --stacktrace --max-workers=3 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=true -Pkotlin.incremental.useClasspathSnapshot=true -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
         fi
 
     - name: Run tests
       if: github.event_name == 'pull_request'
-      run: ./gradlew :app:testDebugUnitTest --stacktrace --max-workers=2 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -PCI_FAST_BUILD=true
+      run: ./gradlew :app:testDebugUnitTest --stacktrace --max-workers=3 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=true -Pkotlin.incremental.useClasspathSnapshot=true -PCI_FAST_BUILD=true
       continue-on-error: true
 
     - name: Get version from build.gradle
