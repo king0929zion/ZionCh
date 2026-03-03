@@ -83,6 +83,17 @@ class DefaultZiCodeToolDispatcher(
                 "repo.create_pr" -> handleRepoCreatePr(workspace, pat, args)
                 "repo.comment_pr" -> handleRepoCommentPr(workspace, pat, args)
                 "repo.merge_pr" -> handleRepoMergePr(workspace, pat, args)
+                "actions.trigger_workflow" -> handleActionsTriggerWorkflow(workspace, pat, args)
+                "actions.get_run" -> handleActionsGetRun(workspace, pat, args)
+                "actions.get_logs_summary" -> handleActionsLogSummary(workspace, pat, args)
+                "actions.list_artifacts" -> handleActionsListArtifacts(workspace, pat, args)
+                "actions.download_artifact" -> handleActionsDownloadArtifact(workspace, pat, args)
+                "pages.get_settings" -> handlePagesGetSettings(workspace, pat)
+                "pages.enable" -> handlePagesEnable(workspace, pat, args)
+                "pages.set_source" -> handlePagesSetSource(workspace, pat, args)
+                "pages.get_deployments" -> handlePagesDeployments(workspace, pat)
+                "pages.get_latest_url" -> handlePagesLatestUrl(workspace, pat)
+                "pages.deploy" -> handlePagesDeploy(workspace, pat)
                 else -> error("不支持的工具: $toolName")
             }
         }
@@ -318,6 +329,89 @@ class DefaultZiCodeToolDispatcher(
         return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(merge), userHint = "🔀 正在合并 Pull Request…")
     }
 
+    private fun handleActionsTriggerWorkflow(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        args: JsonObject
+    ): ZiCodeToolDispatchResult {
+        val workflow = args.requireString("workflow")
+        val ref = args.stringOrDefault("ref", workspace.defaultBranch)
+        val inputs = args.getAsJsonObject("inputs") ?: JsonObject()
+        triggerWorkflowDispatch(workspace, pat, workflow, ref, inputs)
+        val result = JsonObject().apply {
+            addProperty("workflow", workflow)
+            addProperty("ref", ref)
+            addProperty("dispatched", true)
+        }
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(result), userHint = "🚀 正在运行工作流 `$workflow`…")
+    }
+
+    private fun handleActionsGetRun(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val runId = args.requireLong("run_id")
+        val run = getWorkflowRun(workspace, pat, runId)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(run), userHint = "⏳ 正在检查构建状态…")
+    }
+
+    private fun handleActionsLogSummary(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val runId = args.requireLong("run_id")
+        val summary = buildRunLogsSummary(workspace, pat, runId)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(summary), userHint = "📊 正在分析构建日志…")
+    }
+
+    private fun handleActionsListArtifacts(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val runId = args.requireLong("run_id")
+        val artifacts = listRunArtifacts(workspace, pat, runId)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(artifacts), userHint = "📦 正在获取构建产物列表…")
+    }
+
+    private fun handleActionsDownloadArtifact(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        args: JsonObject
+    ): ZiCodeToolDispatchResult {
+        val artifactId = args.requireLong("artifact_id")
+        val artifact = getArtifactDownloadInfo(workspace, pat, artifactId)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(artifact), userHint = "⬇️ 正在下载构建产物…")
+    }
+
+    private fun handlePagesGetSettings(workspace: ZiCodeWorkspace, pat: String): ZiCodeToolDispatchResult {
+        val pages = getPagesSettings(workspace, pat)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(pages), userHint = "⚙️ 正在读取 Pages 配置…")
+    }
+
+    private fun handlePagesEnable(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val branch = args.stringOrDefault("branch", workspace.defaultBranch)
+        val path = args.stringOrDefault("path", "/")
+        val pages = createPagesSite(workspace, pat, branch, path)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(pages), userHint = "🌐 正在启用 GitHub Pages…")
+    }
+
+    private fun handlePagesSetSource(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val branch = args.stringOrDefault("branch", workspace.defaultBranch)
+        val path = args.stringOrDefault("path", "/")
+        val pages = updatePagesSource(workspace, pat, branch, path)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(pages), userHint = "🔧 正在设置 Pages 构建来源…")
+    }
+
+    private fun handlePagesDeployments(workspace: ZiCodeWorkspace, pat: String): ZiCodeToolDispatchResult {
+        val deployments = getPagesDeployments(workspace, pat)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(deployments), userHint = "📜 正在获取部署记录…")
+    }
+
+    private fun handlePagesLatestUrl(workspace: ZiCodeWorkspace, pat: String): ZiCodeToolDispatchResult {
+        val pages = getPagesSettings(workspace, pat)
+        val result = JsonObject().apply {
+            addProperty("url", pages.get("html_url")?.asString.orEmpty())
+            add("settings", pages)
+        }
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(result), userHint = "🔗 正在获取在线地址…")
+    }
+
+    private fun handlePagesDeploy(workspace: ZiCodeWorkspace, pat: String): ZiCodeToolDispatchResult {
+        val build = triggerPagesBuild(workspace, pat)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(build), userHint = "🚀 正在部署到 GitHub Pages…")
+    }
+
     private suspend fun getWorkingFileContent(
         sessionId: String,
         workspace: ZiCodeWorkspace,
@@ -352,6 +446,17 @@ class DefaultZiCodeToolDispatcher(
             "repo.create_pr" -> "📋 正在创建 Pull Request…"
             "repo.comment_pr" -> "💬 正在写入 PR 评论…"
             "repo.merge_pr" -> "🔀 正在合并 Pull Request…"
+            "actions.trigger_workflow" -> "🚀 正在运行工作流 `${args.stringOrDefault("workflow", "")}`…"
+            "actions.get_run" -> "⏳ 正在检查构建状态…"
+            "actions.get_logs_summary" -> "📊 正在分析构建日志…"
+            "actions.list_artifacts" -> "📦 正在获取构建产物列表…"
+            "actions.download_artifact" -> "⬇️ 正在下载构建产物…"
+            "pages.get_settings" -> "⚙️ 正在读取 Pages 配置…"
+            "pages.enable" -> "🌐 正在启用 GitHub Pages…"
+            "pages.set_source" -> "🔧 正在设置 Pages 构建来源…"
+            "pages.get_deployments" -> "📜 正在获取部署记录…"
+            "pages.get_latest_url" -> "🔗 正在获取在线地址…"
+            "pages.deploy" -> "🚀 正在部署到 GitHub Pages…"
             else -> "⏳ 正在执行工具调用…"
         }
     }
@@ -512,6 +617,120 @@ class DefaultZiCodeToolDispatcher(
         }
     }
 
+    private fun triggerWorkflowDispatch(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        workflow: String,
+        ref: String,
+        inputs: JsonObject
+    ) {
+        val body = JsonObject().apply {
+            addProperty("ref", ref)
+            add("inputs", inputs)
+        }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/actions/workflows/${urlEncode(workflow)}/dispatches"
+        postJson(url, pat, body)
+    }
+
+    private fun getWorkflowRun(workspace: ZiCodeWorkspace, pat: String, runId: Long): JsonObject {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/actions/runs/$runId"
+        return getJson(url, pat).asJsonObject
+    }
+
+    private fun buildRunLogsSummary(workspace: ZiCodeWorkspace, pat: String, runId: Long): JsonObject {
+        val run = getWorkflowRun(workspace, pat, runId)
+        val jobs = getRunJobs(workspace, pat, runId)
+        val jobsArray = jobs.getAsJsonArray("jobs") ?: JsonArray()
+        val failedJob = jobsArray.firstOrNull { item ->
+            item.asJsonObject.get("conclusion")?.asString == "failure"
+        }?.asJsonObject
+
+        val logText =
+            failedJob?.get("id")?.asLong?.let { jobId ->
+                getJobLogs(workspace, pat, jobId)
+            }.orEmpty()
+
+        val report = parseRunReport(logText)
+        return JsonObject().apply {
+            add("run", run)
+            add("jobs", jobs)
+            add("report", gson.toJsonTree(report))
+        }
+    }
+
+    private fun listRunArtifacts(workspace: ZiCodeWorkspace, pat: String, runId: Long): JsonObject {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/actions/runs/$runId/artifacts"
+        return getJson(url, pat).asJsonObject
+    }
+
+    private fun getArtifactDownloadInfo(workspace: ZiCodeWorkspace, pat: String, artifactId: Long): JsonObject {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/actions/artifacts/$artifactId/zip"
+        val response = headRequest(url, pat)
+        return JsonObject().apply {
+            addProperty("artifact_id", artifactId)
+            addProperty("status_code", response.first)
+            addProperty("download_url", response.second)
+        }
+    }
+
+    private fun getPagesSettings(workspace: ZiCodeWorkspace, pat: String): JsonObject {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/pages"
+        return getJson(url, pat).asJsonObject
+    }
+
+    private fun createPagesSite(workspace: ZiCodeWorkspace, pat: String, branch: String, path: String): JsonObject {
+        val body = JsonObject().apply {
+            add("source", JsonObject().apply {
+                addProperty("branch", branch)
+                addProperty("path", path)
+            })
+        }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/pages"
+        return postJson(url, pat, body)
+    }
+
+    private fun updatePagesSource(workspace: ZiCodeWorkspace, pat: String, branch: String, path: String): JsonObject {
+        val body = JsonObject().apply {
+            add("source", JsonObject().apply {
+                addProperty("branch", branch)
+                addProperty("path", path)
+            })
+        }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/pages"
+        return putJson(url, pat, body)
+    }
+
+    private fun getPagesDeployments(workspace: ZiCodeWorkspace, pat: String): JsonObject {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/pages/deployments"
+        val deployments = getJson(url, pat)
+        val count =
+            when {
+                deployments.isJsonArray -> deployments.asJsonArray.size()
+                deployments.isJsonObject -> deployments.asJsonObject.entrySet().size
+                else -> 0
+            }
+        return JsonObject().apply {
+            add("deployments", deployments)
+            addProperty("count", count)
+        }
+    }
+
+    private fun triggerPagesBuild(workspace: ZiCodeWorkspace, pat: String): JsonObject {
+        val body = JsonObject()
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/pages/builds"
+        return postJson(url, pat, body)
+    }
+
+    private fun getRunJobs(workspace: ZiCodeWorkspace, pat: String, runId: Long): JsonObject {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/actions/runs/$runId/jobs?per_page=100"
+        return getJson(url, pat).asJsonObject
+    }
+
+    private fun getJobLogs(workspace: ZiCodeWorkspace, pat: String, jobId: Long): String {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/actions/jobs/$jobId/logs"
+        return getText(url, pat)
+    }
+
     private fun getJson(url: String, pat: String): JsonElement {
         return executeRequest(
             Request.Builder()
@@ -563,6 +782,75 @@ class DefaultZiCodeToolDispatcher(
                 if (raw.isBlank()) JsonObject() else gson.fromJson(raw, JsonElement::class.java)
             }
         }
+    }
+
+    private fun getText(url: String, pat: String): String {
+        return runBlockingIo {
+            val request = Request.Builder().url(url).get().withGitHubHeaders(pat).build()
+            client.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    val message = parseGitHubError(raw).ifBlank { "HTTP ${response.code}" }
+                    error(message)
+                }
+                raw
+            }
+        }
+    }
+
+    private fun headRequest(url: String, pat: String): Pair<Int, String> {
+        return runBlockingIo {
+            val request = Request.Builder().url(url).get().withGitHubHeaders(pat).build()
+            client.newCall(request).execute().use { response ->
+                val finalUrl = response.request.url.toString()
+                response.code to finalUrl
+            }
+        }
+    }
+
+    private fun parseRunReport(logText: String): ZiCodeReport {
+        if (logText.isBlank()) {
+            return ZiCodeReport(
+                status = "error",
+                summary = "日志为空，无法生成摘要",
+                failingStep = null,
+                errorSummary = "No logs available",
+                fileHints = emptyList(),
+                nextReads = emptyList(),
+                artifacts = emptyList(),
+                pagesUrl = null,
+                deploymentStatus = null
+            )
+        }
+
+        val failureLine =
+            logText
+                .lineSequence()
+                .firstOrNull { line ->
+                    val lower = line.lowercase()
+                    lower.contains("error") || lower.contains("exception") || lower.contains("failed")
+                }
+                ?.trim()
+
+        val fileHints =
+            Regex("([A-Za-z0-9_./-]+\\.[A-Za-z0-9]+:\\d+)")
+                .findAll(logText)
+                .map { it.value.trim() }
+                .distinct()
+                .take(12)
+                .toList()
+
+        return ZiCodeReport(
+            status = "failure",
+            summary = failureLine ?: "构建失败，请查看完整日志",
+            failingStep = null,
+            errorSummary = failureLine ?: "Unknown error",
+            fileHints = fileHints,
+            nextReads = fileHints.take(5),
+            artifacts = emptyList(),
+            pagesUrl = null,
+            deploymentStatus = null
+        )
     }
 
     private fun parseGitHubError(raw: String): String {
@@ -704,6 +992,10 @@ class DefaultZiCodeToolDispatcher(
 
     private fun JsonObject.requireInt(key: String): Int {
         return this.get(key)?.asInt ?: error("参数 $key 不能为空")
+    }
+
+    private fun JsonObject.requireLong(key: String): Long {
+        return this.get(key)?.asLong ?: error("参数 $key 不能为空")
     }
 }
 
