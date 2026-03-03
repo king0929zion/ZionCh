@@ -11,6 +11,12 @@
     <string name="zicode_title">ZiCode</string>
     <string name="zicode_empty_title">ZiCode 已就绪</string>
     <string name="zicode_empty_subtitle">连接 GitHub 仓库后，即可开始完整的代码代理流程。</string>
+    <string name="zicode_input_placeholder">描述你要完成的编码任务...</string>
+    <string name="zicode_assistant_mock_reply">已收到。我将先进行仓库分析，再编排补丁与工作流执行流程。</string>
+    <string name="zicode_hint_load_toolspec">📖 正在加载能力说明…</string>
+    <string name="zicode_hint_list_tree">📂 正在读取仓库文件结构…</string>
+    <string name="zicode_hint_search">🔍 正在搜索关键字 `workflow`…</string>
+    <string name="zicode_hint_read_file">📄 正在读取文件 `build.gradle`…</string>
     <string name="settings">设置</string>
     <string name="model_services">模型服务</string>
     <string name="add_provider">添加供应商</string>
