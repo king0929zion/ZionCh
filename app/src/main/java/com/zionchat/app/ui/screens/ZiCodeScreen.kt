@@ -1,7 +1,6 @@
 ﻿package com.zionchat.app.ui.screens
 
 import com.google.gson.Gson
-import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -71,6 +70,7 @@ import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.LocalZiCodeAgentOrchestrator
 import com.zionchat.app.LocalZiCodeGitHubService
+import com.zionchat.app.LocalZiCodeToolDispatcher
 import com.zionchat.app.LocalZiCodeWorkflowTemplateService
 import com.zionchat.app.R
 import com.zionchat.app.data.ModelConfig
@@ -101,6 +101,7 @@ import kotlinx.coroutines.launch
 fun ZiCodeScreen(navController: NavController) {
     val repository = LocalAppRepository.current
     val gitHubService = LocalZiCodeGitHubService.current
+    val toolDispatcher = LocalZiCodeToolDispatcher.current
     val orchestrator = LocalZiCodeAgentOrchestrator.current
     val workflowTemplateService = LocalZiCodeWorkflowTemplateService.current
     val scope = rememberCoroutineScope()
@@ -196,7 +197,12 @@ fun ZiCodeScreen(navController: NavController) {
                             sessionId = sid,
                             role = "assistant",
                             content = "Welcome to ZiCode. Describe your coding task and I will orchestrate the GitHub workflow.",
-                            toolHints = listOf(hintLoadToolSpecText, hintListTreeText)
+                            toolHints =
+                                listOf(
+                                    hintLoadToolSpecText,
+                                    hintListTreeText,
+                                    "输入 `/tool <tool_name> <json>` 可直接调用工具，例如 `/tool repo.list_tree {\"ref\":\"main\"}`"
+                                )
                         )
                     )
                 }
@@ -234,6 +240,33 @@ fun ZiCodeScreen(navController: NavController) {
             )
             isRunningTask = true
             try {
+                val directTool = parseDirectToolCommand(trimmed)
+                if (directTool != null) {
+                    val toolResult =
+                        toolDispatcher.dispatch(
+                            sessionId = sid,
+                            workspace = workspace,
+                            settings = zicodeSettings,
+                            toolName = directTool.first,
+                            argsJson = directTool.second
+                        )
+                    val preview = toolResult.resultJson.orEmpty().take(900)
+                    repository.appendZiCodeMessage(
+                        ZiCodeMessage(
+                            sessionId = sid,
+                            role = "assistant",
+                            content =
+                                if (toolResult.success) {
+                                    "工具 `${directTool.first}` 执行成功。\n\n$preview"
+                                } else {
+                                    "工具 `${directTool.first}` 执行失败：${toolResult.error.orEmpty()}"
+                                },
+                            toolHints = listOf(toolResult.userHint.ifBlank { hintLoadToolSpecText })
+                        )
+                    )
+                    return@launch
+                }
+
                 if (zicodeSettings.autoInitWorkflowTemplates && initializedWorkspaceId != workspace.id) {
                     val initResult =
                         workflowTemplateService.ensureWorkflowTemplates(
@@ -1200,6 +1233,25 @@ private fun buildMaskedToken(token: String): String {
     if (value.isBlank()) return "(none)"
     if (value.length <= 8) return "****"
     return "${value.take(4)}****${value.takeLast(4)}"
+}
+
+private fun parseDirectToolCommand(prompt: String): Pair<String, String>? {
+    val normalized = prompt.trim()
+    if (!normalized.startsWith("/tool ")) return null
+    val payload = normalized.removePrefix("/tool ").trim()
+    if (payload.isBlank()) return null
+
+    val firstSpace = payload.indexOf(' ')
+    val toolName = if (firstSpace < 0) payload else payload.substring(0, firstSpace).trim()
+    if (toolName.isBlank()) return null
+
+    val argsRaw = if (firstSpace < 0) "{}" else payload.substring(firstSpace + 1).trim().ifBlank { "{}" }
+    val argsJson =
+        runCatching {
+            Gson().fromJson(argsRaw, JsonObject::class.java)
+            argsRaw
+        }.getOrElse { "{}" }
+    return toolName to argsJson
 }
 
 private fun buildZiCodeTaskFromPrompt(

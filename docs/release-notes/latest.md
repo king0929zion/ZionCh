@@ -1,13 +1,11 @@
-## ZionChat v0.31.63
+## ZionChat v0.31.64
 
-- ZiCode 聊天页接入真实执行链：发送任务后不再仅 mock 回复，会调用 Orchestrator 执行工具计划并回写执行摘要。
-- 工具调用可视化升级：聊天区新增实时执行态、`Tool Calls` 历史卡片、`Workflow Runs` 记录卡片，便于追踪每一步。
-- `policy.*` 工具正式纳入 Dispatcher：
-  - 新增 `policy.get_toolspec`
-  - 新增 `policy.check_risk`
-  - 两者均进入统一可审计调用记录。
-- 重构 `ZiCodeAgentOrchestrator`：
-  - 修复 workflow 轮询过快超时问题，改为长轮询等待完成
-  - 自愈流程改为通过 `policy.check_risk` 工具评估补丁风险
-  - 运行状态会持续写入 `ZiCodeRunRecord`。
-- 继续保持约束：ZiCode 模块禁止本地 shell，仍以 GitHub API/Actions 为唯一执行路径。
+- ZiCode 聊天新增 `Direct Tool` 模式：
+  - 支持在输入框直接使用 `/tool <tool_name> <json>` 调用任意工具
+  - 结果会即时回显到聊天流，并写入可审计调用历史。
+- 会话欢迎提示补充了 `/tool` 用法示例，方便快速验证 `repo/actions/pages/policy` 全部能力。
+- 持续保留上一版本能力：
+  - 真实 Orchestrator 执行链
+  - Tool Calls / Workflow Runs 可视化追踪
+  - `policy.get_toolspec` 与 `policy.check_risk` 审计记录
+  - ZiCode 模块禁用本地 shell，仅使用 GitHub 驱动执行。
