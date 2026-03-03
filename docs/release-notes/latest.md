@@ -1,5 +1,6 @@
 ## ZionChat Android 版本说明
 
+- 修复一次 CI 编译回归：更正液态开关几何类型导入（`CornerRadius/Offset/Size`）到 `ui.geometry`，恢复 `compileReleaseKotlin` 通过。
 - 修复 Models 页闪退回归：移除模型开关中触发 `RenderThread/libhwui` 递归崩溃的 Backdrop 渲染链路，改为纯 Compose 的液态形变实现，进入 Models/模型配置页不再因原生渲染崩溃退出。
 - 液态交互保留：开关继续保留“液态”视觉（轨道流体桥接、旋钮弹性形变、速度驱动拉伸、高光层）并维持独立点击区域。
 - 模型开关液态玻璃二次重做：按 `AndroidLiquidGlass` 思路恢复真实液态特征（背景采样 + blur + lens 折射 + 高光/阴影），不再是仅阴影的普通玻璃观感。
