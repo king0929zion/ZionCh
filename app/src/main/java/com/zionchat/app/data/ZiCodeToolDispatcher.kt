@@ -1,0 +1,728 @@
+﻿package com.zionchat.app.data
+
+import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonNull
+import com.google.gson.JsonObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+import kotlin.math.max
+import kotlin.math.min
+
+data class ZiCodeToolDispatchResult(
+    val success: Boolean,
+    val resultJson: String? = null,
+    val error: String? = null,
+    val userHint: String = ""
+)
+
+interface ZiCodeToolDispatcher {
+    suspend fun dispatch(
+        sessionId: String,
+        workspace: ZiCodeWorkspace,
+        settings: ZiCodeSettings,
+        toolName: String,
+        argsJson: String
+    ): ZiCodeToolDispatchResult
+}
+
+class DefaultZiCodeToolDispatcher(
+    private val repository: AppRepository,
+    private val gitHubService: ZiCodeGitHubService,
+    private val client: OkHttpClient = OkHttpClient(),
+    private val gson: Gson = Gson()
+) : ZiCodeToolDispatcher {
+
+    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+    private val stagedChangesBySession = mutableMapOf<String, MutableMap<String, String?>>()
+    private val stageMutex = Mutex()
+
+    override suspend fun dispatch(
+        sessionId: String,
+        workspace: ZiCodeWorkspace,
+        settings: ZiCodeSettings,
+        toolName: String,
+        argsJson: String
+    ): ZiCodeToolDispatchResult {
+        val startedAt = System.currentTimeMillis()
+        val call =
+            ZiCodeToolCall(
+                sessionId = sessionId,
+                toolName = toolName,
+                argsJson = argsJson,
+                status = "running",
+                startedAt = startedAt,
+                userHint = buildUserHint(toolName, argsJson)
+            )
+        repository.upsertZiCodeToolCall(call)
+
+        val result = runCatching {
+            val args = parseArgs(argsJson)
+            val pat = settings.pat.trim().ifBlank { error("PAT 未配置，无法执行工具调用") }
+            when (toolName.trim()) {
+                "repo.list_tree" -> handleRepoListTree(workspace, pat, args)
+                "repo.list_dir" -> handleRepoListDir(workspace, pat, args)
+                "repo.read_file" -> handleRepoReadFile(workspace, pat, args)
+                "repo.search" -> handleRepoSearch(workspace, pat, args)
+                "repo.get_file_meta" -> handleRepoFileMeta(workspace, pat, args)
+                "repo.create_branch" -> handleRepoCreateBranch(workspace, pat, args)
+                "repo.replace_range" -> handleRepoReplaceRange(sessionId, workspace, pat, args)
+                "repo.apply_patch" -> handleRepoApplyPatch(sessionId, workspace, pat, args)
+                "repo.commit_push" -> handleRepoCommitPush(sessionId, workspace, pat, args)
+                "repo.create_pr" -> handleRepoCreatePr(workspace, pat, args)
+                "repo.comment_pr" -> handleRepoCommentPr(workspace, pat, args)
+                "repo.merge_pr" -> handleRepoMergePr(workspace, pat, args)
+                else -> error("不支持的工具: $toolName")
+            }
+        }
+
+        val finishedAt = System.currentTimeMillis()
+        val stored =
+            call.copy(
+                status = if (result.isSuccess) "success" else "error",
+                endedAt = finishedAt,
+                result = result.getOrNull()?.resultJson,
+                error = result.exceptionOrNull()?.message
+            )
+        repository.upsertZiCodeToolCall(stored)
+
+        return result.getOrElse { throwable ->
+            ZiCodeToolDispatchResult(
+                success = false,
+                error = throwable.message ?: "工具执行失败",
+                userHint = call.userHint
+            )
+        }
+    }
+
+    private fun parseArgs(argsJson: String): JsonObject {
+        val raw = argsJson.trim().ifBlank { "{}" }
+        return runCatching { gson.fromJson(raw, JsonObject::class.java) }
+            .getOrNull()
+            ?: JsonObject()
+    }
+
+    private fun handleRepoListTree(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val ref = args.stringOrDefault("ref", workspace.defaultBranch)
+        val tree = getGitTree(workspace, pat, ref, recursive = true)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(tree), userHint = "📂 正在读取仓库文件结构…")
+    }
+
+    private fun handleRepoListDir(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val ref = args.stringOrDefault("ref", workspace.defaultBranch)
+        val path = args.stringOrDefault("path", "")
+        val list = listDirectory(workspace, pat, ref, path)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(list), userHint = "📁 正在浏览目录…")
+    }
+
+    private fun handleRepoReadFile(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val ref = args.stringOrDefault("ref", workspace.defaultBranch)
+        val path = args.requireString("path")
+        val file = readFile(workspace, pat, ref, path)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(file), userHint = "📄 正在读取文件 `$path`…")
+    }
+
+    private fun handleRepoSearch(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val keyword = args.requireString("keyword")
+        val perPage = args.intOrDefault("per_page", 20).coerceIn(1, 100)
+        val result = searchCode(workspace, pat, keyword, perPage)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(result), userHint = "🔍 正在搜索关键字 `$keyword`…")
+    }
+
+    private fun handleRepoFileMeta(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val ref = args.stringOrDefault("ref", workspace.defaultBranch)
+        val path = args.requireString("path")
+        val meta = getFileMeta(workspace, pat, ref, path)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(meta), userHint = "ℹ️ 正在获取文件信息…")
+    }
+
+    private suspend fun handleRepoCreateBranch(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        args: JsonObject
+    ): ZiCodeToolDispatchResult {
+        val baseRef = args.stringOrDefault("base", workspace.defaultBranch)
+        val branch = args.requireString("branch")
+        val result = createBranch(workspace, pat, branch, baseRef)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(result), userHint = "🌿 正在创建分支 `$branch`…")
+    }
+
+    private suspend fun handleRepoReplaceRange(
+        sessionId: String,
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        args: JsonObject
+    ): ZiCodeToolDispatchResult {
+        val ref = args.stringOrDefault("ref", workspace.defaultBranch)
+        val path = args.requireString("path")
+        val startLine = args.requireInt("start_line")
+        val endLine = args.requireInt("end_line")
+        val replacement = args.stringOrDefault("replacement", "")
+
+        val content = getWorkingFileContent(sessionId, workspace, pat, ref, path)
+        val lines = content.split("\n").toMutableList()
+        val startIndex = (startLine - 1).coerceAtLeast(0)
+        val endIndex = endLine.coerceAtLeast(startLine)
+        if (lines.isEmpty() && startIndex > 0) error("行号超出范围")
+        if (startIndex > lines.lastIndex + 1) error("start_line 超出范围")
+
+        val safeEndExclusive = min(max(endIndex, startLine), lines.size)
+        val replacementLines = if (replacement.isEmpty()) emptyList() else replacement.split("\n")
+        val before = lines.take(startIndex)
+        val after = lines.drop(safeEndExclusive)
+        val merged = (before + replacementLines + after).joinToString("\n")
+        stageFile(sessionId, path, merged)
+
+        val result = JsonObject().apply {
+            addProperty("path", path)
+            addProperty("staged", true)
+            addProperty("start_line", startLine)
+            addProperty("end_line", endLine)
+        }
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(result), userHint = "✏️ 正在修改文件 `$path`…")
+    }
+
+    private suspend fun handleRepoApplyPatch(
+        sessionId: String,
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        args: JsonObject
+    ): ZiCodeToolDispatchResult {
+        val ref = args.stringOrDefault("ref", workspace.defaultBranch)
+        val patch = args.requireString("patch")
+        val parsedFiles = parseUnifiedDiffFiles(patch)
+        if (parsedFiles.isEmpty()) {
+            error("补丁内容为空或格式不正确")
+        }
+
+        val summary = JsonArray()
+        parsedFiles.forEach { filePatch ->
+            when (filePatch.operation) {
+                "delete" -> {
+                    stageFile(sessionId, filePatch.path, null)
+                }
+                "add" -> {
+                    val patched = applyUnifiedDiffToText("", filePatch.hunks)
+                    stageFile(sessionId, filePatch.path, patched)
+                }
+                else -> {
+                    val original = getWorkingFileContent(sessionId, workspace, pat, ref, filePatch.path)
+                    val patched = applyUnifiedDiffToText(original, filePatch.hunks)
+                    stageFile(sessionId, filePatch.path, patched)
+                }
+            }
+            summary.add(
+                JsonObject().apply {
+                    addProperty("path", filePatch.path)
+                    addProperty("operation", filePatch.operation)
+                }
+            )
+        }
+
+        val result = JsonObject().apply {
+            add("files", summary)
+            addProperty("staged", true)
+        }
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(result), userHint = "🩹 正在应用代码补丁…")
+    }
+
+    private suspend fun handleRepoCommitPush(
+        sessionId: String,
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        args: JsonObject
+    ): ZiCodeToolDispatchResult {
+        val message = args.stringOrDefault("message", "ZiCode update")
+        val session = repository.zicodeSessionsFlow.first().firstOrNull { it.id == sessionId }
+            ?: error("会话不存在，无法提交")
+
+        val changes = stageMutex.withLock { stagedChangesBySession[sessionId]?.toMap().orEmpty() }
+        if (changes.isEmpty()) error("没有可提交的暂存变更")
+
+        val branchName = session.branchName?.trim().takeUnless { it.isNullOrBlank() }
+            ?: "ai/${sessionId.take(8)}-${System.currentTimeMillis().toString().takeLast(6)}"
+
+        ensureBranch(workspace, pat, branchName, workspace.defaultBranch)
+
+        val headSha = getBranchHeadSha(workspace, pat, branchName)
+        val baseTreeSha = getCommitTreeSha(workspace, pat, headSha)
+        val treeItems = JsonArray()
+
+        changes.forEach { (path, content) ->
+            if (content == null) {
+                treeItems.add(
+                    JsonObject().apply {
+                        addProperty("path", path)
+                        add("sha", JsonNull.INSTANCE)
+                    }
+                )
+            } else {
+                val blobSha = createBlob(workspace, pat, content)
+                treeItems.add(
+                    JsonObject().apply {
+                        addProperty("path", path)
+                        addProperty("mode", "100644")
+                        addProperty("type", "blob")
+                        addProperty("sha", blobSha)
+                    }
+                )
+            }
+        }
+
+        val treeSha = createTree(workspace, pat, baseTreeSha, treeItems)
+        val commitSha = createCommit(workspace, pat, message, treeSha, headSha)
+        updateBranchRef(workspace, pat, branchName, commitSha)
+
+        repository.upsertZiCodeSession(session.copy(branchName = branchName, updatedAt = System.currentTimeMillis()))
+        stageMutex.withLock { stagedChangesBySession.remove(sessionId) }
+
+        val result = JsonObject().apply {
+            addProperty("branch", branchName)
+            addProperty("commit_sha", commitSha)
+            addProperty("changed_files", changes.size)
+        }
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(result), userHint = "📤 正在提交并推送代码…")
+    }
+
+    private fun handleRepoCreatePr(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val head = args.requireString("head")
+        val base = args.stringOrDefault("base", workspace.defaultBranch)
+        val title = args.requireString("title")
+        val body = args.stringOrDefault("body", "")
+        val pr = createPullRequest(workspace, pat, title, head, base, body)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(pr), userHint = "📋 正在创建 Pull Request…")
+    }
+
+    private fun handleRepoCommentPr(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val prNumber = args.requireInt("pr_number")
+        val body = args.requireString("body")
+        val comment = createIssueComment(workspace, pat, prNumber, body)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(comment), userHint = "💬 正在写入 PR 评论…")
+    }
+
+    private fun handleRepoMergePr(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val prNumber = args.requireInt("pr_number")
+        val method = args.stringOrDefault("merge_method", "squash")
+        val merge = mergePullRequest(workspace, pat, prNumber, method)
+        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(merge), userHint = "🔀 正在合并 Pull Request…")
+    }
+
+    private suspend fun getWorkingFileContent(
+        sessionId: String,
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        ref: String,
+        path: String
+    ): String {
+        val staged = stageMutex.withLock { stagedChangesBySession[sessionId]?.get(path) }
+        if (staged != null) return staged
+        return readFile(workspace, pat, ref, path).content
+    }
+
+    private suspend fun stageFile(sessionId: String, path: String, content: String?) {
+        stageMutex.withLock {
+            val map = stagedChangesBySession.getOrPut(sessionId) { linkedMapOf() }
+            map[path] = content
+        }
+    }
+
+    private fun buildUserHint(toolName: String, argsJson: String): String {
+        val args = parseArgs(argsJson)
+        return when (toolName.trim()) {
+            "repo.list_tree" -> "📂 正在读取仓库文件结构…"
+            "repo.list_dir" -> "📁 正在浏览目录…"
+            "repo.read_file" -> "📄 正在读取文件 `${args.stringOrDefault("path", "")}`…"
+            "repo.search" -> "🔍 正在搜索关键字 `${args.stringOrDefault("keyword", "")}`…"
+            "repo.get_file_meta" -> "ℹ️ 正在获取文件信息…"
+            "repo.create_branch" -> "🌿 正在创建分支 `${args.stringOrDefault("branch", "")}`…"
+            "repo.apply_patch" -> "🩹 正在应用代码补丁…"
+            "repo.replace_range" -> "✏️ 正在修改文件 `${args.stringOrDefault("path", "")}`…"
+            "repo.commit_push" -> "📤 正在提交并推送代码…"
+            "repo.create_pr" -> "📋 正在创建 Pull Request…"
+            "repo.comment_pr" -> "💬 正在写入 PR 评论…"
+            "repo.merge_pr" -> "🔀 正在合并 Pull Request…"
+            else -> "⏳ 正在执行工具调用…"
+        }
+    }
+
+    private fun getGitTree(workspace: ZiCodeWorkspace, pat: String, branch: String, recursive: Boolean): JsonObject {
+        val headSha = getBranchHeadSha(workspace, pat, branch)
+        val treeSha = getCommitTreeSha(workspace, pat, headSha)
+        val url =
+            "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/trees/$treeSha" +
+                if (recursive) "?recursive=1" else ""
+        return getJson(url, pat).asJsonObject
+    }
+
+    private fun listDirectory(workspace: ZiCodeWorkspace, pat: String, ref: String, path: String): JsonElement {
+        val encodedPath = encodePath(path.trim())
+        val base = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/contents"
+        val url = if (encodedPath.isBlank()) "$base?ref=${urlEncode(ref)}" else "$base/$encodedPath?ref=${urlEncode(ref)}"
+        return getJson(url, pat)
+    }
+
+    private fun readFile(workspace: ZiCodeWorkspace, pat: String, ref: String, path: String): RepoFileContent {
+        val encodedPath = encodePath(path)
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/contents/$encodedPath?ref=${urlEncode(ref)}"
+        val obj = getJson(url, pat).asJsonObject
+        val encoded = obj.get("content")?.asString.orEmpty().replace("\n", "")
+        val bytes = Base64.getDecoder().decode(encoded)
+        val content = String(bytes, StandardCharsets.UTF_8)
+        return RepoFileContent(
+            path = path,
+            sha = obj.get("sha")?.asString.orEmpty(),
+            size = obj.get("size")?.asInt ?: content.length,
+            content = content
+        )
+    }
+
+    private fun getFileMeta(workspace: ZiCodeWorkspace, pat: String, ref: String, path: String): RepoFileMeta {
+        val encodedPath = encodePath(path)
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/contents/$encodedPath?ref=${urlEncode(ref)}"
+        val obj = getJson(url, pat).asJsonObject
+        return RepoFileMeta(
+            path = obj.get("path")?.asString.orEmpty().ifBlank { path },
+            sha = obj.get("sha")?.asString.orEmpty(),
+            size = obj.get("size")?.asInt ?: 0,
+            type = obj.get("type")?.asString.orEmpty()
+        )
+    }
+
+    private fun searchCode(workspace: ZiCodeWorkspace, pat: String, keyword: String, perPage: Int): JsonObject {
+        val query = "$keyword repo:${workspace.owner}/${workspace.repo}"
+        val url = "https://api.github.com/search/code?q=${urlEncode(query)}&per_page=$perPage"
+        return getJson(url, pat).asJsonObject
+    }
+
+    private fun createBranch(workspace: ZiCodeWorkspace, pat: String, branch: String, baseRef: String): JsonObject {
+        val baseSha = getBranchHeadSha(workspace, pat, baseRef)
+        val body = JsonObject().apply {
+            addProperty("ref", "refs/heads/${branch.trim()}")
+            addProperty("sha", baseSha)
+        }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/refs"
+        return postJson(url, pat, body)
+    }
+
+    private fun ensureBranch(workspace: ZiCodeWorkspace, pat: String, branch: String, baseRef: String) {
+        runCatching {
+            getBranchHeadSha(workspace, pat, branch)
+        }.getOrElse {
+            createBranch(workspace, pat, branch, baseRef)
+        }
+    }
+
+    private fun createBlob(workspace: ZiCodeWorkspace, pat: String, content: String): String {
+        val body = JsonObject().apply {
+            addProperty("content", content)
+            addProperty("encoding", "utf-8")
+        }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/blobs"
+        return postJson(url, pat, body).get("sha")?.asString.orEmpty().ifBlank { error("创建 blob 失败") }
+    }
+
+    private fun createTree(workspace: ZiCodeWorkspace, pat: String, baseTreeSha: String, treeItems: JsonArray): String {
+        val body = JsonObject().apply {
+            addProperty("base_tree", baseTreeSha)
+            add("tree", treeItems)
+        }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/trees"
+        return postJson(url, pat, body).get("sha")?.asString.orEmpty().ifBlank { error("创建 tree 失败") }
+    }
+
+    private fun createCommit(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        message: String,
+        treeSha: String,
+        parentSha: String
+    ): String {
+        val body = JsonObject().apply {
+            addProperty("message", message)
+            addProperty("tree", treeSha)
+            add("parents", JsonArray().apply { add(parentSha) })
+        }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/commits"
+        return postJson(url, pat, body).get("sha")?.asString.orEmpty().ifBlank { error("创建 commit 失败") }
+    }
+
+    private fun updateBranchRef(workspace: ZiCodeWorkspace, pat: String, branch: String, commitSha: String): JsonObject {
+        val body = JsonObject().apply {
+            addProperty("sha", commitSha)
+            addProperty("force", false)
+        }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/refs/heads/${urlEncode(branch)}"
+        return patchJson(url, pat, body)
+    }
+
+    private fun createPullRequest(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        title: String,
+        head: String,
+        base: String,
+        body: String
+    ): JsonObject {
+        val requestBody = JsonObject().apply {
+            addProperty("title", title)
+            addProperty("head", head)
+            addProperty("base", base)
+            addProperty("body", body)
+        }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/pulls"
+        return postJson(url, pat, requestBody)
+    }
+
+    private fun createIssueComment(workspace: ZiCodeWorkspace, pat: String, prNumber: Int, body: String): JsonObject {
+        val requestBody = JsonObject().apply { addProperty("body", body) }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/issues/$prNumber/comments"
+        return postJson(url, pat, requestBody)
+    }
+
+    private fun mergePullRequest(workspace: ZiCodeWorkspace, pat: String, prNumber: Int, method: String): JsonObject {
+        val requestBody = JsonObject().apply { addProperty("merge_method", method.trim().ifBlank { "squash" }) }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/pulls/$prNumber/merge"
+        return putJson(url, pat, requestBody)
+    }
+
+    private fun getBranchHeadSha(workspace: ZiCodeWorkspace, pat: String, branch: String): String {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/ref/heads/${urlEncode(branch)}"
+        val obj = getJson(url, pat).asJsonObject
+        return obj.getAsJsonObject("object")?.get("sha")?.asString.orEmpty().ifBlank {
+            error("无法读取分支 $branch 的 HEAD")
+        }
+    }
+
+    private fun getCommitTreeSha(workspace: ZiCodeWorkspace, pat: String, commitSha: String): String {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/commits/$commitSha"
+        val obj = getJson(url, pat).asJsonObject
+        return obj.getAsJsonObject("tree")?.get("sha")?.asString.orEmpty().ifBlank {
+            error("无法读取 commit tree")
+        }
+    }
+
+    private fun getJson(url: String, pat: String): JsonElement {
+        return executeRequest(
+            Request.Builder()
+                .url(url)
+                .get()
+                .withGitHubHeaders(pat)
+                .build()
+        )
+    }
+
+    private fun postJson(url: String, pat: String, body: JsonObject): JsonObject {
+        return executeRequest(
+            Request.Builder()
+                .url(url)
+                .post(gson.toJson(body).toRequestBody(jsonMediaType))
+                .withGitHubHeaders(pat)
+                .build()
+        ).asJsonObject
+    }
+
+    private fun putJson(url: String, pat: String, body: JsonObject): JsonObject {
+        return executeRequest(
+            Request.Builder()
+                .url(url)
+                .put(gson.toJson(body).toRequestBody(jsonMediaType))
+                .withGitHubHeaders(pat)
+                .build()
+        ).asJsonObject
+    }
+
+    private fun patchJson(url: String, pat: String, body: JsonObject): JsonObject {
+        return executeRequest(
+            Request.Builder()
+                .url(url)
+                .patch(gson.toJson(body).toRequestBody(jsonMediaType))
+                .withGitHubHeaders(pat)
+                .build()
+        ).asJsonObject
+    }
+
+    private fun executeRequest(request: Request): JsonElement {
+        return runBlockingIo {
+            client.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    val message = parseGitHubError(raw).ifBlank { "HTTP ${response.code}" }
+                    error(message)
+                }
+                if (raw.isBlank()) JsonObject() else gson.fromJson(raw, JsonElement::class.java)
+            }
+        }
+    }
+
+    private fun parseGitHubError(raw: String): String {
+        if (raw.isBlank()) return ""
+        return runCatching {
+            val obj = gson.fromJson(raw, JsonObject::class.java)
+            val message = obj.get("message")?.asString?.trim().orEmpty()
+            val doc = obj.get("documentation_url")?.asString?.trim().orEmpty()
+            if (message.isBlank()) "" else if (doc.isBlank()) message else "$message ($doc)"
+        }.getOrDefault("")
+    }
+
+    private fun Request.Builder.withGitHubHeaders(pat: String): Request.Builder {
+        return this
+            .addHeader("Authorization", "Bearer ${pat.trim()}")
+            .addHeader("Accept", "application/vnd.github+json")
+            .addHeader("X-GitHub-Api-Version", "2022-11-28")
+            .addHeader("User-Agent", "ZionChat-ZiCode")
+    }
+
+    private fun <T> runBlockingIo(block: suspend () -> T): T {
+        return kotlinx.coroutines.runBlocking { withContext(Dispatchers.IO) { block() } }
+    }
+
+    private fun parseUnifiedDiffFiles(patchText: String): List<UnifiedDiffFile> {
+        val lines = patchText.replace("\r\n", "\n").split("\n")
+        val files = mutableListOf<UnifiedDiffFile>()
+        var index = 0
+        while (index < lines.size) {
+            val line = lines[index]
+            if (!line.startsWith("diff --git ")) {
+                index++
+                continue
+            }
+            val parts = line.removePrefix("diff --git ").split(" ")
+            val oldPath = parts.getOrNull(0)?.removePrefix("a/").orEmpty()
+            val newPath = parts.getOrNull(1)?.removePrefix("b/").orEmpty()
+            index++
+            var op = "update"
+            val hunkLines = mutableListOf<String>()
+            while (index < lines.size && !lines[index].startsWith("diff --git ")) {
+                val inner = lines[index]
+                if (inner.startsWith("new file mode") || inner.startsWith("--- /dev/null")) op = "add"
+                if (inner.startsWith("deleted file mode") || inner.startsWith("+++ /dev/null")) op = "delete"
+                if (inner.startsWith("@@")) {
+                    while (index < lines.size && !lines[index].startsWith("diff --git ")) {
+                        hunkLines.add(lines[index])
+                        index++
+                    }
+                    break
+                }
+                index++
+            }
+            val path = if (op == "add") newPath else oldPath.ifBlank { newPath }
+            files.add(UnifiedDiffFile(path = path, operation = op, hunks = hunkLines))
+        }
+        return files.filter { it.path.isNotBlank() }
+    }
+
+    private fun applyUnifiedDiffToText(original: String, hunkLines: List<String>): String {
+        if (hunkLines.isEmpty()) return original
+        val sourceLines = if (original.isEmpty()) emptyList() else original.split("\n")
+        val output = mutableListOf<String>()
+        var sourceIndex = 0
+        var i = 0
+
+        while (i < hunkLines.size) {
+            val header = hunkLines[i]
+            if (!header.startsWith("@@")) {
+                i++
+                continue
+            }
+            val match = Regex("@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@").find(header)
+                ?: error("无效 hunk 头: $header")
+            val oldStart = match.groupValues[1].toInt().coerceAtLeast(1)
+            val oldStartIndex = oldStart - 1
+            while (sourceIndex < oldStartIndex && sourceIndex < sourceLines.size) {
+                output.add(sourceLines[sourceIndex])
+                sourceIndex++
+            }
+
+            i++
+            while (i < hunkLines.size && !hunkLines[i].startsWith("@@")) {
+                val opLine = hunkLines[i]
+                if (opLine.isEmpty()) {
+                    i++
+                    continue
+                }
+                val op = opLine.first()
+                val text = opLine.drop(1)
+                when (op) {
+                    ' ' -> {
+                        val current = sourceLines.getOrNull(sourceIndex)
+                        if (current != text) error("补丁上下文不匹配: $text")
+                        output.add(current)
+                        sourceIndex++
+                    }
+                    '-' -> {
+                        val current = sourceLines.getOrNull(sourceIndex)
+                        if (current != text) error("补丁删除行不匹配: $text")
+                        sourceIndex++
+                    }
+                    '+' -> output.add(text)
+                    else -> {}
+                }
+                i++
+            }
+        }
+
+        while (sourceIndex < sourceLines.size) {
+            output.add(sourceLines[sourceIndex])
+            sourceIndex++
+        }
+        return output.joinToString("\n")
+    }
+
+    private fun urlEncode(value: String): String {
+        return URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+    }
+
+    private fun encodePath(path: String): String {
+        val cleaned = path.trim().removePrefix("/")
+        if (cleaned.isBlank()) return ""
+        return cleaned.split("/").joinToString("/") { segment -> urlEncode(segment) }
+    }
+
+    private fun JsonObject.stringOrDefault(key: String, defaultValue: String): String {
+        val value = this.get(key)?.asString?.trim().orEmpty()
+        return value.ifBlank { defaultValue }
+    }
+
+    private fun JsonObject.requireString(key: String): String {
+        return this.stringOrDefault(key, "").ifBlank { error("参数 $key 不能为空") }
+    }
+
+    private fun JsonObject.intOrDefault(key: String, defaultValue: Int): Int {
+        return this.get(key)?.asInt ?: defaultValue
+    }
+
+    private fun JsonObject.requireInt(key: String): Int {
+        return this.get(key)?.asInt ?: error("参数 $key 不能为空")
+    }
+}
+
+data class RepoFileContent(
+    val path: String,
+    val sha: String,
+    val size: Int,
+    val content: String
+)
+
+data class RepoFileMeta(
+    val path: String,
+    val sha: String,
+    val size: Int,
+    val type: String
+)
+
+data class UnifiedDiffFile(
+    val path: String,
+    val operation: String,
+    val hunks: List<String>
+)

@@ -12,6 +12,8 @@ import com.zionchat.app.data.RuntimePackagingService
 import com.zionchat.app.data.WebHostingService
 import com.zionchat.app.data.DefaultZiCodeGitHubService
 import com.zionchat.app.data.ZiCodeGitHubService
+import com.zionchat.app.data.DefaultZiCodeToolDispatcher
+import com.zionchat.app.data.ZiCodeToolDispatcher
 
 class AppContainer(context: Context) {
     val repository = AppRepository(context)
@@ -21,6 +23,7 @@ class AppContainer(context: Context) {
     val webHostingService: WebHostingService = DisabledWebHostingService()
     val runtimePackagingService: RuntimePackagingService = DisabledRuntimePackagingService()
     val zicodeGitHubService: ZiCodeGitHubService = DefaultZiCodeGitHubService()
+    val zicodeToolDispatcher: ZiCodeToolDispatcher = DefaultZiCodeToolDispatcher(repository, zicodeGitHubService)
 }
 
 val LocalAppRepository = staticCompositionLocalOf<AppRepository> {
@@ -49,4 +52,8 @@ val LocalRuntimePackagingService = staticCompositionLocalOf<RuntimePackagingServ
 
 val LocalZiCodeGitHubService = staticCompositionLocalOf<ZiCodeGitHubService> {
     error("LocalZiCodeGitHubService not provided")
+}
+
+val LocalZiCodeToolDispatcher = staticCompositionLocalOf<ZiCodeToolDispatcher> {
+    error("LocalZiCodeToolDispatcher not provided")
 }
