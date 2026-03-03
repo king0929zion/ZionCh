@@ -146,21 +146,25 @@ fun AddDeviceProviderScreen(
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .height(44.dp)
-                            .clip(CircleShape)
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFFE5E5EA), RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
                     ) {
                         AssetIcon(
                             assetFileName = iconAsset,
                             contentDescription = preset?.name ?: GITHUB_COPILOT_NAME,
                             modifier = Modifier
-                                .height(44.dp)
-                                .clip(CircleShape),
+                                .fillMaxSize()
+                                .padding(10.dp),
                             error = {
                                 Icon(
                                     imageVector = AppIcons.ChatGPTLogo,
@@ -456,13 +460,22 @@ fun AddDeviceProviderScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = stringResource(R.string.add_device_configure_models),
-                        fontSize = 16.sp,
-                        fontFamily = SourceSans3,
-                        fontWeight = FontWeight.Medium,
-                        color = if (canManageModels) TextPrimary else TextSecondary
-                    )
+                    Column {
+                        Text(
+                            text = stringResource(R.string.models),
+                            fontSize = 13.sp,
+                            fontFamily = SourceSans3,
+                            color = TextSecondary
+                        )
+                        Text(
+                            text = stringResource(R.string.model_services_configure_models),
+                            fontSize = 17.sp,
+                            fontFamily = SourceSans3,
+                            fontWeight = FontWeight.Medium,
+                            color = if (canManageModels) TextPrimary else TextSecondary,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
                     Icon(
                         imageVector = AppIcons.ChevronRight,
                         contentDescription = null,

@@ -1,5 +1,9 @@
 ## ZionChat Android 版本说明
 
+- Provider 配置页统一升级：`OAuth / Token / Device` 三类页面对齐同一套灰阶配色（主卡片 `#F1F1F1`）与模块化布局结构，视觉层级更一致。
+- OAuth 页面结构重排：将“头像 + Name”整合为首模块卡片，输入区边框/圆角与 Token 配置页统一，Models 跳转卡片改为同款灰色容器。
+- Device 页面样式同步：顶部 Provider 信息卡改为与 Token/OAuth 同款图标容器比例与间距，Models 区块改为“标题 + 副标题 + 右箭头”的统一信息结构。
+
 - 应用图标更新：将你指定的 `1772543567097_d.png` 重新生成并替换为 `mipmap-mdpi ~ mipmap-xxxhdpi` 全套 `ic_launcher.png`，主图标已统一生效。
 - CI 构建流程重构（保留自动 APK + 自动 Release）：优化 `build.yml` 的 Kotlin 编译参数，恢复增量编译与 classpath snapshot，并提升 worker 并发，重点缩短 `:app:compileReleaseKotlin` 耗时。
 - 增量缓存策略优化：将工作流中的 Kotlin 增量缓存改为“按分支前缀恢复 + 按提交写入”模式，避免旧固定 key 导致缓存无法持续更新的问题，加快连续迭代构建。

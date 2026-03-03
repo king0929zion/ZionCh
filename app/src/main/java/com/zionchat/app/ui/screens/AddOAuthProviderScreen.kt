@@ -202,24 +202,36 @@ fun AddOAuthProviderScreen(
                 .verticalScroll(rememberScrollState())
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(top = PageTopBarContentTopPadding)
+                .padding(horizontal = 16.dp)
+                .padding(top = 12.dp)
         ) {
-            // 头像选择区
-            AvatarSection(
-                selectedAvatar = selectedAvatar,
-                onAvatarClick = { if (lockedProviderId == null) showAvatarModal = true }
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = SupplierCardGray,
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 14.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        AvatarSection(
+                            selectedAvatar = selectedAvatar,
+                            onAvatarClick = { if (lockedProviderId == null) showAvatarModal = true },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        ProviderNameInput(
+                            value = providerName,
+                            onValueChange = { providerName = it },
+                            embedded = true
+                        )
+                    }
+                }
 
-            // 表单区域
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
                 // Provider Name 输入框
-                ProviderNameInput(
-                    value = providerName,
-                    onValueChange = { providerName = it }
-                )
-
                 // OAuth 认证区域
                 OAuthSection(
                     currentStep = currentStep,
@@ -460,7 +472,7 @@ fun AddOAuthProviderScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
-                            .background(Color.White, RoundedCornerShape(20.dp))
+                            .background(SupplierCardGray, RoundedCornerShape(20.dp))
                             .pressableScale(pressedScale = 0.98f) {
                                 val providerId = connectedProvider?.id?.trim().orEmpty()
                                 if (providerId.isBlank()) return@pressableScale
@@ -535,13 +547,12 @@ private fun suggestEnabledModels(provider: OAuthClient.OAuthProvider, modelIds: 
 @Composable
 private fun AvatarSection(
     selectedAvatar: String,
-    onAvatarClick: () -> Unit
+    onAvatarClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val iconAsset = remember(selectedAvatar) { findProviderPreset(selectedAvatar)?.iconAsset }
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 24.dp, bottom = 24.dp),
+        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // 大头像
@@ -549,7 +560,7 @@ private fun AvatarSection(
             modifier = Modifier
                 .size(64.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .background(Color.White)
+                .background(Color(0xFFE5E5EA))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -781,14 +792,14 @@ private fun AvatarSelectionModal(
 @Composable
 private fun ProviderNameInput(
     value: String,
-    onValueChange: (String) -> Unit
+    onValueChange: (String) -> Unit,
+    embedded: Boolean = false
 ) {
-    Surface(
-        color = SupplierCardGray,
-        shape = RoundedCornerShape(20.dp)
-    ) {
+    val content: @Composable () -> Unit = {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = if (embedded) 0.dp else 16.dp, vertical = if (embedded) 0.dp else 14.dp)
         ) {
             Text(
                 text = stringResource(R.string.add_oauth_provider_name),
@@ -802,16 +813,16 @@ private fun ProviderNameInput(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(width = 1.2.dp, color = SupplierFieldBorder, shape = RoundedCornerShape(16.dp)),
+                    .border(width = 0.9.dp, color = SupplierFieldBorder, shape = RoundedCornerShape(24.dp)),
                 color = SupplierCardGray,
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(24.dp)
             ) {
                 BasicTextField(
                     value = value,
                     onValueChange = onValueChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                        .padding(horizontal = 14.dp, vertical = 13.dp),
                     textStyle = androidx.compose.ui.text.TextStyle(
                         fontSize = 17.sp,
                         color = Color(0xFF1C1C1E),
@@ -833,6 +844,14 @@ private fun ProviderNameInput(
                 )
             }
         }
+    }
+    if (embedded) {
+        content()
+    } else {
+        Surface(
+            color = SupplierCardGray,
+            shape = RoundedCornerShape(20.dp)
+        ) { content() }
     }
 }
 
