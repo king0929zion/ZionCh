@@ -314,12 +314,12 @@ fun ZiCodeScreen(navController: NavController) {
             onCheckConnectivity = { owner, repo, branch, pat ->
                 val token = pat.trim().ifBlank { zicodeSettings.pat.trim() }
                 if (token.isBlank()) {
-                    Result.failure(IllegalArgumentException("PAT 为空，无法检查连接"))
+                    Result.failure<Any>(IllegalArgumentException("PAT 为空，无法检查连接"))
                 } else {
                     gitHubService.checkWorkspaceAccess(
                         ZiCodeWorkspace(owner = owner, repo = repo, defaultBranch = branch),
                         token
-                    )
+                    ).map { it as Any }
                 }
             }
         )
@@ -707,6 +707,12 @@ private fun ZiCodeWorkspaceSheet(
     var checking by remember { mutableStateOf(false) }
     var checkMessage by remember { mutableStateOf<String?>(null) }
     var checkSuccess by remember { mutableStateOf(false) }
+    val incompleteText = stringResource(R.string.zicode_workspace_incomplete)
+    val checkSuccessText = stringResource(R.string.zicode_workspace_check_success)
+    val checkFailedText = stringResource(R.string.zicode_workspace_check_failed)
+    val checkingText = stringResource(R.string.zicode_workspace_checking)
+    val checkButtonText = stringResource(R.string.zicode_workspace_check)
+    val saveAndUseText = stringResource(R.string.zicode_workspace_save_use)
 
     AppModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -831,7 +837,7 @@ private fun ZiCodeWorkspaceSheet(
                         val branchValue = branch.trim().ifBlank { "main" }
                         if (ownerValue.isBlank() || repoValue.isBlank()) {
                             checkSuccess = false
-                            checkMessage = stringResource(R.string.zicode_workspace_incomplete)
+                            checkMessage = incompleteText
                             return@Button
                         }
                         checking = true
@@ -842,11 +848,11 @@ private fun ZiCodeWorkspaceSheet(
                             result.fold(
                                 onSuccess = {
                                     checkSuccess = true
-                                    checkMessage = stringResource(R.string.zicode_workspace_check_success)
+                                    checkMessage = checkSuccessText
                                 },
                                 onFailure = { throwable ->
                                     checkSuccess = false
-                                    checkMessage = throwable.message ?: stringResource(R.string.zicode_workspace_check_failed)
+                                    checkMessage = throwable.message ?: checkFailedText
                                 }
                             )
                         }
@@ -856,7 +862,7 @@ private fun ZiCodeWorkspaceSheet(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F1F1), contentColor = TextPrimary)
                 ) {
                     Text(
-                        text = if (checking) stringResource(R.string.zicode_workspace_checking) else stringResource(R.string.zicode_workspace_check),
+                        text = if (checking) checkingText else checkButtonText,
                         fontSize = 14.sp,
                         fontFamily = SourceSans3,
                         fontWeight = FontWeight.SemiBold
@@ -869,7 +875,7 @@ private fun ZiCodeWorkspaceSheet(
                         val branchValue = branch.trim().ifBlank { "main" }
                         if (ownerValue.isBlank() || repoValue.isBlank()) {
                             checkSuccess = false
-                            checkMessage = stringResource(R.string.zicode_workspace_incomplete)
+                            checkMessage = incompleteText
                             return@Button
                         }
                         onSave(ownerValue, repoValue, branchValue, patInput.trim().ifBlank { null })
@@ -880,7 +886,7 @@ private fun ZiCodeWorkspaceSheet(
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White)
                 ) {
                     Text(
-                        text = stringResource(R.string.zicode_workspace_save_use),
+                        text = saveAndUseText,
                         fontSize = 14.sp,
                         fontFamily = SourceSans3,
                         fontWeight = FontWeight.SemiBold
