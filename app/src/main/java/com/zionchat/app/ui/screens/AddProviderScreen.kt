@@ -736,7 +736,6 @@ private fun AnimatedProviderTypeSelector(
             .height(38.dp)
             .clip(trackShape)
             .background(Color.White, trackShape)
-            .border(width = 1.5.dp, color = Color(0xFFA7A7AE), shape = trackShape)
     ) {
         val optionWidth = maxWidth / options.size
         val indicatorOffset by animateDpAsState(
@@ -777,7 +776,7 @@ private fun AnimatedProviderTypeSelector(
                     Text(
                         text = label,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                         fontFamily = SourceSans3,
                         color = textColor
                     )
