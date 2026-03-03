@@ -76,7 +76,8 @@ class MainActivity : AppCompatActivity() {
                         LocalOAuthClient provides appContainer.oauthClient,
                         LocalProviderAuthManager provides appContainer.providerAuthManager,
                         LocalWebHostingService provides appContainer.webHostingService,
-                        LocalRuntimePackagingService provides appContainer.runtimePackagingService
+                        LocalRuntimePackagingService provides appContainer.runtimePackagingService,
+                        LocalZiCodeGitHubService provides appContainer.zicodeGitHubService
                     ) {
                         val appLanguage by appContainer.repository.appLanguageFlow.collectAsState(initial = "__pending__")
                         LaunchedEffect(appLanguage) {

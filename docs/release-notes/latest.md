@@ -1,5 +1,8 @@
-## ZionChat v0.31.57
+## ZionChat v0.31.58
 
-- ZiCode 页面升级为原生双页结构：模型列表页 + 聊天页，支持 300ms 横向滑入/返回动画。
-- 模型列表默认读取当前已启用模型；无可用模型时自动回退示例模型清单。
-- 新增 ZiCode 聊天输入区、消息气泡与工具调用提示卡片（emoji + “正在…”）的 UI 骨架，统一复用现有圆角、阴影与按钮风格。
+- 新增 ZiCode 数据层模型：`ZiCodeWorkspace`、`ZiCodeSession`、`ZiCodeMessage`、`ZiCodeToolCall`、`ZiCodeRunRecord`、`ZiCodeReport`、`ZiCodeSettings`。
+- `AppRepository` 新增 ZiCode 专用 flows 与 CRUD：支持多仓库、会话、消息、运行记录与工具调用持久化。
+- ZiCode 配置已支持 PAT 加密存储（复用 `SecureValueCipher`），并纳入敏感配置迁移流程。
+- 新增 `ZiCodeGitHubService`，支持 `GET /user` 与仓库权限探测，用于连通性检查。
+- ZiCode 页面接入 `Workspace` 底部弹层：可新增/切换仓库、输入 PAT、检测连接并保存为当前工作区。
+- ZiCode 聊天页由本地临时状态升级为“工作区 + 会话 + 消息”持久化链路，支持按模型创建新会话并恢复历史消息。
