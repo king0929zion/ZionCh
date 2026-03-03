@@ -7,6 +7,10 @@
     <string name="group_chat">群聊</string>
     <string name="group_chats">群聊</string>
     <string name="apps">应用</string>
+    <string name="zicode">ZiCode</string>
+    <string name="zicode_title">ZiCode</string>
+    <string name="zicode_empty_title">ZiCode 已就绪</string>
+    <string name="zicode_empty_subtitle">连接 GitHub 仓库后，即可开始完整的代码代理流程。</string>
     <string name="settings">设置</string>
     <string name="model_services">模型服务</string>
     <string name="add_provider">添加供应商</string>

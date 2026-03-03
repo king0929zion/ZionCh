@@ -161,6 +161,7 @@ class MainActivity : AppCompatActivity() {
                                 AddBotScreen(navController, botId)
                             }
                             composable("apps") { AppsScreen(navController) }
+                            composable("zicode") { ZiCodeScreen(navController) }
                             composable("language") { LanguageScreen(navController) }
                             composable("personalization") { PersonalizationScreen(navController) }
                             composable("memories") { MemoriesScreen(navController) }

@@ -7,6 +7,10 @@
     <string name="group_chat">Group chat</string>
     <string name="group_chats">Group chats</string>
     <string name="apps">Apps</string>
+    <string name="zicode">ZiCode</string>
+    <string name="zicode_title">ZiCode</string>
+    <string name="zicode_empty_title">ZiCode is ready</string>
+    <string name="zicode_empty_subtitle">Connect a GitHub repository to start the coding agent workflow.</string>
     <string name="settings">Settings</string>
     <string name="model_services">Model Services</string>
     <string name="add_provider">Add Provider</string>
