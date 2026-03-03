@@ -51,6 +51,7 @@ import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -90,7 +91,6 @@ import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.PageTopBarContentTopPadding
 import com.zionchat.app.ui.components.SettingsPage
 import com.zionchat.app.ui.components.headerActionButtonShadow
-import com.zionchat.app.ui.components.liquid.BackdropLiquidToggle
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.components.settingsBottomInsets
@@ -541,7 +541,7 @@ private fun ModelToggleSwitch(
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BackdropLiquidToggle(
+    Switch(
         checked = enabled,
         onCheckedChange = onToggle,
         modifier = modifier

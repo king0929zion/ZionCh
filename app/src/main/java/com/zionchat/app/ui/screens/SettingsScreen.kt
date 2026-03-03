@@ -58,7 +58,6 @@ import androidx.compose.ui.unit.IntOffset
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.PageTopBarContentTopPadding
-import com.zionchat.app.ui.components.liquidGlass
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
@@ -70,9 +69,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 private val SettingsPageBackgroundColor = Color(0xFFFFFFFF)
 private val SettingsItemContainerColor = Color(0xFFF1F1F1)
@@ -112,7 +108,6 @@ fun SettingsScreen(navController: NavController) {
     }
 
     val displayName = nickname.takeIf { it.isNotBlank() } ?: stringResource(R.string.profile_default_name)
-    val screenBackdrop = rememberLayerBackdrop()
     val languageLabel =
         when (appLanguage.trim().lowercase()) {
             "zh" -> stringResource(R.string.language_option_zh)
@@ -137,7 +132,6 @@ fun SettingsScreen(navController: NavController) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(screenBackdrop)
         ) {
             Column(
                 modifier = Modifier
@@ -335,7 +329,6 @@ fun SettingsScreen(navController: NavController) {
             visible = showAppearanceMenu,
             selected = selectedAppearance,
             anchorY = appearanceAnchorY,
-            backdrop = screenBackdrop,
             onDismiss = { showAppearanceMenu = false },
             onSelect = { selectedAppearance = it }
         )
@@ -346,7 +339,6 @@ fun SettingsScreen(navController: NavController) {
             selected = appAccentColor,
             anchorY = accentColorAnchorY,
             anchorHeight = accentColorAnchorHeight,
-            backdrop = screenBackdrop,
             onDismiss = { showAccentColorMenu = false },
             onSelect = { key ->
                 scope.launch { repository.setAppAccentColor(key) }
@@ -926,7 +918,6 @@ fun AppearanceMenu(
     visible: Boolean,
     selected: String,
     anchorY: Float,
-    backdrop: Backdrop,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit
 ) {
@@ -972,17 +963,7 @@ fun AppearanceMenu(
                     modifier = Modifier
                         .widthIn(max = 200.dp)
                         .shadow(elevation = 10.dp, shape = shape, clip = false)
-                        .liquidGlass(
-                            backdrop = backdrop,
-                            shape = shape,
-                            overlayColor = Color(0xFFFFFFFF),
-                            fallbackColor = Color(0xFFFFFFFF),
-                            blurRadius = 24.dp,
-                            refractionHeight = 6.dp,
-                            refractionAmount = 10.dp,
-                            highlightAlpha = 0.22f,
-                            shadowAlpha = 0f
-                        )
+                        .background(Color.White, shape)
                         .border(width = 1.dp, color = Color(0xFFE2E2E2), shape = shape)
                 ) {
                     Column(
@@ -1062,7 +1043,6 @@ fun AccentColorMenu(
     selected: String,
     anchorY: Float,
     anchorHeight: Float,
-    backdrop: Backdrop,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit
 ) {
@@ -1133,17 +1113,7 @@ fun AccentColorMenu(
                     modifier = Modifier
                         .widthIn(max = 200.dp)
                         .shadow(elevation = 10.dp, shape = shape, clip = false)
-                        .liquidGlass(
-                            backdrop = backdrop,
-                            shape = shape,
-                            overlayColor = Color(0xFFFFFFFF),
-                            fallbackColor = Color(0xFFFFFFFF),
-                            blurRadius = 24.dp,
-                            refractionHeight = 6.dp,
-                            refractionAmount = 10.dp,
-                            highlightAlpha = 0.22f,
-                            shadowAlpha = 0f
-                        )
+                        .background(Color.White, shape)
                         .border(width = 1.dp, color = Color(0xFFE2E2E2), shape = shape)
                 ) {
                     Column(
