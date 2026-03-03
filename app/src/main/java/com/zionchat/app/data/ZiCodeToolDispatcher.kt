@@ -40,6 +40,7 @@ interface ZiCodeToolDispatcher {
 class DefaultZiCodeToolDispatcher(
     private val repository: AppRepository,
     private val gitHubService: ZiCodeGitHubService,
+    private val policyService: ZiCodePolicyService,
     private val client: OkHttpClient = OkHttpClient(),
     private val gson: Gson = Gson()
 ) : ZiCodeToolDispatcher {
@@ -94,6 +95,8 @@ class DefaultZiCodeToolDispatcher(
                 "pages.get_deployments" -> handlePagesDeployments(workspace, pat)
                 "pages.get_latest_url" -> handlePagesLatestUrl(workspace, pat)
                 "pages.deploy" -> handlePagesDeploy(workspace, pat)
+                "policy.get_toolspec" -> handlePolicyGetToolspec()
+                "policy.check_risk" -> handlePolicyCheckRisk(args)
                 else -> error("不支持的工具: $toolName")
             }
         }
@@ -412,6 +415,29 @@ class DefaultZiCodeToolDispatcher(
         return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(build), userHint = "🚀 正在部署到 GitHub Pages…")
     }
 
+    private fun handlePolicyGetToolspec(): ZiCodeToolDispatchResult {
+        val toolspec = policyService.getToolspec()
+        return ZiCodeToolDispatchResult(
+            success = true,
+            resultJson = gson.toJson(toolspec),
+            userHint = "📖 正在加载能力说明…"
+        )
+    }
+
+    private fun handlePolicyCheckRisk(args: JsonObject): ZiCodeToolDispatchResult {
+        val patchText = args.stringOrDefault("patch", "")
+        val touchedPaths =
+            args.getAsJsonArray("touched_paths")
+                ?.mapNotNull { it.asString?.trim()?.takeIf(String::isNotBlank) }
+                .orEmpty()
+        val risk = policyService.checkRisk(patchText, touchedPaths)
+        return ZiCodeToolDispatchResult(
+            success = true,
+            resultJson = gson.toJson(risk),
+            userHint = "🛡️ 正在评估补丁风险…"
+        )
+    }
+
     private suspend fun getWorkingFileContent(
         sessionId: String,
         workspace: ZiCodeWorkspace,
@@ -457,6 +483,8 @@ class DefaultZiCodeToolDispatcher(
             "pages.get_deployments" -> "📜 正在获取部署记录…"
             "pages.get_latest_url" -> "🔗 正在获取在线地址…"
             "pages.deploy" -> "🚀 正在部署到 GitHub Pages…"
+            "policy.get_toolspec" -> "📖 正在加载能力说明…"
+            "policy.check_risk" -> "🛡️ 正在评估补丁风险…"
             else -> "⏳ 正在执行工具调用…"
         }
     }

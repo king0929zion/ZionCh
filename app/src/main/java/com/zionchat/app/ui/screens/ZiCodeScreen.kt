@@ -1,5 +1,8 @@
 ﻿package com.zionchat.app.ui.screens
 
+import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -33,6 +36,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.SheetState
@@ -65,11 +69,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
+import com.zionchat.app.LocalZiCodeAgentOrchestrator
 import com.zionchat.app.LocalZiCodeGitHubService
+import com.zionchat.app.LocalZiCodeWorkflowTemplateService
 import com.zionchat.app.R
 import com.zionchat.app.data.ModelConfig
+import com.zionchat.app.data.ZiCodeAgentRunSummary
+import com.zionchat.app.data.ZiCodeAgentTask
 import com.zionchat.app.data.ZiCodeMessage
+import com.zionchat.app.data.ZiCodePlannedToolCall
+import com.zionchat.app.data.ZiCodeRunRecord
 import com.zionchat.app.data.ZiCodeSettings
+import com.zionchat.app.data.ZiCodeToolCall
 import com.zionchat.app.data.ZiCodeWorkspace
 import com.zionchat.app.ui.components.AppModalBottomSheet
 import com.zionchat.app.ui.components.headerActionButtonShadow
@@ -82,6 +93,7 @@ import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.Surface
 import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,7 +101,10 @@ import kotlinx.coroutines.launch
 fun ZiCodeScreen(navController: NavController) {
     val repository = LocalAppRepository.current
     val gitHubService = LocalZiCodeGitHubService.current
+    val orchestrator = LocalZiCodeAgentOrchestrator.current
+    val workflowTemplateService = LocalZiCodeWorkflowTemplateService.current
     val scope = rememberCoroutineScope()
+    val gson = remember { Gson() }
 
     val enabledModels by repository.modelsFlow.collectAsState(initial = emptyList())
     val modelNames = remember(enabledModels) { buildZiCodeModelNames(enabledModels) }
@@ -98,6 +113,8 @@ fun ZiCodeScreen(navController: NavController) {
     val workspaces by repository.zicodeWorkspacesFlow.collectAsState(initial = emptyList())
     val sessions by repository.zicodeSessionsFlow.collectAsState(initial = emptyList())
     val allMessages by repository.zicodeMessagesFlow.collectAsState(initial = emptyList())
+    val allToolCalls by repository.zicodeToolCallsFlow.collectAsState(initial = emptyList())
+    val allRuns by repository.zicodeRunsFlow.collectAsState(initial = emptyList())
 
     val currentWorkspace = remember(workspaces, zicodeSettings.currentWorkspaceId) {
         val selected = zicodeSettings.currentWorkspaceId?.trim().orEmpty()
@@ -108,6 +125,8 @@ fun ZiCodeScreen(navController: NavController) {
     var selectedModelName by remember { mutableStateOf(modelNames.firstOrNull().orEmpty()) }
     var selectedSessionId by remember { mutableStateOf<String?>(null) }
     var inputText by remember { mutableStateOf("") }
+    var isRunningTask by remember { mutableStateOf(false) }
+    var initializedWorkspaceId by remember { mutableStateOf<String?>(null) }
 
     var showWorkspaceSheet by remember { mutableStateOf(false) }
     val workspaceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -121,6 +140,28 @@ fun ZiCodeScreen(navController: NavController) {
     val currentSessionMessages = remember(allMessages, selectedSessionId) {
         val sid = selectedSessionId?.trim().orEmpty()
         if (sid.isBlank()) emptyList() else allMessages.filter { it.sessionId == sid }.sortedBy { it.createdAt }
+    }
+    val currentSessionToolCalls = remember(allToolCalls, selectedSessionId) {
+        val sid = selectedSessionId?.trim().orEmpty()
+        if (sid.isBlank()) {
+            emptyList()
+        } else {
+            allToolCalls
+                .filter { it.sessionId == sid }
+                .sortedByDescending { it.startedAt }
+                .take(16)
+        }
+    }
+    val currentSessionRuns = remember(allRuns, selectedSessionId) {
+        val sid = selectedSessionId?.trim().orEmpty()
+        if (sid.isBlank()) {
+            emptyList()
+        } else {
+            allRuns
+                .filter { it.sessionId == sid }
+                .sortedByDescending { it.updatedAt }
+                .take(6)
+        }
     }
 
     fun ensureSession(modelName: String, forceNew: Boolean) {
@@ -173,6 +214,11 @@ fun ZiCodeScreen(navController: NavController) {
         val sid = selectedSessionId?.trim().orEmpty()
         val trimmed = inputText.trim()
         if (trimmed.isBlank()) return
+        val workspace = currentWorkspace
+        if (workspace == null) {
+            showWorkspaceSheet = true
+            return
+        }
         if (sid.isBlank()) {
             ensureSession(selectedModelName, forceNew = false)
             return
@@ -186,14 +232,81 @@ fun ZiCodeScreen(navController: NavController) {
                     content = trimmed
                 )
             )
-            repository.appendZiCodeMessage(
-                ZiCodeMessage(
-                    sessionId = sid,
-                    role = "assistant",
-                    content = assistantMockReply,
-                    toolHints = listOf(hintListTreeText, hintSearchText, hintReadFileText)
+            isRunningTask = true
+            try {
+                if (zicodeSettings.autoInitWorkflowTemplates && initializedWorkspaceId != workspace.id) {
+                    val initResult =
+                        workflowTemplateService.ensureWorkflowTemplates(
+                            sessionId = sid,
+                            workspace = workspace,
+                            settings = zicodeSettings,
+                            baseBranch = workspace.defaultBranch
+                        )
+                    initializedWorkspaceId = workspace.id
+                    repository.appendZiCodeMessage(
+                        ZiCodeMessage(
+                            sessionId = sid,
+                            role = "assistant",
+                            content = initResult.message,
+                            toolHints =
+                                listOfNotNull(
+                                    "📋 正在创建 Pull Request…".takeIf { initResult.pullRequestUrl != null },
+                                    "📄 正在读取文件 `.github/workflows`…"
+                                )
+                        )
+                    )
+                }
+
+                val task =
+                    buildZiCodeTaskFromPrompt(
+                        gson = gson,
+                        sessionId = sid,
+                        workspace = workspace,
+                        modelName = selectedModelName,
+                        prompt = trimmed
+                    )
+                val summary = orchestrator.executeTask(task, zicodeSettings)
+                val latestHints =
+                    repository.zicodeToolCallsFlow.first()
+                        .filter { it.sessionId == sid }
+                        .sortedByDescending { it.startedAt }
+                        .mapNotNull { call -> call.userHint.takeIf { it.isNotBlank() } }
+                        .distinct()
+                        .take(4)
+                repository.appendZiCodeMessage(
+                    ZiCodeMessage(
+                        sessionId = sid,
+                        role = "assistant",
+                        content = buildZiCodeSummaryText(summary, assistantMockReply),
+                        toolHints = latestHints.ifEmpty { listOf(hintListTreeText, hintSearchText, hintReadFileText) }
+                    )
                 )
-            )
+                summary.latestRunId?.let { runId ->
+                    repository.upsertZiCodeRun(
+                        ZiCodeRunRecord(
+                            sessionId = sid,
+                            workflow = task.workflowFile.orEmpty().ifBlank { "manual-task" },
+                            runId = runId,
+                            status = if (summary.success) "success" else "failure",
+                            summary = summary.message,
+                            runUrl = null,
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                }
+            } catch (throwable: Throwable) {
+                repository.appendZiCodeMessage(
+                    ZiCodeMessage(
+                        sessionId = sid,
+                        role = "assistant",
+                        content = "任务执行失败：${throwable.message ?: "Unknown error"}",
+                        toolHints = listOf(hintLoadToolSpecText)
+                    )
+                )
+            } finally {
+                isRunningTask = false
+            }
         }
     }
 
@@ -267,6 +380,9 @@ fun ZiCodeScreen(navController: NavController) {
             )
             ZiCodeChatMessages(
                 messages = currentSessionMessages,
+                toolCalls = currentSessionToolCalls,
+                runs = currentSessionRuns,
+                isRunningTask = isRunningTask,
                 modifier = Modifier.weight(1f)
             )
             ZiCodeInputBar(
@@ -514,6 +630,9 @@ private fun CircleActionButton(
 @Composable
 private fun ZiCodeChatMessages(
     messages: List<ZiCodeMessage>,
+    toolCalls: List<ZiCodeToolCall>,
+    runs: List<ZiCodeRunRecord>,
+    isRunningTask: Boolean,
     modifier: Modifier = Modifier
 ) {
     val list = if (messages.isEmpty()) {
@@ -528,6 +647,8 @@ private fun ZiCodeChatMessages(
     } else {
         messages
     }
+    val callsToShow = toolCalls.take(8)
+    val runsToShow = runs.take(3)
 
     LazyColumn(
         modifier = modifier
@@ -606,6 +727,124 @@ private fun ZiCodeChatMessages(
                                 )
                             }
                         }
+                    }
+                }
+            }
+        }
+        if (isRunningTask) {
+            item(key = "zicode_running") {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F7))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "ZiCode 正在执行任务...",
+                            fontSize = 13.sp,
+                            fontFamily = SourceSans3,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+        }
+        if (callsToShow.isNotEmpty()) {
+            item(key = "zicode_tool_call_title") {
+                Text(
+                    text = "Tool Calls",
+                    fontSize = 12.sp,
+                    fontFamily = SourceSans3,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 4.dp, start = 2.dp)
+                )
+            }
+            items(callsToShow, key = { "tool_${it.id}" }) { call ->
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F7))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = call.userHint.ifBlank { "⏳ 正在执行工具调用…" },
+                            fontSize = 13.sp,
+                            fontFamily = SourceSans3,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "`${call.toolName}` · ${call.status}",
+                            fontSize = 12.sp,
+                            fontFamily = SourceSans3,
+                            color =
+                                when (call.status) {
+                                    "success" -> Color(0xFF0A7D34)
+                                    "error" -> Color(0xFFB3261E)
+                                    else -> TextSecondary
+                                }
+                        )
+                        if (!call.error.isNullOrBlank()) {
+                            Text(
+                                text = call.error.orEmpty(),
+                                fontSize = 12.sp,
+                                fontFamily = SourceSans3,
+                                color = Color(0xFFB3261E),
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (runsToShow.isNotEmpty()) {
+            item(key = "zicode_runs_title") {
+                Text(
+                    text = "Workflow Runs",
+                    fontSize = 12.sp,
+                    fontFamily = SourceSans3,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp, start = 2.dp)
+                )
+            }
+            items(runsToShow, key = { "run_${it.id}" }) { run ->
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "${run.workflow} · #${run.runId ?: 0}",
+                            fontSize = 13.sp,
+                            fontFamily = SourceSans3,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = run.summary.ifBlank { run.status },
+                            fontSize = 12.sp,
+                            fontFamily = SourceSans3,
+                            color = TextSecondary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -961,6 +1200,136 @@ private fun buildMaskedToken(token: String): String {
     if (value.isBlank()) return "(none)"
     if (value.length <= 8) return "****"
     return "${value.take(4)}****${value.takeLast(4)}"
+}
+
+private fun buildZiCodeTaskFromPrompt(
+    gson: Gson,
+    sessionId: String,
+    workspace: ZiCodeWorkspace,
+    modelName: String,
+    prompt: String
+): ZiCodeAgentTask {
+    val calls = mutableListOf<ZiCodePlannedToolCall>()
+
+    calls += ZiCodePlannedToolCall(
+        toolName = "policy.get_toolspec",
+        argsJson = "{}"
+    )
+    calls += ZiCodePlannedToolCall(
+        toolName = "repo.list_tree",
+        argsJson =
+            gson.toJson(
+                JsonObject().apply {
+                    addProperty("ref", workspace.defaultBranch)
+                }
+            )
+    )
+
+    extractSearchKeyword(prompt)?.let { keyword ->
+        calls += ZiCodePlannedToolCall(
+            toolName = "repo.search",
+            argsJson =
+                gson.toJson(
+                    JsonObject().apply {
+                        addProperty("keyword", keyword)
+                        addProperty("per_page", 20)
+                    }
+                )
+        )
+    }
+
+    extractReadablePath(prompt)?.let { path ->
+        calls += ZiCodePlannedToolCall(
+            toolName = "repo.read_file",
+            argsJson =
+                gson.toJson(
+                    JsonObject().apply {
+                        addProperty("path", path)
+                        addProperty("ref", workspace.defaultBranch)
+                    }
+                )
+        )
+    }
+
+    val workflowFile = extractWorkflowFile(prompt)
+    if (workflowFile != null) {
+        calls += ZiCodePlannedToolCall(
+            toolName = "actions.trigger_workflow",
+            argsJson =
+                gson.toJson(
+                    JsonObject().apply {
+                        addProperty("workflow", workflowFile)
+                        addProperty("ref", workspace.defaultBranch)
+                    }
+                )
+        )
+    }
+
+    return ZiCodeAgentTask(
+        taskId = "task-${System.currentTimeMillis()}",
+        sessionId = sessionId,
+        workspace = workspace,
+        plannedCalls = calls,
+        workflowFile = workflowFile,
+    )
+}
+
+private fun buildZiCodeSummaryText(summary: ZiCodeAgentRunSummary, fallback: String): String {
+    if (summary.totalCalls <= 0 && summary.success) return fallback
+    return if (summary.success) {
+        "执行完成：${summary.message}（共 ${summary.totalCalls} 个工具调用）"
+    } else {
+        "执行失败：${summary.message}（失败点：${summary.failedCall ?: "unknown"}）"
+    }
+}
+
+private fun extractSearchKeyword(prompt: String): String? {
+    val normalized = prompt.trim()
+    if (normalized.isBlank()) return null
+    val direct =
+        Regex("(?:搜索|search)\\s*[:：]?\\s*([A-Za-z0-9_./-]{2,})", RegexOption.IGNORE_CASE)
+            .find(normalized)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    if (direct != null) return direct
+    return if (normalized.contains("搜索") || normalized.contains("search", ignoreCase = true)) {
+        normalized.split(" ").lastOrNull()?.trim()?.takeIf { it.length >= 2 }
+    } else {
+        null
+    }
+}
+
+private fun extractReadablePath(prompt: String): String? {
+    val normalized = prompt.trim()
+    if (normalized.isBlank()) return null
+    val pathInBackticks = Regex("`([^`]+)`").find(normalized)?.groupValues?.getOrNull(1)?.trim()
+    if (!pathInBackticks.isNullOrBlank() && pathInBackticks.contains("/")) return pathInBackticks
+    val genericPath =
+        Regex("([A-Za-z0-9_./-]+\\.[A-Za-z0-9]{1,8})")
+            .find(normalized)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+    return genericPath?.takeIf { it.contains("/") || it.contains(".") }
+}
+
+private fun extractWorkflowFile(prompt: String): String? {
+    val normalized = prompt.trim()
+    if (normalized.isBlank()) return null
+    val explicit =
+        Regex("([A-Za-z0-9_.-]+\\.ya?ml)", RegexOption.IGNORE_CASE)
+            .find(normalized)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+    if (!explicit.isNullOrBlank()) return explicit
+    return if (normalized.contains("workflow", ignoreCase = true) || normalized.contains("工作流")) {
+        "build.yml"
+    } else {
+        null
+    }
 }
 
 private fun buildZiCodeModelNames(models: List<ModelConfig>): List<String> {

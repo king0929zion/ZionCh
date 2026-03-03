@@ -27,8 +27,9 @@ class AppContainer(context: Context) {
     val webHostingService: WebHostingService = DisabledWebHostingService()
     val runtimePackagingService: RuntimePackagingService = DisabledRuntimePackagingService()
     val zicodeGitHubService: ZiCodeGitHubService = DefaultZiCodeGitHubService()
-    val zicodeToolDispatcher: ZiCodeToolDispatcher = DefaultZiCodeToolDispatcher(repository, zicodeGitHubService)
     val zicodePolicyService: ZiCodePolicyService = DefaultZiCodePolicyService()
+    val zicodeToolDispatcher: ZiCodeToolDispatcher =
+        DefaultZiCodeToolDispatcher(repository, zicodeGitHubService, zicodePolicyService)
     val zicodeAgentOrchestrator = ZiCodeAgentOrchestrator(repository, zicodeToolDispatcher, zicodePolicyService)
     val zicodeWorkflowTemplateService = ZiCodeWorkflowTemplateService(zicodeToolDispatcher)
 }
