@@ -3,7 +3,6 @@ package com.zionchat.app.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -39,6 +38,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -92,6 +93,7 @@ import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.liquid.BackdropLiquidToggle
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
+import com.zionchat.app.ui.components.settingsBottomInsets
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.SourceSans3
@@ -265,17 +267,18 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                 .fillMaxSize()
                 .pullRefresh(pullRefreshState)
         ) {
-            Column(
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(top = PageTopBarContentTopPadding)
                     .padding(horizontal = 16.dp)
-                    .padding(top = 12.dp, bottom = 16.dp),
+                    .padding(top = 12.dp)
+                    .settingsBottomInsets()
+                    .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                    if (activeProvider == null) {
+                    if (activeProvider == null) item {
                         Text(
                             text = stringResource(R.string.models_test_summary_no_provider),
                             fontSize = 13.sp,
@@ -283,6 +286,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                         )
                     } else {
                         if (isFetchingRemote || remoteError != null) {
+                            item {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -316,9 +320,13 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                                     )
                                 }
                             }
+                            }
                         }
 
-                        sortedModels.forEach { model ->
+                        items(
+                            items = sortedModels,
+                            key = { it.id }
+                        ) { model ->
                             ModelItem(
                                 model = model,
                                 onToggle = { nextEnabled ->
@@ -330,7 +338,7 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(4.dp))
+                        item { Spacer(modifier = Modifier.height(4.dp)) }
                     }
                 }
 
@@ -498,10 +506,13 @@ private fun ModelItem(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .animateContentSize(animationSpec = tween(durationMillis = 180))
             .background(cardColor, RoundedCornerShape(20.dp))
             .clip(RoundedCornerShape(20.dp))
-            .pressableScale(pressedScale = 0.98f, onClick = onClick)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween

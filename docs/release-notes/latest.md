@@ -1,5 +1,9 @@
 ## ZionChat Android 版本说明
 
+- 紧急稳定性修复（Models）：将模型列表从 `Column + verticalScroll` 改为 `LazyColumn` 按需渲染，避免模型数量较多时渲染树过深引发 `RenderThread/libhwui` 栈溢出闪退。
+- 模型开关液态实现降风险重构：保留液态观感（流体桥接、高光、渐变与立体旋钮），移除高风险拖拽渲染链路，进入 `Models` 页与切换模型时稳定性更高。
+- 交互稳定性增强：模型卡片点击改为标准 `clickable`，减少复杂缩放层级，降低“点开关误触发行跳转”与渲染抖动概率。
+
 - 修复一次 CI 编译回归：更正液态开关几何类型导入（`CornerRadius/Offset/Size`）到 `ui.geometry`，恢复 `compileReleaseKotlin` 通过。
 - 修复 Models 页闪退回归：移除模型开关中触发 `RenderThread/libhwui` 递归崩溃的 Backdrop 渲染链路，改为纯 Compose 的液态形变实现，进入 Models/模型配置页不再因原生渲染崩溃退出。
 - 液态交互保留：开关继续保留“液态”视觉（轨道流体桥接、旋钮弹性形变、速度驱动拉伸、高光层）并维持独立点击区域。
