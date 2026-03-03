@@ -52,6 +52,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -273,10 +274,10 @@ fun ModelsScreen(navController: NavController, providerId: String? = null) {
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(top = PageTopBarContentTopPadding)
                     .padding(horizontal = 16.dp)
-                    .padding(top = 12.dp)
+                    .padding(top = 8.dp)
                     .settingsBottomInsets()
-                    .padding(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                     if (activeProvider == null) item {
                         Text(
@@ -505,7 +506,7 @@ private fun ModelItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = 48.dp)
             .background(cardColor, RoundedCornerShape(20.dp))
             .clip(RoundedCornerShape(20.dp))
             .clickable(
@@ -513,13 +514,13 @@ private fun ModelItem(
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
             text = model.displayName,
-            fontSize = 17.sp,
+            fontSize = 16.sp,
             fontFamily = SourceSans3,
             color = TextPrimary,
             maxLines = 2,
@@ -544,7 +545,15 @@ private fun ModelToggleSwitch(
     Switch(
         checked = enabled,
         onCheckedChange = onToggle,
-        modifier = modifier
+        modifier = modifier,
+        colors =
+            SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Color(0xFF1C1C1E),
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = Color(0xFFD1D1D6),
+                uncheckedBorderColor = Color.Transparent
+            )
     )
 }
 

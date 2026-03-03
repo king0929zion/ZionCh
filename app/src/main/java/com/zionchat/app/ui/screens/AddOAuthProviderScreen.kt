@@ -150,6 +150,7 @@ fun AddOAuthProviderScreen(
                 else -> ""
             }
     }
+    val selectedAvatarAsset = remember(selectedAvatar) { findProviderPreset(selectedAvatar)?.iconAsset.orEmpty() }
 
     fun handleSave() {
         if (isWorking) return
@@ -211,23 +212,56 @@ fun AddOAuthProviderScreen(
                     color = SupplierCardGray,
                     shape = RoundedCornerShape(20.dp)
                 ) {
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 14.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AvatarSection(
-                            selectedAvatar = selectedAvatar,
-                            onAvatarClick = { if (lockedProviderId == null) showAvatarModal = true },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        ProviderNameInput(
-                            value = providerName,
-                            onValueChange = { providerName = it },
-                            embedded = true
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFFF1F1F1), RoundedCornerShape(16.dp))
+                                .pressableScale(
+                                    pressedScale = if (lockedProviderId == null) 0.95f else 1f,
+                                    onClick = { if (lockedProviderId == null) showAvatarModal = true }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (selectedAvatarAsset.isNotBlank()) {
+                                AssetIcon(
+                                    assetFileName = selectedAvatarAsset,
+                                    contentDescription = providerName.ifBlank { selectedAvatar },
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(10.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = AppIcons.ChatGPTLogo,
+                                    contentDescription = null,
+                                    tint = Color(0xFF1C1C1E),
+                                    modifier = Modifier.size(30.dp)
+                                )
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            ProviderNameInput(
+                                value = providerName,
+                                onValueChange = { providerName = it },
+                                embedded = true,
+                                inRow = true
+                            )
+                        }
                     }
                 }
 
@@ -560,7 +594,7 @@ private fun AvatarSection(
             modifier = Modifier
                 .size(64.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFFE5E5EA))
+                .background(Color(0xFFF1F1F1))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -793,7 +827,8 @@ private fun AvatarSelectionModal(
 private fun ProviderNameInput(
     value: String,
     onValueChange: (String) -> Unit,
-    embedded: Boolean = false
+    embedded: Boolean = false,
+    inRow: Boolean = false
 ) {
     val content: @Composable () -> Unit = {
         Column(
@@ -801,14 +836,15 @@ private fun ProviderNameInput(
                 .fillMaxWidth()
                 .padding(horizontal = if (embedded) 0.dp else 16.dp, vertical = if (embedded) 0.dp else 14.dp)
         ) {
-            Text(
-                text = stringResource(R.string.add_oauth_provider_name),
-                fontSize = 13.sp,
-                color = SupplierHintColor,
-                fontFamily = SourceSans3
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
+            if (!inRow) {
+                Text(
+                    text = stringResource(R.string.add_oauth_provider_name),
+                    fontSize = 13.sp,
+                    color = SupplierHintColor,
+                    fontFamily = SourceSans3
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+            }
 
             Surface(
                 modifier = Modifier
@@ -822,7 +858,7 @@ private fun ProviderNameInput(
                     onValueChange = onValueChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 13.dp),
+                        .padding(horizontal = 14.dp, vertical = if (inRow) 12.dp else 13.dp),
                     textStyle = androidx.compose.ui.text.TextStyle(
                         fontSize = 17.sp,
                         color = Color(0xFF1C1C1E),

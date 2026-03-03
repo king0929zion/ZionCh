@@ -187,7 +187,7 @@ fun ModelConfigScreen(
                 }
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = Surface,
+                    color = Color(0xFFF1F1F1),
                     shape = RoundedCornerShape(20.dp)
                 ) {
                     TextField(

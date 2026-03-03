@@ -1,6 +1,9 @@
-﻿## ZionChat v0.31.52
+﻿## ZionChat v0.31.53
 
-- 移除未使用的液态玻璃残留代码：删除 `ui/components/liquid` 下未引用的 3 个文件，减少无效编译负担。
-- 清理未使用依赖：移除 `io.github.kyant0:backdrop` 与 `io.github.kyant0:shapes`。
-- 清理未调用组件：删除 `TopFadeScrim.kt` 中未被使用的 `BottomFadeScrim`。
-- 保持现有功能入口与路由不变（含 MCP/AutoSoul/设置子页）。
+- 模型管理页视觉密度优化：模型列表间距、顶部/底部留白与卡片高度整体收紧，列表更紧凑。
+- 模型开关配色调整：模型启用开关改为黑白主题（开启黑轨道、关闭浅灰轨道），不再显示蓝色。
+- Model Configuration 统一灰阶：`Model Name` 输入区背景改为设置页同款浅灰（`#F1F1F1`）。
+- Add Provider 交互升级：输入标签改为平滑浮动动画（位移+缩放+透明度），从框内提示到边线标签不再瞬移。
+- Provider Type 强化：描边加深（未选中 `#A7A7AE`，选中 `#666872`），新增分段滑块过渡动画，切换反馈更顺滑。
+- 供应商图标背景统一：Add Provider / OAuth / Device 页面顶部图标容器统一为新灰色背景（`#F1F1F1`）。
+- OAuth 布局重构：顶部结构由“头像上+名字下”改为“头像左+名字右”，与其他供应商页布局一致，授权逻辑保持不变。

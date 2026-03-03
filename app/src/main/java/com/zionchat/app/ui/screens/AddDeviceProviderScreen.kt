@@ -157,7 +157,7 @@ fun AddDeviceProviderScreen(
                         modifier = Modifier
                             .size(64.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFFE5E5EA), RoundedCornerShape(16.dp)),
+                            .background(Color(0xFFF1F1F1), RoundedCornerShape(16.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         AssetIcon(

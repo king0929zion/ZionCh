@@ -1,7 +1,12 @@
 package com.zionchat.app.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,9 +20,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -265,7 +271,7 @@ fun AddProviderScreen(
                                 modifier = Modifier
                                     .size(64.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(Color(0xFFE5E5EA), RoundedCornerShape(16.dp))
+                                    .background(Color(0xFFF1F1F1), RoundedCornerShape(16.dp))
                                     .pressableScale(pressedScale = 0.95f) { showAvatarModal = true },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -333,29 +339,11 @@ fun AddProviderScreen(
                                     color = TextSecondary,
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
-                                Row(
+                                AnimatedProviderTypeSelector(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    TypeOption(
-                                        text = "OpenAI",
-                                        selected = selectedType == "openai",
-                                        onClick = { selectedType = "openai" },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    TypeOption(
-                                        text = "Anthropic",
-                                        selected = selectedType == "anthropic",
-                                        onClick = { selectedType = "anthropic" },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    TypeOption(
-                                        text = "Google",
-                                        selected = selectedType == "google",
-                                        onClick = { selectedType = "google" },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
+                                    selectedType = selectedType,
+                                    onTypeSelected = { selectedType = it }
+                                )
                             }
                         }
 
@@ -645,6 +633,31 @@ fun FormField(
     val hasValue = value.trim().isNotEmpty()
     val fieldBorderColor = Color(0xFF5F616A)
     val fieldHintColor = Color(0xFF74747D)
+    val fieldTransition = updateTransition(targetState = hasValue, label = "provider_field_transition")
+    val labelAlpha by fieldTransition.animateFloat(
+        transitionSpec = { tween(durationMillis = 210, easing = FastOutSlowInEasing) },
+        label = "provider_field_label_alpha"
+    ) { filled ->
+        if (filled) 1f else 0f
+    }
+    val labelScale by fieldTransition.animateFloat(
+        transitionSpec = { tween(durationMillis = 210, easing = FastOutSlowInEasing) },
+        label = "provider_field_label_scale"
+    ) { filled ->
+        if (filled) 0.88f else 1f
+    }
+    val labelOffsetY by fieldTransition.animateDp(
+        transitionSpec = { tween(durationMillis = 210, easing = FastOutSlowInEasing) },
+        label = "provider_field_label_offset"
+    ) { filled ->
+        if (filled) (-9).dp else 18.dp
+    }
+    val placeholderAlpha by fieldTransition.animateFloat(
+        transitionSpec = { tween(durationMillis = 180, easing = FastOutSlowInEasing) },
+        label = "provider_field_placeholder_alpha"
+    ) { filled ->
+        if (filled) 0f else 1f
+    }
     Box(modifier = Modifier.fillMaxWidth()) {
         Surface(
             modifier = Modifier
@@ -661,14 +674,13 @@ fun FormField(
                     .fillMaxWidth()
                     .padding(horizontal = 6.dp, vertical = 2.dp),
                 placeholder = {
-                    if (!hasValue) {
-                        Text(
-                            text = placeholder,
-                            fontSize = 17.sp,
-                            fontFamily = SourceSans3,
-                            color = fieldHintColor
-                        )
-                    }
+                    Text(
+                        text = placeholder,
+                        fontSize = 17.sp,
+                        fontFamily = SourceSans3,
+                        color = fieldHintColor,
+                        modifier = Modifier.alpha(placeholderAlpha)
+                    )
                 },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
@@ -690,72 +702,87 @@ fun FormField(
             )
         }
 
-        AnimatedVisibility(
-            visible = hasValue,
+        Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .offset(x = 14.dp, y = (-9).dp),
-            enter = fadeIn(animationSpec = tween(140)),
-            exit = fadeOut(animationSpec = tween(100))
+                .offset(x = 14.dp, y = labelOffsetY)
+                .alpha(labelAlpha)
+                .scale(labelScale)
+                .background(containerColor, RoundedCornerShape(10.dp))
+                .padding(horizontal = 6.dp, vertical = 1.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .background(containerColor, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 6.dp, vertical = 1.dp)
-            ) {
-                Text(
-                    text = label,
-                    fontSize = 12.sp,
-                    fontFamily = SourceSans3,
-                    color = fieldHintColor
-                )
-            }
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontFamily = SourceSans3,
+                color = fieldHintColor
+            )
         }
     }
 }
 
 @Composable
-fun TypeOption(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
+private fun AnimatedProviderTypeSelector(
+    selectedType: String,
+    onTypeSelected: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(16.dp)
-    val borderColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (selected) Color(0xFF9C9CA3) else Color(0xFFD3D3D8),
-        animationSpec = tween(durationMillis = 180),
-        label = "type_option_border"
-    )
-    val textColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (selected) TextPrimary else TextSecondary,
-        animationSpec = tween(durationMillis = 180),
-        label = "type_option_text"
-    )
-    val pressedScale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (selected) 1f else 0.998f,
-        animationSpec = tween(durationMillis = 160),
-        label = "type_option_scale"
-    )
-    Box(
+    val options = remember { listOf("openai" to "OpenAI", "anthropic" to "Anthropic", "google" to "Google") }
+    val selectedIndex = options.indexOfFirst { it.first == selectedType }.coerceAtLeast(0)
+    val trackShape = RoundedCornerShape(16.dp)
+
+    BoxWithConstraints(
         modifier = modifier
-            .height(36.dp)
-            .graphicsLayer {
-                scaleX = pressedScale
-                scaleY = pressedScale
-            }
-            .clip(shape)
-            .background(Color.White, shape)
-            .border(width = 1.5.dp, color = borderColor, shape = shape)
-            .pressableScale(pressedScale = 0.95f, onClick = onClick),
-        contentAlignment = Alignment.Center
+            .height(38.dp)
+            .clip(trackShape)
+            .background(Color.White, trackShape)
+            .border(width = 1.5.dp, color = Color(0xFFA7A7AE), shape = trackShape)
     ) {
-        Text(
-            text = text,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            fontFamily = SourceSans3,
-            color = textColor
+        val optionWidth = maxWidth / options.size
+        val indicatorOffset by animateDpAsState(
+            targetValue = optionWidth * selectedIndex,
+            animationSpec = tween(durationMillis = 210, easing = FastOutSlowInEasing),
+            label = "provider_type_indicator_offset"
         )
+
+        Box(
+            modifier = Modifier
+                .offset(x = indicatorOffset)
+                .fillMaxHeight()
+                .width(optionWidth)
+                .padding(2.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.White, RoundedCornerShape(14.dp))
+                .border(width = 1.4.dp, color = Color(0xFF666872), shape = RoundedCornerShape(14.dp))
+        )
+
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            options.forEach { (type, label) ->
+                val selected = type == selectedType
+                val textColor by animateColorAsState(
+                    targetValue = if (selected) TextPrimary else TextSecondary,
+                    animationSpec = tween(durationMillis = 180),
+                    label = "provider_type_text_color"
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .pressableScale(pressedScale = 0.96f) { onTypeSelected(type) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = SourceSans3,
+                        color = textColor
+                    )
+                }
+            }
+        }
     }
 }
