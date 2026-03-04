@@ -675,13 +675,36 @@ class DefaultZiCodeToolDispatcher(
     }
 
     private fun createBranch(workspace: ZiCodeWorkspace, pat: String, branch: String, baseRef: String): JsonObject {
-        val baseSha = getBranchHeadSha(workspace, pat, baseRef)
+        val targetBranch = branch.trim().ifBlank { error("分支名不能为空") }
+        val sourceBranch = baseRef.trim().ifBlank { workspace.defaultBranch.ifBlank { "main" } }
+        val baseSha =
+            runCatching { getBranchHeadSha(workspace, pat, sourceBranch) }
+                .getOrElse { throwable ->
+                    if (isRepositoryEmptyError(throwable.message)) {
+                        initializeRepositoryIfEmpty(workspace, pat, sourceBranch)
+                        getBranchHeadSha(workspace, pat, sourceBranch)
+                    } else {
+                        throw throwable
+                    }
+                }
+
+        if (targetBranch.equals(sourceBranch, ignoreCase = true)) {
+            return getBranchRef(workspace, pat, sourceBranch)
+        }
+
         val body = JsonObject().apply {
-            addProperty("ref", "refs/heads/${branch.trim()}")
+            addProperty("ref", "refs/heads/$targetBranch")
             addProperty("sha", baseSha)
         }
         val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/refs"
-        return postJson(url, pat, body)
+        return runCatching { postJson(url, pat, body) }
+            .getOrElse { throwable ->
+                if (isReferenceAlreadyExists(throwable.message)) {
+                    getBranchRef(workspace, pat, targetBranch)
+                } else {
+                    throw throwable
+                }
+            }
     }
 
     private fun ensureBranch(workspace: ZiCodeWorkspace, pat: String, branch: String, baseRef: String) {
@@ -701,9 +724,14 @@ class DefaultZiCodeToolDispatcher(
         return postJson(url, pat, body).get("sha")?.asString.orEmpty().ifBlank { error("创建 blob 失败") }
     }
 
-    private fun createTree(workspace: ZiCodeWorkspace, pat: String, baseTreeSha: String, treeItems: JsonArray): String {
+    private fun createTree(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        baseTreeSha: String?,
+        treeItems: JsonArray
+    ): String {
         val body = JsonObject().apply {
-            addProperty("base_tree", baseTreeSha)
+            baseTreeSha?.trim()?.takeIf { it.isNotBlank() }?.let { addProperty("base_tree", it) }
             add("tree", treeItems)
         }
         val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/trees"
@@ -715,15 +743,89 @@ class DefaultZiCodeToolDispatcher(
         pat: String,
         message: String,
         treeSha: String,
-        parentSha: String
+        parentSha: String?
     ): String {
         val body = JsonObject().apply {
             addProperty("message", message)
             addProperty("tree", treeSha)
-            add("parents", JsonArray().apply { add(parentSha) })
+            val parents = JsonArray()
+            parentSha?.trim()?.takeIf { it.isNotBlank() }?.let { parents.add(it) }
+            add("parents", parents)
         }
         val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/commits"
         return postJson(url, pat, body).get("sha")?.asString.orEmpty().ifBlank { error("创建 commit 失败") }
+    }
+
+    private fun getBranchRef(workspace: ZiCodeWorkspace, pat: String, branch: String): JsonObject {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/ref/heads/${urlEncode(branch)}"
+        return getJson(url, pat).asJsonObject
+    }
+
+    private fun initializeRepositoryIfEmpty(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        branch: String
+    ): JsonObject {
+        val targetBranch = branch.trim().ifBlank { workspace.defaultBranch.ifBlank { "main" } }
+        val initContent = buildInitialRepoContent(workspace)
+        val blobSha = createBlob(workspace, pat, initContent)
+        val treeItems = JsonArray().apply {
+            add(
+                JsonObject().apply {
+                    addProperty("path", "README.md")
+                    addProperty("mode", "100644")
+                    addProperty("type", "blob")
+                    addProperty("sha", blobSha)
+                }
+            )
+        }
+        val treeSha = createTree(workspace, pat, baseTreeSha = null, treeItems = treeItems)
+        val commitSha = createCommit(
+            workspace = workspace,
+            pat = pat,
+            message = "chore: initialize repository for ZiCode",
+            treeSha = treeSha,
+            parentSha = null
+        )
+        val body = JsonObject().apply {
+            addProperty("ref", "refs/heads/$targetBranch")
+            addProperty("sha", commitSha)
+        }
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/refs"
+        val refObject =
+            runCatching { postJson(url, pat, body) }
+                .getOrElse { throwable ->
+                    if (isReferenceAlreadyExists(throwable.message)) {
+                        getBranchRef(workspace, pat, targetBranch)
+                    } else {
+                        throw throwable
+                    }
+                }
+        return JsonObject().apply {
+            addProperty("initialized", true)
+            addProperty("branch", targetBranch)
+            addProperty("commit_sha", commitSha)
+            add("ref", refObject)
+        }
+    }
+
+    private fun buildInitialRepoContent(workspace: ZiCodeWorkspace): String {
+        return buildString {
+            appendLine("# ${workspace.repo}")
+            appendLine()
+            appendLine("Initialized by ZiCode.")
+        }
+    }
+
+    private fun isRepositoryEmptyError(message: String?): Boolean {
+        val normalized = message.orEmpty().lowercase()
+        return normalized.contains("repository is empty") ||
+            normalized.contains("git repository is empty") ||
+            normalized.contains("this repository is empty")
+    }
+
+    private fun isReferenceAlreadyExists(message: String?): Boolean {
+        return message.orEmpty().lowercase().contains("reference already exists")
     }
 
     private fun updateBranchRef(workspace: ZiCodeWorkspace, pat: String, branch: String, commitSha: String): JsonObject {

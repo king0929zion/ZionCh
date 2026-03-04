@@ -1,5 +1,7 @@
 ﻿package com.zionchat.app.ui.screens
 
+import android.graphics.Shader
+import android.os.Build
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import androidx.compose.animation.animateColorAsState
@@ -7,11 +9,13 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -62,6 +66,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -1014,6 +1019,8 @@ private fun ZiCodeInputBar(
         label = "zicode_send_icon"
     )
     val inputCapsuleShape = RoundedCornerShape(23.dp)
+    val glassContainerColor = Color.White.copy(alpha = 0.76f)
+    val glassBorderColor = Color.White.copy(alpha = 0.58f)
 
     Box(
         modifier = Modifier
@@ -1027,16 +1034,35 @@ private fun ZiCodeInputBar(
                 .fillMaxWidth()
                 .heightIn(min = 46.dp)
                 .shadow(
-                    elevation = 8.dp,
+                    elevation = 10.dp,
                     shape = inputCapsuleShape,
                     clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.08f),
-                    spotColor = Color.Black.copy(alpha = 0.08f)
+                    ambientColor = Color.Black.copy(alpha = 0.10f),
+                    spotColor = Color.Black.copy(alpha = 0.10f)
                 )
                 .clip(inputCapsuleShape)
-                .background(Surface, inputCapsuleShape),
+                .background(Color.Transparent, inputCapsuleShape),
             contentAlignment = Alignment.CenterStart
         ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            renderEffect =
+                                android.graphics.RenderEffect
+                                    .createBlurEffect(22f, 22f, Shader.TileMode.CLAMP)
+                                    .asComposeRenderEffect()
+                        }
+                        .background(Color.White.copy(alpha = 0.08f), inputCapsuleShape)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(glassContainerColor, inputCapsuleShape)
+                    .border(width = 0.8.dp, color = glassBorderColor, shape = inputCapsuleShape)
+            )
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1443,3 +1469,4 @@ private fun buildStableZiCodeWorkspaceId(owner: String, repo: String): String {
     val repoKey = repo.trim().lowercase().replace(Regex("[^a-z0-9_-]"), "_")
     return "zicode_${ownerKey}_${repoKey}"
 }
+

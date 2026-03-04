@@ -1,5 +1,7 @@
 package com.zionchat.app.ui.components
 
+import android.graphics.Shader
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -27,6 +29,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -60,20 +64,59 @@ fun Modifier.settingsBottomInsets(): Modifier =
 fun HeaderTranslucentBackdrop(
     modifier: Modifier = Modifier,
     containerColor: Color = Color(0xFFFFFFFF),
-    containerAlpha: Float = 0.92f
+    containerAlpha: Float = 0.82f
 ) {
-    val topColor = containerColor.copy(alpha = containerAlpha)
-    val midColor = containerColor.copy(alpha = containerAlpha * 0.55f)
-    Spacer(
-        modifier = modifier.background(
-            Brush.verticalGradient(
-                0.0f to topColor,
-                0.55f to topColor,
-                0.78f to midColor,
-                1.0f to Color.Transparent
+    val topColor = containerColor.copy(alpha = containerAlpha.coerceIn(0.62f, 0.9f))
+    val midColor = containerColor.copy(alpha = (containerAlpha * 0.66f).coerceIn(0.42f, 0.76f))
+    val glassHighlight = Color.White.copy(alpha = 0.24f)
+    val glassEdge = Color.Black.copy(alpha = 0.07f)
+
+    Box(modifier = modifier) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Spacer(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        renderEffect =
+                            android.graphics.RenderEffect
+                                .createBlurEffect(26f, 26f, Shader.TileMode.CLAMP)
+                                .asComposeRenderEffect()
+                    }
+                    .background(Color.White.copy(alpha = 0.10f))
             )
+        }
+
+        Spacer(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to topColor,
+                        0.52f to topColor,
+                        0.78f to midColor,
+                        1.0f to Color.Transparent
+                    )
+                )
         )
-    )
+        Spacer(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to glassHighlight,
+                        0.45f to Color.Transparent,
+                        1.0f to Color.Transparent
+                    )
+                )
+        )
+        Spacer(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(0.6.dp)
+                .background(glassEdge)
+        )
+    }
 }
 
 /**

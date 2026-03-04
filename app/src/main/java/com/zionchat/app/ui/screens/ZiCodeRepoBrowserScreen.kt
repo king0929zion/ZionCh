@@ -423,7 +423,7 @@ private fun toFriendlyRepoError(raw: String): String {
     val text = raw.trim()
     if (text.isBlank()) return "读取仓库失败，请稍后重试。"
     return when {
-        text.contains("Git Repository is empty", ignoreCase = true) -> "该仓库为空，请先提交初始代码后再使用 ZiCode。"
+        text.contains("Git Repository is empty", ignoreCase = true) -> "该仓库为空。可直接在 ZiCode 对话中发送任务，系统会自动初始化首个提交。"
         text.contains("404", ignoreCase = true) -> "目标目录或文件不存在，或当前账号没有访问权限。"
         text.contains("PAT", ignoreCase = true) -> "PAT 无效或已过期，请在 ZiCode 设置中更新。"
         text.contains("rate limit", ignoreCase = true) -> "GitHub 请求频率受限，请稍后再试。"

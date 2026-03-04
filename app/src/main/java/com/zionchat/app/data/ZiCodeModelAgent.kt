@@ -170,10 +170,6 @@ class ZiCodeModelAgent(
                     } else {
                         val friendly = buildFriendlyToolError(toolName, callResult.error)
                         stepSummaries += "工具 `$toolName` 失败：$friendly"
-                        if (isRepositoryEmptyError(callResult.error)) {
-                            finalAnswer = "当前仓库还是空仓库，先创建至少一个提交后再执行开发任务。你可以先在仓库新建 README，再让我继续自动化。"
-                            break
-                        }
                     }
                 }
 
@@ -584,7 +580,7 @@ class ZiCodeModelAgent(
 
     private fun buildFriendlyToolError(toolName: String, rawError: String?): String {
         if (isRepositoryEmptyError(rawError)) {
-            return "仓库为空，暂时无法执行 `$toolName`。请先创建初始提交。"
+            return "仓库为空，ZiCode 已尝试自动初始化；若仍失败请检查 `$toolName` 所需写权限。"
         }
         val compact = rawError.orEmpty().trim().replace("\n", " ").replace(Regex("\\s+"), " ")
         return compact.ifBlank { "unknown error" }.take(180)
