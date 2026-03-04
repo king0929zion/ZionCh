@@ -88,9 +88,7 @@ import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.ZiCodeGitHubRepo
 import com.zionchat.app.data.ZiCodeMessage
 import com.zionchat.app.data.ZiCodeModelAgent
-import com.zionchat.app.data.ZiCodeRunRecord
 import com.zionchat.app.data.ZiCodeSettings
-import com.zionchat.app.data.ZiCodeToolCall
 import com.zionchat.app.data.ZiCodeWorkspace
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.AppModalBottomSheet
@@ -104,7 +102,6 @@ import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.Surface
 import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.ui.theme.TextSecondary
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -134,8 +131,6 @@ fun ZiCodeScreen(navController: NavController) {
     val workspaces by repository.zicodeWorkspacesFlow.collectAsState(initial = emptyList())
     val sessions by repository.zicodeSessionsFlow.collectAsState(initial = emptyList())
     val allMessages by repository.zicodeMessagesFlow.collectAsState(initial = emptyList())
-    val allToolCalls by repository.zicodeToolCallsFlow.collectAsState(initial = emptyList())
-    val allRuns by repository.zicodeRunsFlow.collectAsState(initial = emptyList())
 
     var remoteRepos by remember { mutableStateOf<List<ZiCodeGitHubRepo>>(emptyList()) }
     var reposLoading by remember { mutableStateOf(false) }
@@ -179,15 +174,9 @@ fun ZiCodeScreen(navController: NavController) {
     var selectedSessionId by remember { mutableStateOf<String?>(null) }
     var inputText by remember { mutableStateOf("") }
     var isRunningTask by remember { mutableStateOf(false) }
-    var showDebugDetails by remember { mutableStateOf(false) }
 
     var showWorkspaceSheet by remember { mutableStateOf(false) }
     val workspaceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    val hintLoadToolSpecText = stringResource(R.string.zicode_hint_load_toolspec)
-    val hintListTreeText = stringResource(R.string.zicode_hint_list_tree)
-    val hintSearchText = stringResource(R.string.zicode_hint_search)
-    val hintReadFileText = stringResource(R.string.zicode_hint_read_file)
 
     LaunchedEffect(zicodeSettings.pat) {
         val token = zicodeSettings.pat.trim()
@@ -229,28 +218,6 @@ fun ZiCodeScreen(navController: NavController) {
         val sid = selectedSessionId?.trim().orEmpty()
         if (sid.isBlank()) emptyList() else allMessages.filter { it.sessionId == sid }.sortedBy { it.createdAt }
     }
-    val currentSessionToolCalls = remember(allToolCalls, selectedSessionId) {
-        val sid = selectedSessionId?.trim().orEmpty()
-        if (sid.isBlank()) {
-            emptyList()
-        } else {
-            allToolCalls
-                .filter { it.sessionId == sid }
-                .sortedByDescending { it.startedAt }
-                .take(16)
-        }
-    }
-    val currentSessionRuns = remember(allRuns, selectedSessionId) {
-        val sid = selectedSessionId?.trim().orEmpty()
-        if (sid.isBlank()) {
-            emptyList()
-        } else {
-            allRuns
-                .filter { it.sessionId == sid }
-                .sortedByDescending { it.updatedAt }
-                .take(6)
-        }
-    }
     val selectedSession = remember(sessions, selectedSessionId) {
         val sid = selectedSessionId?.trim().orEmpty()
         if (sid.isBlank()) null else sessions.firstOrNull { it.id == sid }
@@ -287,14 +254,7 @@ fun ZiCodeScreen(navController: NavController) {
                         ZiCodeMessage(
                             sessionId = sid,
                             role = "assistant",
-                            content = "Welcome to ZiCode. Describe your coding task and I will run a model-driven GitHub agent loop.",
-                            toolHints =
-                                listOf(
-                                    hintLoadToolSpecText,
-                                    hintListTreeText,
-                                    "输入 `/tool <tool_name> <json>` 可直接调用工具，例如 `/tool repo.list_tree {\"ref\":\"main\"}`",
-                                    "MCP 示例：`/tool mcp.list_servers {}`、`/tool mcp.call_tool {\"server_id\":\"...\",\"tool_name\":\"...\",\"arguments\":{}}`"
-                                )
+                            content = "请描述你的编码目标，我会开始执行。"
                         )
                     )
                 }
@@ -338,8 +298,7 @@ fun ZiCodeScreen(navController: NavController) {
                     ZiCodeMessage(
                         sessionId = sid,
                         role = "assistant",
-                        content = "当前会话绑定的仓库已不可用。请返回项目列表重新进入目标仓库，或新建会话。",
-                        toolHints = listOf("会话与仓库是一一绑定关系，不能跨仓库继续执行")
+                        content = "当前会话绑定的仓库已不可用。请返回项目列表重新进入目标仓库，或新建会话。"
                     )
                 )
             }
@@ -375,18 +334,16 @@ fun ZiCodeScreen(navController: NavController) {
                             toolName = directTool.first,
                             argsJson = directTool.second
                         )
-                    val preview = toolResult.resultJson.orEmpty().take(900)
                     repository.appendZiCodeMessage(
                         ZiCodeMessage(
                             sessionId = sid,
                             role = "assistant",
                             content =
                                 if (toolResult.success) {
-                                    "工具 `${directTool.first}` 执行成功。\n\n$preview"
+                                    "工具 `${directTool.first}` 执行成功。"
                                 } else {
                                     "工具 `${directTool.first}` 执行失败：${toolResult.error.orEmpty()}"
-                                },
-                            toolHints = listOf(toolResult.userHint.ifBlank { hintLoadToolSpecText })
+                                }
                         )
                     )
                     return@launch
@@ -403,8 +360,7 @@ fun ZiCodeScreen(navController: NavController) {
                         ZiCodeMessage(
                             sessionId = sid,
                             role = "assistant",
-                            content = "ZiCode 模型未配置或不可用。请前往 Settings -> Default Model 先设置 ZiCode 默认模型。",
-                            toolHints = listOf("前往 Settings -> Default Model 设置 ZiCode 默认模型")
+                            content = "ZiCode 模型未配置或不可用。请前往 Settings -> Default Model 设置 ZiCode 默认模型。"
                         )
                     )
                     return@launch
@@ -421,23 +377,11 @@ fun ZiCodeScreen(navController: NavController) {
                         userPrompt = trimmed,
                         recentMessages = recentMessages
                     )
-                val latestHints =
-                    repository.zicodeToolCallsFlow.first()
-                        .filter { it.sessionId == sid }
-                        .sortedByDescending { it.startedAt }
-                        .mapNotNull { call -> call.userHint.takeIf { it.isNotBlank() } }
-                        .distinct()
-                        .take(6)
                 repository.appendZiCodeMessage(
                     ZiCodeMessage(
                         sessionId = sid,
                         role = "assistant",
-                        content = summary.finalMessage,
-                        toolHints =
-                            summary.toolHints
-                                .ifEmpty {
-                                    latestHints.ifEmpty { listOf(hintListTreeText, hintSearchText, hintReadFileText) }
-                                }
+                        content = summary.finalMessage
                     )
                 )
             } catch (throwable: Throwable) {
@@ -445,8 +389,7 @@ fun ZiCodeScreen(navController: NavController) {
                     ZiCodeMessage(
                         sessionId = sid,
                         role = "assistant",
-                        content = "任务执行失败：${throwable.message ?: "Unknown error"}",
-                        toolHints = listOf(hintLoadToolSpecText)
+                        content = "任务执行失败：${throwable.message ?: "Unknown error"}"
                     )
                 )
             } finally {
@@ -534,11 +477,7 @@ fun ZiCodeScreen(navController: NavController) {
             )
             ZiCodeChatMessages(
                 messages = currentSessionMessages,
-                toolCalls = currentSessionToolCalls,
-                runs = currentSessionRuns,
                 isRunningTask = isRunningTask,
-                showDebugDetails = showDebugDetails,
-                onToggleDebug = { showDebugDetails = !showDebugDetails },
                 modifier = Modifier.weight(1f)
             )
             ZiCodeInputBar(
@@ -940,11 +879,7 @@ private fun CircleActionButton(
 @Composable
 private fun ZiCodeChatMessages(
     messages: List<ZiCodeMessage>,
-    toolCalls: List<ZiCodeToolCall>,
-    runs: List<ZiCodeRunRecord>,
     isRunningTask: Boolean,
-    showDebugDetails: Boolean,
-    onToggleDebug: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val list = if (messages.isEmpty()) {
@@ -952,15 +887,13 @@ private fun ZiCodeChatMessages(
             ZiCodeMessage(
                 sessionId = "empty",
                 role = "assistant",
-                content = "Start by describing your coding goal. ZiCode will run a GitHub-based execution loop.",
+                content = "开始描述你的任务。",
                 toolHints = emptyList()
             )
         )
     } else {
         messages
     }
-    val callsToShow = toolCalls.take(8)
-    val runsToShow = runs.take(3)
 
     LazyColumn(
         modifier = modifier
@@ -1009,21 +942,6 @@ private fun ZiCodeChatMessages(
                     }
                 }
             }
-            if (!isUser && message.toolHints.isNotEmpty()) {
-                Column(
-                    modifier = Modifier.padding(start = 2.dp, top = 2.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    message.toolHints.forEach { hint ->
-                        Text(
-                            text = "• $hint",
-                            color = TextSecondary,
-                            fontSize = 12.sp,
-                            fontFamily = SourceSans3
-                        )
-                    }
-                }
-            }
         }
         if (isRunningTask) {
             item(key = "zicode_running") {
@@ -1045,145 +963,6 @@ private fun ZiCodeChatMessages(
                         fontFamily = SourceSans3,
                         fontWeight = FontWeight.Medium,
                         color = TextSecondary
-                    )
-                }
-            }
-        }
-        if ((callsToShow.isNotEmpty() || runsToShow.isNotEmpty()) && !showDebugDetails) {
-            item(key = "zicode_debug_toggle_open") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .pressableScale(pressedScale = 0.98f, onClick = onToggleDebug)
-                        .padding(horizontal = 2.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "显示执行详情",
-                        fontSize = 12.sp,
-                        fontFamily = SourceSans3,
-                        fontWeight = FontWeight.Medium,
-                        color = TextSecondary
-                    )
-                    Icon(
-                        imageVector = AppIcons.ChevronRight,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-            }
-        }
-        if (showDebugDetails && (callsToShow.isNotEmpty() || runsToShow.isNotEmpty())) {
-            item(key = "zicode_debug_toggle_close") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .pressableScale(pressedScale = 0.98f, onClick = onToggleDebug)
-                        .padding(horizontal = 2.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "收起执行详情",
-                        fontSize = 12.sp,
-                        fontFamily = SourceSans3,
-                        fontWeight = FontWeight.Medium,
-                        color = TextSecondary
-                    )
-                    Icon(
-                        imageVector = AppIcons.ChevronRight,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier
-                            .size(14.dp)
-                            .graphicsLayer { rotationZ = 90f }
-                    )
-                }
-            }
-        }
-        if (showDebugDetails && callsToShow.isNotEmpty()) {
-            item(key = "zicode_tool_call_title") {
-                Text(
-                    text = "Tool Calls",
-                    fontSize = 12.sp,
-                    fontFamily = SourceSans3,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(top = 4.dp, start = 2.dp)
-                )
-            }
-            items(callsToShow, key = { "tool_${it.id}" }) { call ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 2.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
-                        text = call.userHint.ifBlank { "⏳ 正在执行工具调用…" },
-                        fontSize = 13.sp,
-                        fontFamily = SourceSans3,
-                        fontWeight = FontWeight.Medium,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "`${call.toolName}` · ${call.status}",
-                        fontSize = 12.sp,
-                        fontFamily = SourceSans3,
-                        color =
-                            when (call.status) {
-                                "success" -> Color(0xFF0A7D34)
-                                "error" -> Color(0xFFB3261E)
-                                else -> TextSecondary
-                            }
-                    )
-                    if (!call.error.isNullOrBlank()) {
-                        Text(
-                            text = call.error.orEmpty(),
-                            fontSize = 12.sp,
-                            fontFamily = SourceSans3,
-                            color = Color(0xFFB3261E),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-        }
-        if (showDebugDetails && runsToShow.isNotEmpty()) {
-            item(key = "zicode_runs_title") {
-                Text(
-                    text = "Workflow Runs",
-                    fontSize = 12.sp,
-                    fontFamily = SourceSans3,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(top = 2.dp, start = 2.dp)
-                )
-            }
-            items(runsToShow, key = { "run_${it.id}" }) { run ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 2.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
-                        text = "${run.workflow} · #${run.runId ?: 0}",
-                        fontSize = 13.sp,
-                        fontFamily = SourceSans3,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = run.summary.ifBlank { run.status },
-                        fontSize = 12.sp,
-                        fontFamily = SourceSans3,
-                        color = TextSecondary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

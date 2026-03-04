@@ -12,11 +12,6 @@
     <string name="zicode_empty_title">ZiCode is ready</string>
     <string name="zicode_empty_subtitle">Connect a GitHub repository to start the coding agent workflow.</string>
     <string name="zicode_input_placeholder">Describe the coding task...</string>
-    <string name="zicode_assistant_mock_reply">Received. I will start with repository analysis and then orchestrate patch + workflow execution.</string>
-    <string name="zicode_hint_load_toolspec">📖 正在加载能力说明…</string>
-    <string name="zicode_hint_list_tree">📂 正在读取仓库文件结构…</string>
-    <string name="zicode_hint_search">🔍 正在搜索关键字 `workflow`…</string>
-    <string name="zicode_hint_read_file">📄 正在读取文件 `build.gradle`…</string>
     <string name="zicode_workspace_title">Workspace</string>
     <string name="zicode_workspace_saved">Saved repositories</string>
     <string name="zicode_workspace_owner">Owner</string>

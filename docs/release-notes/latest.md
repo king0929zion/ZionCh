@@ -1,5 +1,5 @@
-## ZionChat v0.31.74
+## ZionChat v0.31.75
 
-- 修复 ZiCode 编译失败：`ZiCodeModelAgent` 中 `toolHints` 聚合改为先转 `List` 后截断，消除 `takeLast` 类型错误。
-- 修复 ZiCode 输入栏编译错误：补充 `WindowInsets.ime` 所需 import，恢复键盘顶起相关代码构建。
-- 保持 `0.31.73` 的会话仓库绑定与默认模型清理逻辑不变，仅做稳定性修复。
+- 精简 ZiCode 对话页提示：移除欢迎页冗余引导、消息下方工具提示列表与技术调试折叠区。
+- 精简工具直调回显：成功时仅保留简洁结果，不再回显大段 JSON 内容。
+- 清理未使用的 ZiCode 文案资源（旧 hint/mock 文案），降低界面噪声并统一主对话阅读体验。
