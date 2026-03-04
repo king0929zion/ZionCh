@@ -80,7 +80,7 @@ class DefaultZiCodeToolDispatcher(
                 "repo.search" -> handleRepoSearch(workspace, requirePat(), args)
                 "repo.get_file_meta" -> handleRepoFileMeta(workspace, requirePat(), args)
                 "repo.list_branches" -> handleRepoListBranches(workspace, requirePat(), args)
-                "repo.create_branch" -> handleRepoCreateBranch(workspace, requirePat(), args)
+                "repo.create_branch" -> handleRepoCreateBranch(sessionId, workspace, requirePat(), args)
                 "repo.replace_range" -> handleRepoReplaceRange(sessionId, workspace, requirePat(), args)
                 "repo.apply_patch" -> handleRepoApplyPatch(sessionId, workspace, requirePat(), args)
                 "repo.commit_push" -> handleRepoCommitPush(sessionId, workspace, requirePat(), args)
@@ -135,15 +135,53 @@ class DefaultZiCodeToolDispatcher(
     }
 
     private fun handleRepoListTree(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
-        val ref = args.stringOrDefault("ref", workspace.defaultBranch)
-        val tree = getGitTree(workspace, pat, ref, recursive = true)
+        val ref =
+            args.stringOrDefault("ref", workspace.defaultBranch)
+                .trim()
+                .ifBlank { workspace.defaultBranch.ifBlank { "main" } }
+        val tree =
+            runCatching {
+                getGitTree(workspace, pat, ref, recursive = true)
+            }.getOrElse { throwable ->
+                if (isRepositoryEmptyError(throwable.message)) {
+                    runCatching {
+                        initializeRepositoryIfEmpty(workspace, pat, ref)
+                    }.getOrElse { initError ->
+                        error(
+                            "仓库为空，自动初始化失败：${initError.message.orEmpty().ifBlank { "unknown error" }}"
+                        )
+                    }
+                    getGitTree(workspace, pat, ref, recursive = true)
+                } else {
+                    throw throwable
+                }
+            }
         return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(tree), userHint = "📂 正在读取仓库文件结构…")
     }
 
     private fun handleRepoListDir(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
-        val ref = args.stringOrDefault("ref", workspace.defaultBranch)
+        val ref =
+            args.stringOrDefault("ref", workspace.defaultBranch)
+                .trim()
+                .ifBlank { workspace.defaultBranch.ifBlank { "main" } }
         val path = args.stringOrDefault("path", "")
-        val list = listDirectory(workspace, pat, ref, path)
+        val list =
+            runCatching {
+                listDirectory(workspace, pat, ref, path)
+            }.getOrElse { throwable ->
+                if (isRepositoryEmptyError(throwable.message)) {
+                    runCatching {
+                        initializeRepositoryIfEmpty(workspace, pat, ref)
+                    }.getOrElse { initError ->
+                        error(
+                            "仓库为空，自动初始化失败：${initError.message.orEmpty().ifBlank { "unknown error" }}"
+                        )
+                    }
+                    listDirectory(workspace, pat, ref, path)
+                } else {
+                    throw throwable
+                }
+            }
         return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(list), userHint = "📁 正在浏览目录…")
     }
 
@@ -179,14 +217,39 @@ class DefaultZiCodeToolDispatcher(
     }
 
     private suspend fun handleRepoCreateBranch(
+        sessionId: String,
         workspace: ZiCodeWorkspace,
         pat: String,
         args: JsonObject
     ): ZiCodeToolDispatchResult {
         val baseRef = args.stringOrDefault("base", workspace.defaultBranch)
-        val branch = args.requireString("branch")
-        val result = createBranch(workspace, pat, branch, baseRef)
-        return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(result), userHint = "🌿 正在创建分支 `$branch`…")
+        val requestedBranch = args.stringOrDefault("branch", "").trim()
+        val resolvedBranch =
+            requestedBranch.ifBlank { "ai/task-${System.currentTimeMillis()}" }
+
+        val result = createBranch(workspace, pat, resolvedBranch, baseRef)
+
+        // Persist the resolved branch to the current session so subsequent calls reuse it.
+        val existing = repository.zicodeSessionsFlow.first().firstOrNull { it.id == sessionId }
+        if (existing != null && existing.branchName.isNullOrBlank()) {
+            repository.upsertZiCodeSession(
+                existing.copy(
+                    branchName = resolvedBranch,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+
+        val payload =
+            JsonObject().apply {
+                addProperty("branch", resolvedBranch)
+                add("ref", result)
+            }
+        return ZiCodeToolDispatchResult(
+            success = true,
+            resultJson = gson.toJson(payload),
+            userHint = "🌿 正在创建分支 `$resolvedBranch`…"
+        )
     }
 
     private suspend fun handleRepoReplaceRange(
@@ -580,7 +643,10 @@ class DefaultZiCodeToolDispatcher(
             "repo.search" -> "🔍 正在搜索关键字 `${args.stringOrDefault("keyword", "")}`…"
             "repo.get_file_meta" -> "ℹ️ 正在获取文件信息…"
             "repo.list_branches" -> "🌿 正在读取分支列表…"
-            "repo.create_branch" -> "🌿 正在创建分支 `${args.stringOrDefault("branch", "")}`…"
+            "repo.create_branch" -> {
+                val branch = args.stringOrDefault("branch", "")
+                if (branch.isBlank()) "🌿 正在创建分支…" else "🌿 正在创建分支 `$branch`…"
+            }
             "repo.apply_patch" -> "🩹 正在应用代码补丁…"
             "repo.replace_range" -> "✏️ 正在修改文件 `${args.stringOrDefault("path", "")}`…"
             "repo.commit_push" -> "📤 正在提交并推送代码…"

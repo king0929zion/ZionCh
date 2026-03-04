@@ -181,6 +181,20 @@ class ZiCodeModelAgent(
 
         val finalText =
             finalAnswer
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: runCatching {
+                    tryForceFinalAnswer(
+                        provider = resolvedProvider,
+                        modelId = modelId,
+                        modelHeaders = model.headers,
+                        workspace = workspace,
+                        userPrompt = userPrompt,
+                        stepSummaries = stepSummaries
+                    )
+                }.getOrNull()
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
                 ?: buildFallbackSummary(stepSummaries, lastWorkflowHint)
 
         return ZiCodeModelAgentResult(
@@ -568,22 +582,93 @@ class ZiCodeModelAgent(
         return clean.replace("\n", " ").replace(Regex("\\s+"), " ").take(180)
     }
 
+    private suspend fun tryForceFinalAnswer(
+        provider: ProviderConfig,
+        modelId: String,
+        modelHeaders: List<HttpHeader>,
+        workspace: ZiCodeWorkspace,
+        userPrompt: String,
+        stepSummaries: List<String>
+    ): String {
+        if (stepSummaries.isEmpty()) return ""
+        val lastSteps =
+            stepSummaries
+                .takeLast(10)
+                .map { stripToolSummaryPrefix(it).take(220) }
+                .filter { it.isNotBlank() }
+                .takeLast(8)
+        if (lastSteps.isEmpty()) return ""
+
+        val prompt =
+            buildString {
+                appendLine("请基于用户任务与已执行步骤，给出简洁的最终答复。")
+                appendLine("只允许输出 JSON envelope，且必须是 final_answer，不要 tool_call，不要解释。")
+                appendLine("用户任务：$userPrompt")
+                appendLine("工作区：${workspace.owner}/${workspace.repo}（分支：${workspace.defaultBranch}）")
+                appendLine("已执行步骤：")
+                lastSteps.forEach { appendLine("- $it") }
+                appendLine("""{"type":"final_answer","final_answer":"..."}""")
+            }
+        val raw =
+            chatApiClient.chatCompletions(
+                provider = provider,
+                modelId = modelId,
+                messages = listOf(
+                    Message(role = "system", content = "只返回合法 JSON，type 必须是 final_answer。"),
+                    Message(role = "user", content = prompt)
+                ),
+                extraHeaders = modelHeaders,
+                reasoningEffort = "none",
+                enableThinking = false,
+                maxTokens = 800
+            ).getOrNull().orEmpty().trim()
+        val envelope = parseEnvelope(raw) ?: return ""
+        if (envelope.type.lowercase() != "final_answer") return ""
+        return envelope.finalAnswer.orEmpty().trim()
+    }
+
     private fun buildFallbackSummary(stepSummaries: List<String>, workflowHint: String?): String {
-        if (stepSummaries.isEmpty() && workflowHint.isNullOrBlank()) {
-            return "任务已执行，但未产出可展示摘要。"
+        val lastError =
+            stepSummaries.lastOrNull { line ->
+                line.contains("失败") || line.contains("异常")
+            }?.let(::stripToolSummaryPrefix)
+
+        if (!lastError.isNullOrBlank()) {
+            return buildString {
+                append("执行遇到问题：")
+                append(lastError.take(220))
+                appendLine()
+                append("你可以直接重试；如果反复失败，请检查 PAT 是否具备仓库写入权限。")
+            }.trim()
         }
-        val lines = mutableListOf<String>()
-        workflowHint?.takeIf { it.isNotBlank() }?.let { lines += it }
-        stepSummaries.takeLast(3).forEach { lines += it }
-        return lines.joinToString("\n")
+
+        workflowHint?.takeIf { it.isNotBlank() }?.let { hint ->
+            return hint.trim()
+        }
+
+        val lastStep = stepSummaries.lastOrNull()?.let(::stripToolSummaryPrefix).orEmpty()
+        return if (lastStep.isNotBlank()) {
+            "已执行完成。"
+        } else {
+            "任务已执行，但未产出可展示摘要。"
+        }
     }
 
     private fun buildFriendlyToolError(toolName: String, rawError: String?): String {
         if (isRepositoryEmptyError(rawError)) {
-            return "仓库为空，ZiCode 已尝试自动初始化；若仍失败请检查 `$toolName` 所需写权限。"
+            return "仓库为空，我会自动初始化首个提交后继续；若仍失败，请检查 PAT 是否有写入权限。"
         }
         val compact = rawError.orEmpty().trim().replace("\n", " ").replace(Regex("\\s+"), " ")
-        return compact.ifBlank { "unknown error" }.take(180)
+        return compact.ifBlank { "unknown error" }.take(160)
+    }
+
+    private fun stripToolSummaryPrefix(text: String): String {
+        val trimmed = text.trim()
+        return trimmed
+            .replace(Regex("^工具\\s+`[^`]+`\\s+调用异常：\\s*"), "")
+            .replace(Regex("^工具\\s+`[^`]+`\\s+失败：\\s*"), "")
+            .replace(Regex("^工具\\s+`[^`]+`\\s+成功：\\s*"), "")
+            .trim()
     }
 
     private fun isRepositoryEmptyError(rawError: String?): Boolean {

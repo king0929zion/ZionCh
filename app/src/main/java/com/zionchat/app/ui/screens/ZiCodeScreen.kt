@@ -95,6 +95,7 @@ import com.zionchat.app.data.ZiCodeSettings
 import com.zionchat.app.data.ZiCodeWorkspace
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.AppModalBottomSheet
+import com.zionchat.app.ui.components.FooterTranslucentBackdrop
 import com.zionchat.app.ui.components.HeaderTranslucentBackdrop
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
@@ -591,7 +592,8 @@ private fun ZiCodeListHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .matchParentSize(),
-            containerColor = ChatBackground
+            containerColor = Color.White,
+            containerAlpha = 0.92f
         )
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -803,7 +805,8 @@ private fun ZiCodeChatHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .matchParentSize(),
-            containerColor = ChatBackground
+            containerColor = Color.White,
+            containerAlpha = 0.92f
         )
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -1028,6 +1031,11 @@ private fun ZiCodeInputBar(
             .padding(horizontal = 16.dp, vertical = 6.dp),
         contentAlignment = Alignment.BottomStart
     ) {
+        FooterTranslucentBackdrop(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.White,
+            containerAlpha = 0.92f
+        )
         Box(
             modifier = Modifier
                 .fillMaxWidth()

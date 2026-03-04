@@ -69,7 +69,6 @@ fun HeaderTranslucentBackdrop(
     val topColor = containerColor.copy(alpha = containerAlpha.coerceIn(0.62f, 0.9f))
     val midColor = containerColor.copy(alpha = (containerAlpha * 0.66f).coerceIn(0.42f, 0.76f))
     val glassHighlight = Color.White.copy(alpha = 0.24f)
-    val glassEdge = Color.Black.copy(alpha = 0.07f)
 
     Box(modifier = modifier) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -109,12 +108,56 @@ fun HeaderTranslucentBackdrop(
                     )
                 )
         )
+    }
+}
+
+@Composable
+fun FooterTranslucentBackdrop(
+    modifier: Modifier = Modifier,
+    containerColor: Color = Color(0xFFFFFFFF),
+    containerAlpha: Float = 0.82f
+) {
+    val bottomColor = containerColor.copy(alpha = containerAlpha.coerceIn(0.62f, 0.9f))
+    val midColor = containerColor.copy(alpha = (containerAlpha * 0.66f).coerceIn(0.42f, 0.76f))
+    val glassHighlight = Color.White.copy(alpha = 0.22f)
+
+    Box(modifier = modifier) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Spacer(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        renderEffect =
+                            android.graphics.RenderEffect
+                                .createBlurEffect(26f, 26f, Shader.TileMode.CLAMP)
+                                .asComposeRenderEffect()
+                    }
+                    .background(Color.White.copy(alpha = 0.10f))
+            )
+        }
+
         Spacer(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(0.6.dp)
-                .background(glassEdge)
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.Transparent,
+                        0.22f to midColor,
+                        0.58f to bottomColor,
+                        1.0f to bottomColor
+                    )
+                )
+        )
+        Spacer(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.Transparent,
+                        0.62f to Color.Transparent,
+                        1.0f to glassHighlight
+                    )
+                )
         )
     }
 }

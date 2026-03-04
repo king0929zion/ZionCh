@@ -45,12 +45,14 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.LocalZiCodeGitHubService
+import com.zionchat.app.R
 import com.zionchat.app.data.ZiCodeRepoEntry
 import com.zionchat.app.data.ZiCodeRepoFile
 import com.zionchat.app.ui.components.AppModalBottomSheet
 import com.zionchat.app.ui.components.PageTopBar
 import com.zionchat.app.ui.components.PageTopBarContentTopPadding
 import com.zionchat.app.ui.components.pressableScale
+import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.Surface
@@ -384,9 +386,9 @@ private fun RepoEntryRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Icon(
-            imageVector = AppIcons.Files,
+            painter = rememberResourceDrawablePainter(R.drawable.ic_zicode_repo),
             contentDescription = null,
-            tint = TextPrimary,
+            tint = Color.Unspecified,
             modifier = Modifier.size(18.dp)
         )
         Column(modifier = Modifier.weight(1f)) {
