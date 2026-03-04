@@ -323,14 +323,27 @@ fun ZiCodeScreen(navController: NavController) {
         val sid = selectedSessionId?.trim().orEmpty()
         val trimmed = inputText.trim()
         if (trimmed.isBlank()) return
+        val session = sessions.firstOrNull { it.id == sid }
         val workspace =
             if (sid.isBlank()) {
                 currentWorkspace
             } else {
-                val session = sessions.firstOrNull { it.id == sid }
                 val workspaceId = session?.workspaceId?.trim().orEmpty()
-                workspaces.firstOrNull { it.id == workspaceId } ?: currentWorkspace
+                workspaces.firstOrNull { it.id == workspaceId }
             }
+        if (sid.isNotBlank() && session != null && workspace == null) {
+            scope.launch {
+                repository.appendZiCodeMessage(
+                    ZiCodeMessage(
+                        sessionId = sid,
+                        role = "assistant",
+                        content = "当前会话绑定的仓库已不可用。请返回项目列表重新进入目标仓库，或新建会话。",
+                        toolHints = listOf("会话与仓库是一一绑定关系，不能跨仓库继续执行")
+                    )
+                )
+            }
+            return
+        }
         if (workspace == null) {
             showWorkspaceSheet = true
             return

@@ -1,6 +1,5 @@
-## ZionChat v0.31.72
+## ZionChat v0.31.73
 
-- ZiCode 主执行链路改为模型驱动：由模型持续决策 `tool_call/final_answer`，不再走固定工作流编排。
-- 新增 `ZiCodeModelAgent`，支持工具调用结果回灌、JSON envelope 解析重试与基础自愈循环。
-- ZiCode 发送逻辑接入默认 ZiCode 模型配置；未配置时给出明确引导，不再静默失败。
-- ZiCode 对话页继续保留 `/tool` 直调能力，并优化工具提示聚合展示。
+- ZiCode 会话执行严格绑定仓库：发送消息只使用会话绑定的 workspace，不再回退到全局仓库。
+- 当会话绑定仓库失效时，改为明确提示并阻止继续执行，避免跨仓库串任务。
+- 清理默认模型回收逻辑：删除 Provider/Model 时会同步清理 `ZiCode` 默认模型引用，防止悬空配置。

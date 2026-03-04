@@ -1016,6 +1016,7 @@ class AppRepository(context: Context) {
             maybeClearDefaultModel(defaultTitleModelIdKey)
             maybeClearDefaultModel(defaultAppBuilderModelIdKey)
             maybeClearDefaultModel(defaultAutoSoulModelIdKey)
+            maybeClearDefaultModel(defaultZiCodeModelIdKey)
         }
     }
 
@@ -1098,6 +1099,7 @@ class AppRepository(context: Context) {
             maybeClearDefaultModel(defaultTitleModelIdKey)
             maybeClearDefaultModel(defaultAppBuilderModelIdKey)
             maybeClearDefaultModel(defaultAutoSoulModelIdKey)
+            maybeClearDefaultModel(defaultZiCodeModelIdKey)
         }
     }
 
