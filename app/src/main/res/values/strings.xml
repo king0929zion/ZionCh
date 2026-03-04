@@ -32,7 +32,7 @@
     <string name="zicode_workspace_check_failed">Connection check failed.</string>
     <string name="zicode_workspace_save_use">Save &amp; Use</string>
     <string name="zicode_workspace_incomplete_pat">Please enter a GitHub PAT first.</string>
-    <string name="zicode_settings_title">ZiCode Settings</string>
+    <string name="zicode_settings_title">ZiCode</string>
     <string name="zicode_settings_save_pat">Save PAT</string>
     <string name="zicode_settings_pat_saved">PAT saved.</string>
     <string name="zicode_settings_sync_projects">Sync Projects</string>
@@ -82,7 +82,7 @@
     <string name="settings_item_search">Search</string>
     <string name="settings_item_mcp_tools">MCP Tools</string>
     <string name="settings_item_autosoul">AutoSoul</string>
-    <string name="settings_item_zicode_settings">ZiCode Settings</string>
+    <string name="settings_item_zicode_settings">ZiCode</string>
     <string name="settings_item_autobrowser">AutoBrowser</string>
 
     <string name="language_title">Language</string>

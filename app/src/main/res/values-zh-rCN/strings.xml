@@ -32,7 +32,7 @@
     <string name="zicode_workspace_check_failed">连接检查失败。</string>
     <string name="zicode_workspace_save_use">保存并使用</string>
     <string name="zicode_workspace_incomplete_pat">请先填写 GitHub PAT。</string>
-    <string name="zicode_settings_title">ZiCode 设置</string>
+    <string name="zicode_settings_title">ZiCode</string>
     <string name="zicode_settings_save_pat">保存 PAT</string>
     <string name="zicode_settings_pat_saved">PAT 已保存。</string>
     <string name="zicode_settings_sync_projects">同步项目</string>
@@ -82,7 +82,7 @@
     <string name="settings_item_search">搜索</string>
     <string name="settings_item_mcp_tools">MCP 工具</string>
     <string name="settings_item_autosoul">AutoSoul</string>
-    <string name="settings_item_zicode_settings">ZiCode 设置</string>
+    <string name="settings_item_zicode_settings">ZiCode</string>
     <string name="settings_item_autobrowser">AutoBrowser</string>
 
     <string name="language_title">Language</string>
