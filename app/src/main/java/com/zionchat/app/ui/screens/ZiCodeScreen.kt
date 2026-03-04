@@ -201,7 +201,8 @@ fun ZiCodeScreen(navController: NavController) {
                                 listOf(
                                     hintLoadToolSpecText,
                                     hintListTreeText,
-                                    "输入 `/tool <tool_name> <json>` 可直接调用工具，例如 `/tool repo.list_tree {\"ref\":\"main\"}`"
+                                    "输入 `/tool <tool_name> <json>` 可直接调用工具，例如 `/tool repo.list_tree {\"ref\":\"main\"}`",
+                                    "MCP 示例：`/tool mcp.list_servers {}`、`/tool mcp.call_tool {\"server_id\":\"...\",\"tool_name\":\"...\",\"arguments\":{}}`"
                                 )
                         )
                     )
@@ -1277,6 +1278,13 @@ private fun buildZiCodeTaskFromPrompt(
             )
     )
 
+    if (prompt.contains("mcp", ignoreCase = true) || prompt.contains("tool", ignoreCase = true)) {
+        calls += ZiCodePlannedToolCall(
+            toolName = "mcp.list_servers",
+            argsJson = "{}"
+        )
+    }
+
     extractSearchKeyword(prompt)?.let { keyword ->
         calls += ZiCodePlannedToolCall(
             toolName = "repo.search",
@@ -1312,6 +1320,16 @@ private fun buildZiCodeTaskFromPrompt(
                     JsonObject().apply {
                         addProperty("workflow", workflowFile)
                         addProperty("ref", workspace.defaultBranch)
+                    }
+                )
+        )
+        calls += ZiCodePlannedToolCall(
+            toolName = "actions.get_latest_run",
+            argsJson =
+                gson.toJson(
+                    JsonObject().apply {
+                        addProperty("workflow", workflowFile)
+                        addProperty("branch", workspace.defaultBranch)
                     }
                 )
         )

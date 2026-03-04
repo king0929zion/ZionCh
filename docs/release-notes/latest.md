@@ -1,11 +1,11 @@
-## ZionChat v0.31.64
+## ZionChat v0.31.65
 
-- ZiCode 聊天新增 `Direct Tool` 模式：
-  - 支持在输入框直接使用 `/tool <tool_name> <json>` 调用任意工具
-  - 结果会即时回显到聊天流，并写入可审计调用历史。
-- 会话欢迎提示补充了 `/tool` 用法示例，方便快速验证 `repo/actions/pages/policy` 全部能力。
-- 持续保留上一版本能力：
-  - 真实 Orchestrator 执行链
-  - Tool Calls / Workflow Runs 可视化追踪
-  - `policy.get_toolspec` 与 `policy.check_risk` 审计记录
-  - ZiCode 模块禁用本地 shell，仅使用 GitHub 驱动执行。
+- 主对话页底部工具菜单收起动画优化为 iOS 风格分段：先横向内收离开两侧，再向下收起，退出更顺滑。
+- About 页面顶部图标更新为当前应用图标（`@mipmap/ic_launcher`），与启动图标统一。
+- ZiCode 工具能力扩展：
+  - 新增 `mcp.list_servers`、`mcp.list_tools`、`mcp.call_tool`
+  - 新增 `repo.list_branches`、`actions.get_latest_run`
+  - `policy.get_toolspec` 同步包含新工具定义。
+- ZiCode 聊天任务规划增强：
+  - 当请求涉及 MCP/工具调用时，自动加入 `mcp.list_servers`
+  - 触发工作流后自动补一条 `actions.get_latest_run` 追踪最新 run。

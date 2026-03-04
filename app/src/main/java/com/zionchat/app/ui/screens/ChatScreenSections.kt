@@ -2449,17 +2449,27 @@ internal fun ToolMenuPanel(
                         .offset { IntOffset(0, panelOffsetPx.roundToInt()) }
                         .animateEnterExit(
                             enter =
+                                expandHorizontally(
+                                    expandFrom = Alignment.CenterHorizontally,
+                                    initialWidth = { fullWidth -> (fullWidth * 0.9f).roundToInt() },
+                                    animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing)
+                                ) +
                                 slideInVertically(
                                     initialOffsetY = { it / 2 },
-                                    animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing)
+                                    animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing)
                                 ) +
                                     fadeIn(animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing)),
                             exit =
+                                shrinkHorizontally(
+                                    shrinkTowards = Alignment.CenterHorizontally,
+                                    targetWidth = { fullWidth -> (fullWidth * 0.82f).roundToInt() },
+                                    animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing)
+                                ) +
                                 slideOutVertically(
                                     targetOffsetY = { it },
-                                    animationSpec = tween(durationMillis = 130, easing = FastOutSlowInEasing)
+                                    animationSpec = tween(durationMillis = 190, delayMillis = 80, easing = FastOutSlowInEasing)
                                 ) +
-                                    fadeOut(animationSpec = tween(durationMillis = 95, easing = FastOutSlowInEasing))
+                                    fadeOut(animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing))
                         )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },

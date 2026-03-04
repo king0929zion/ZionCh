@@ -76,7 +76,7 @@ fun AboutScreen(navController: NavController) {
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
-                            model = R.drawable.ic_app_logo,
+                            model = R.mipmap.ic_launcher,
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize()
                         )

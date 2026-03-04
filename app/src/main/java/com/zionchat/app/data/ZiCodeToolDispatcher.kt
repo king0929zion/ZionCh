@@ -41,6 +41,7 @@ class DefaultZiCodeToolDispatcher(
     private val repository: AppRepository,
     private val gitHubService: ZiCodeGitHubService,
     private val policyService: ZiCodePolicyService,
+    private val mcpClient: McpClient,
     private val client: OkHttpClient = OkHttpClient(),
     private val gson: Gson = Gson()
 ) : ZiCodeToolDispatcher {
@@ -70,33 +71,39 @@ class DefaultZiCodeToolDispatcher(
 
         val result = runCatching {
             val args = parseArgs(argsJson)
-            val pat = settings.pat.trim().ifBlank { error("PAT 未配置，无法执行工具调用") }
+            val configuredPat = settings.pat.trim()
+            fun requirePat(): String = configuredPat.ifBlank { error("PAT 未配置，无法执行 GitHub 工具调用") }
             when (toolName.trim()) {
-                "repo.list_tree" -> handleRepoListTree(workspace, pat, args)
-                "repo.list_dir" -> handleRepoListDir(workspace, pat, args)
-                "repo.read_file" -> handleRepoReadFile(workspace, pat, args)
-                "repo.search" -> handleRepoSearch(workspace, pat, args)
-                "repo.get_file_meta" -> handleRepoFileMeta(workspace, pat, args)
-                "repo.create_branch" -> handleRepoCreateBranch(workspace, pat, args)
-                "repo.replace_range" -> handleRepoReplaceRange(sessionId, workspace, pat, args)
-                "repo.apply_patch" -> handleRepoApplyPatch(sessionId, workspace, pat, args)
-                "repo.commit_push" -> handleRepoCommitPush(sessionId, workspace, pat, args)
-                "repo.create_pr" -> handleRepoCreatePr(workspace, pat, args)
-                "repo.comment_pr" -> handleRepoCommentPr(workspace, pat, args)
-                "repo.merge_pr" -> handleRepoMergePr(workspace, pat, args)
-                "actions.trigger_workflow" -> handleActionsTriggerWorkflow(workspace, pat, args)
-                "actions.get_run" -> handleActionsGetRun(workspace, pat, args)
-                "actions.get_logs_summary" -> handleActionsLogSummary(workspace, pat, args)
-                "actions.list_artifacts" -> handleActionsListArtifacts(workspace, pat, args)
-                "actions.download_artifact" -> handleActionsDownloadArtifact(workspace, pat, args)
-                "pages.get_settings" -> handlePagesGetSettings(workspace, pat)
-                "pages.enable" -> handlePagesEnable(workspace, pat, args)
-                "pages.set_source" -> handlePagesSetSource(workspace, pat, args)
-                "pages.get_deployments" -> handlePagesDeployments(workspace, pat)
-                "pages.get_latest_url" -> handlePagesLatestUrl(workspace, pat)
-                "pages.deploy" -> handlePagesDeploy(workspace, pat)
+                "repo.list_tree" -> handleRepoListTree(workspace, requirePat(), args)
+                "repo.list_dir" -> handleRepoListDir(workspace, requirePat(), args)
+                "repo.read_file" -> handleRepoReadFile(workspace, requirePat(), args)
+                "repo.search" -> handleRepoSearch(workspace, requirePat(), args)
+                "repo.get_file_meta" -> handleRepoFileMeta(workspace, requirePat(), args)
+                "repo.list_branches" -> handleRepoListBranches(workspace, requirePat(), args)
+                "repo.create_branch" -> handleRepoCreateBranch(workspace, requirePat(), args)
+                "repo.replace_range" -> handleRepoReplaceRange(sessionId, workspace, requirePat(), args)
+                "repo.apply_patch" -> handleRepoApplyPatch(sessionId, workspace, requirePat(), args)
+                "repo.commit_push" -> handleRepoCommitPush(sessionId, workspace, requirePat(), args)
+                "repo.create_pr" -> handleRepoCreatePr(workspace, requirePat(), args)
+                "repo.comment_pr" -> handleRepoCommentPr(workspace, requirePat(), args)
+                "repo.merge_pr" -> handleRepoMergePr(workspace, requirePat(), args)
+                "actions.trigger_workflow" -> handleActionsTriggerWorkflow(workspace, requirePat(), args)
+                "actions.get_run" -> handleActionsGetRun(workspace, requirePat(), args)
+                "actions.get_latest_run" -> handleActionsGetLatestRun(workspace, requirePat(), args)
+                "actions.get_logs_summary" -> handleActionsLogSummary(workspace, requirePat(), args)
+                "actions.list_artifacts" -> handleActionsListArtifacts(workspace, requirePat(), args)
+                "actions.download_artifact" -> handleActionsDownloadArtifact(workspace, requirePat(), args)
+                "pages.get_settings" -> handlePagesGetSettings(workspace, requirePat())
+                "pages.enable" -> handlePagesEnable(workspace, requirePat(), args)
+                "pages.set_source" -> handlePagesSetSource(workspace, requirePat(), args)
+                "pages.get_deployments" -> handlePagesDeployments(workspace, requirePat())
+                "pages.get_latest_url" -> handlePagesLatestUrl(workspace, requirePat())
+                "pages.deploy" -> handlePagesDeploy(workspace, requirePat())
                 "policy.get_toolspec" -> handlePolicyGetToolspec()
                 "policy.check_risk" -> handlePolicyCheckRisk(args)
+                "mcp.list_servers" -> handleMcpListServers(args)
+                "mcp.list_tools" -> handleMcpListTools(args)
+                "mcp.call_tool" -> handleMcpCallTool(args)
                 else -> error("不支持的工具: $toolName")
             }
         }
@@ -159,6 +166,16 @@ class DefaultZiCodeToolDispatcher(
         val path = args.requireString("path")
         val meta = getFileMeta(workspace, pat, ref, path)
         return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(meta), userHint = "ℹ️ 正在获取文件信息…")
+    }
+
+    private fun handleRepoListBranches(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val perPage = args.intOrDefault("per_page", 100).coerceIn(1, 100)
+        val branches = listBranches(workspace, pat, perPage)
+        return ZiCodeToolDispatchResult(
+            success = true,
+            resultJson = gson.toJson(branches),
+            userHint = "🌿 正在读取分支列表…"
+        )
     }
 
     private suspend fun handleRepoCreateBranch(
@@ -355,6 +372,17 @@ class DefaultZiCodeToolDispatcher(
         return ZiCodeToolDispatchResult(success = true, resultJson = gson.toJson(run), userHint = "⏳ 正在检查构建状态…")
     }
 
+    private fun handleActionsGetLatestRun(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
+        val workflow = args.stringOrDefault("workflow", "")
+        val branch = args.stringOrDefault("branch", "")
+        val latest = getLatestWorkflowRun(workspace, pat, workflow, branch)
+        return ZiCodeToolDispatchResult(
+            success = true,
+            resultJson = gson.toJson(latest),
+            userHint = "⏳ 正在获取最新构建状态…"
+        )
+    }
+
     private fun handleActionsLogSummary(workspace: ZiCodeWorkspace, pat: String, args: JsonObject): ZiCodeToolDispatchResult {
         val runId = args.requireLong("run_id")
         val summary = buildRunLogsSummary(workspace, pat, runId)
@@ -438,6 +466,92 @@ class DefaultZiCodeToolDispatcher(
         )
     }
 
+    private suspend fun handleMcpListServers(args: JsonObject): ZiCodeToolDispatchResult {
+        val includeDisabled = args.boolOrDefault("include_disabled", false)
+        val servers =
+            repository.mcpListFlow.first()
+                .filter { includeDisabled || it.enabled }
+                .map { server ->
+                    JsonObject().apply {
+                        addProperty("id", server.id)
+                        addProperty("name", server.name)
+                        addProperty("url", server.url)
+                        addProperty("protocol", server.protocol.name)
+                        addProperty("enabled", server.enabled)
+                        addProperty("tool_count", server.tools.size)
+                    }
+                }
+        val result = JsonObject().apply {
+            add("servers", JsonArray().also { arr -> servers.forEach { arr.add(it) } })
+            addProperty("count", servers.size)
+        }
+        return ZiCodeToolDispatchResult(
+            success = true,
+            resultJson = gson.toJson(result),
+            userHint = "🧩 正在获取 MCP 服务列表…"
+        )
+    }
+
+    private suspend fun handleMcpListTools(args: JsonObject): ZiCodeToolDispatchResult {
+        val server = resolveMcpServer(args) ?: error("未找到 MCP 服务，请提供 server_id / server_name")
+        val useCached = args.boolOrDefault("use_cached", true)
+        val tools =
+            if (useCached && server.tools.isNotEmpty()) {
+                server.tools
+            } else {
+                val fetched = mcpClient.fetchTools(server).getOrElse { throwable ->
+                    error(throwable.message ?: "MCP 工具同步失败")
+                }
+                repository.updateMcpTools(server.id, fetched)
+                fetched
+            }
+
+        val result = JsonObject().apply {
+            addProperty("server_id", server.id)
+            addProperty("server_name", server.name)
+            add("tools", gson.toJsonTree(tools))
+            addProperty("count", tools.size)
+        }
+        return ZiCodeToolDispatchResult(
+            success = true,
+            resultJson = gson.toJson(result),
+            userHint = "🧰 正在获取 MCP 工具列表…"
+        )
+    }
+
+    private suspend fun handleMcpCallTool(args: JsonObject): ZiCodeToolDispatchResult {
+        val server = resolveMcpServer(args) ?: error("未找到 MCP 服务，请提供 server_id / server_name")
+        val toolName =
+            args.stringOrDefault("tool_name", "").ifBlank {
+                args.stringOrDefault("toolName", "")
+            }.ifBlank {
+                error("参数 tool_name 不能为空")
+            }
+        val argumentsObj = args.getAsJsonObject("arguments") ?: args.getAsJsonObject("args") ?: JsonObject()
+        val argumentMap = argumentsObj.toAnyMap()
+        val callResult =
+            mcpClient.callTool(
+                config = server,
+                toolCall = McpToolCall(toolName = toolName, arguments = argumentMap)
+            ).getOrElse { throwable ->
+                error(throwable.message ?: "MCP 工具调用失败")
+            }
+
+        val result = JsonObject().apply {
+            addProperty("server_id", server.id)
+            addProperty("server_name", server.name)
+            addProperty("tool_name", toolName)
+            addProperty("success", callResult.success)
+            addProperty("content", callResult.content)
+            addProperty("error", callResult.error)
+        }
+        return ZiCodeToolDispatchResult(
+            success = true,
+            resultJson = gson.toJson(result),
+            userHint = "🛠️ 正在调用 MCP 工具 `$toolName`…"
+        )
+    }
+
     private suspend fun getWorkingFileContent(
         sessionId: String,
         workspace: ZiCodeWorkspace,
@@ -465,6 +579,7 @@ class DefaultZiCodeToolDispatcher(
             "repo.read_file" -> "📄 正在读取文件 `${args.stringOrDefault("path", "")}`…"
             "repo.search" -> "🔍 正在搜索关键字 `${args.stringOrDefault("keyword", "")}`…"
             "repo.get_file_meta" -> "ℹ️ 正在获取文件信息…"
+            "repo.list_branches" -> "🌿 正在读取分支列表…"
             "repo.create_branch" -> "🌿 正在创建分支 `${args.stringOrDefault("branch", "")}`…"
             "repo.apply_patch" -> "🩹 正在应用代码补丁…"
             "repo.replace_range" -> "✏️ 正在修改文件 `${args.stringOrDefault("path", "")}`…"
@@ -474,6 +589,7 @@ class DefaultZiCodeToolDispatcher(
             "repo.merge_pr" -> "🔀 正在合并 Pull Request…"
             "actions.trigger_workflow" -> "🚀 正在运行工作流 `${args.stringOrDefault("workflow", "")}`…"
             "actions.get_run" -> "⏳ 正在检查构建状态…"
+            "actions.get_latest_run" -> "⏳ 正在获取最新构建状态…"
             "actions.get_logs_summary" -> "📊 正在分析构建日志…"
             "actions.list_artifacts" -> "📦 正在获取构建产物列表…"
             "actions.download_artifact" -> "⬇️ 正在下载构建产物…"
@@ -485,7 +601,27 @@ class DefaultZiCodeToolDispatcher(
             "pages.deploy" -> "🚀 正在部署到 GitHub Pages…"
             "policy.get_toolspec" -> "📖 正在加载能力说明…"
             "policy.check_risk" -> "🛡️ 正在评估补丁风险…"
+            "mcp.list_servers" -> "🧩 正在获取 MCP 服务列表…"
+            "mcp.list_tools" -> "🧰 正在获取 MCP 工具列表…"
+            "mcp.call_tool" -> "🛠️ 正在调用 MCP 工具…"
             else -> "⏳ 正在执行工具调用…"
+        }
+    }
+
+    private suspend fun resolveMcpServer(args: JsonObject): McpConfig? {
+        val serverId =
+            args.stringOrDefault("server_id", "").ifBlank {
+                args.stringOrDefault("serverId", "")
+            }
+        val serverName =
+            args.stringOrDefault("server_name", "").ifBlank {
+                args.stringOrDefault("serverName", "")
+            }
+        val servers = repository.mcpListFlow.first()
+        return when {
+            serverId.isNotBlank() -> servers.firstOrNull { it.id == serverId }
+            serverName.isNotBlank() -> servers.firstOrNull { it.name.equals(serverName, ignoreCase = true) }
+            else -> servers.firstOrNull { it.enabled } ?: servers.firstOrNull()
         }
     }
 
@@ -629,6 +765,15 @@ class DefaultZiCodeToolDispatcher(
         return putJson(url, pat, requestBody)
     }
 
+    private fun listBranches(workspace: ZiCodeWorkspace, pat: String, perPage: Int): JsonObject {
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/branches?per_page=$perPage"
+        val branches = getJson(url, pat)
+        return JsonObject().apply {
+            add("branches", branches)
+            addProperty("count", branches.asJsonArray.size())
+        }
+    }
+
     private fun getBranchHeadSha(workspace: ZiCodeWorkspace, pat: String, branch: String): String {
         val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/ref/heads/${urlEncode(branch)}"
         val obj = getJson(url, pat).asJsonObject
@@ -663,6 +808,25 @@ class DefaultZiCodeToolDispatcher(
     private fun getWorkflowRun(workspace: ZiCodeWorkspace, pat: String, runId: Long): JsonObject {
         val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/actions/runs/$runId"
         return getJson(url, pat).asJsonObject
+    }
+
+    private fun getLatestWorkflowRun(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        workflow: String,
+        branch: String
+    ): JsonObject {
+        val workflowPath = workflow.trim().takeIf { it.isNotBlank() }?.let { "/workflows/${urlEncode(it)}" }.orEmpty()
+        val branchQuery = branch.trim().takeIf { it.isNotBlank() }?.let { "&branch=${urlEncode(it)}" }.orEmpty()
+        val url =
+            "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/actions$workflowPath/runs?per_page=1$branchQuery"
+        val obj = getJson(url, pat).asJsonObject
+        val runs = obj.getAsJsonArray("workflow_runs") ?: JsonArray()
+        val latest = runs.firstOrNull()?.asJsonObject
+        return JsonObject().apply {
+            add("latest", latest ?: JsonObject())
+            add("raw", obj)
+        }
     }
 
     private fun buildRunLogsSummary(workspace: ZiCodeWorkspace, pat: String, runId: Long): JsonObject {
@@ -1018,6 +1182,10 @@ class DefaultZiCodeToolDispatcher(
         return this.get(key)?.asInt ?: defaultValue
     }
 
+    private fun JsonObject.boolOrDefault(key: String, defaultValue: Boolean): Boolean {
+        return this.get(key)?.asBoolean ?: defaultValue
+    }
+
     private fun JsonObject.requireInt(key: String): Int {
         return this.get(key)?.asInt ?: error("参数 $key 不能为空")
     }
@@ -1025,6 +1193,37 @@ class DefaultZiCodeToolDispatcher(
     private fun JsonObject.requireLong(key: String): Long {
         return this.get(key)?.asLong ?: error("参数 $key 不能为空")
     }
+
+    private fun JsonObject.toAnyMap(): Map<String, Any> {
+        val destination = linkedMapOf<String, Any>()
+        entrySet().forEach { (rawKey, rawValue) ->
+            val key = rawKey.trim()
+            if (key.isBlank()) return@forEach
+            destination[key] = rawValue.toAnyValue()
+        }
+        return destination
+    }
+
+    private fun JsonElement.toAnyValue(): Any {
+        return when {
+            isJsonNull -> ""
+            isJsonPrimitive -> {
+                val primitive = asJsonPrimitive
+                when {
+                    primitive.isBoolean -> primitive.asBoolean
+                    primitive.isNumber -> {
+                        val raw = primitive.asString
+                        if (raw.contains('.') || raw.contains('e', ignoreCase = true)) primitive.asDouble else primitive.asLong
+                    }
+                    else -> primitive.asString
+                }
+            }
+            isJsonArray -> asJsonArray.map { it.toAnyValue() }
+            isJsonObject -> asJsonObject.toAnyMap()
+            else -> toString()
+        }
+    }
+
 }
 
 data class RepoFileContent(

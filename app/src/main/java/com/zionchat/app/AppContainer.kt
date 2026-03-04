@@ -18,6 +18,7 @@ import com.zionchat.app.data.DefaultZiCodePolicyService
 import com.zionchat.app.data.ZiCodePolicyService
 import com.zionchat.app.data.ZiCodeAgentOrchestrator
 import com.zionchat.app.data.ZiCodeWorkflowTemplateService
+import com.zionchat.app.data.McpClient
 
 class AppContainer(context: Context) {
     val repository = AppRepository(context)
@@ -27,9 +28,10 @@ class AppContainer(context: Context) {
     val webHostingService: WebHostingService = DisabledWebHostingService()
     val runtimePackagingService: RuntimePackagingService = DisabledRuntimePackagingService()
     val zicodeGitHubService: ZiCodeGitHubService = DefaultZiCodeGitHubService()
+    val mcpClient = McpClient()
     val zicodePolicyService: ZiCodePolicyService = DefaultZiCodePolicyService()
     val zicodeToolDispatcher: ZiCodeToolDispatcher =
-        DefaultZiCodeToolDispatcher(repository, zicodeGitHubService, zicodePolicyService)
+        DefaultZiCodeToolDispatcher(repository, zicodeGitHubService, zicodePolicyService, mcpClient)
     val zicodeAgentOrchestrator = ZiCodeAgentOrchestrator(repository, zicodeToolDispatcher, zicodePolicyService)
     val zicodeWorkflowTemplateService = ZiCodeWorkflowTemplateService(zicodeToolDispatcher)
 }
