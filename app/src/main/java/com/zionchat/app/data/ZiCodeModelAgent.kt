@@ -159,7 +159,7 @@ class ZiCodeModelAgent(
         return ZiCodeModelAgentResult(
             success = true,
             finalMessage = finalText,
-            toolHints = toolHints.takeLast(6).toList()
+            toolHints = toolHints.toList().takeLast(6)
         )
     }
 
