@@ -56,6 +56,26 @@ fun Modifier.headerActionButtonShadow(
 fun Modifier.settingsBottomInsets(): Modifier =
     this.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
 
+@Composable
+fun HeaderTranslucentBackdrop(
+    modifier: Modifier = Modifier,
+    containerColor: Color = Color(0xFFFFFFFF),
+    containerAlpha: Float = 0.92f
+) {
+    val topColor = containerColor.copy(alpha = containerAlpha)
+    val midColor = containerColor.copy(alpha = containerAlpha * 0.55f)
+    Spacer(
+        modifier = modifier.background(
+            Brush.verticalGradient(
+                0.0f to topColor,
+                0.55f to topColor,
+                0.78f to midColor,
+                1.0f to Color.Transparent
+            )
+        )
+    )
+}
+
 /**
  * iOS-style translucent top bar with a smooth full-height gradient.
  * The background transitions gradually from opaque at the very top
@@ -71,23 +91,14 @@ fun PageTopBar(
     fadeHeight: Dp = 32.dp,
     trailing: (@Composable () -> Unit)? = null
 ) {
-    val topColor = containerColor.copy(alpha = containerAlpha)
-    val midColor = containerColor.copy(alpha = containerAlpha * 0.55f)
-
     Box(modifier = modifier.fillMaxWidth()) {
         // Gradient background that covers the entire header height
-        Spacer(
+        HeaderTranslucentBackdrop(
             modifier = Modifier
                 .fillMaxWidth()
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to topColor,
-                        0.55f to topColor,
-                        0.78f to midColor,
-                        1.0f to Color.Transparent
-                    )
-                )
+                .matchParentSize(),
+            containerColor = containerColor,
+            containerAlpha = containerAlpha
         )
 
         // Foreground content

@@ -1,5 +1,8 @@
-## ZionChat v0.31.69
+## ZionChat v0.31.70
 
-- 默认模型页新增 `ZiCode Model` 默认配置项，支持选择与清空。
-- 新增 ZiCode 默认模型持久化存储（`default_zicode_model_id`）。
-- 设置页与 ZiCode 设置页文案统一为 `ZiCode`，与 Zion Labs 区域命名保持一致。
+- ZiCode 列表页与对话页头部统一为设置页同源半透明过渡样式。
+- ZiCode 对话页标题改为仅显示仓库名，副标题显示默认分支。
+- 对话页右上仓库按钮图标改为文件夹风格图标。
+- ZiCode 用户消息气泡样式对齐主对话页（右对齐、18dp 圆角、60dp 左留白）。
+- 输入栏改为 `navigationBars + ime` 联合内边距，修复键盘顶起时底部遮挡。
+- Tool Calls / Workflow Runs 默认折叠，仅在“显示执行详情”后展开。
