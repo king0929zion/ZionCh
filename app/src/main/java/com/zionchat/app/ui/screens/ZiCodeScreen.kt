@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -97,6 +96,7 @@ import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
+import com.zionchat.app.ui.theme.ChatBackground
 import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.Surface
@@ -323,6 +323,7 @@ fun ZiCodeScreen(navController: NavController) {
                 )
             )
             isRunningTask = true
+            var streamingMessageId: String? = null
             try {
                 val directTool = parseDirectToolCommand(trimmed)
                 if (directTool != null) {
@@ -366,6 +367,16 @@ fun ZiCodeScreen(navController: NavController) {
                     return@launch
                 }
 
+                val streamingMessage =
+                    repository.appendZiCodeMessage(
+                        ZiCodeMessage(
+                            sessionId = sid,
+                            role = "assistant",
+                            content = "ZiCode 正在思考..."
+                        )
+                    )
+                streamingMessageId = streamingMessage?.id
+                var streamedAnswer = ""
                 val recentMessages = repository.listZiCodeMessages(sid).takeLast(16)
                 val summary =
                     modelAgent.runTask(
@@ -375,23 +386,52 @@ fun ZiCodeScreen(navController: NavController) {
                         provider = selected.provider,
                         model = selected.model,
                         userPrompt = trimmed,
-                        recentMessages = recentMessages
+                        recentMessages = recentMessages,
+                        onStreamAnswer = { partial ->
+                            val normalized = partial.trimEnd()
+                            if (normalized.isBlank()) return@runTask
+                            streamedAnswer = normalized
+                            streamingMessageId?.let { messageId ->
+                                repository.updateZiCodeMessage(messageId, normalized)
+                            }
+                        }
                     )
-                repository.appendZiCodeMessage(
-                    ZiCodeMessage(
-                        sessionId = sid,
-                        role = "assistant",
-                        content = summary.finalMessage
+                val finalText =
+                    summary.finalMessage.trim().ifBlank {
+                        streamedAnswer.ifBlank { "任务执行完成。" }
+                    }
+                if (streamingMessageId.isNullOrBlank()) {
+                    repository.appendZiCodeMessage(
+                        ZiCodeMessage(
+                            sessionId = sid,
+                            role = "assistant",
+                            content = finalText,
+                            toolHints = summary.toolHints
+                        )
                     )
-                )
+                } else {
+                    repository.updateZiCodeMessage(
+                        messageId = streamingMessageId,
+                        content = finalText,
+                        toolHints = summary.toolHints
+                    )
+                }
             } catch (throwable: Throwable) {
-                repository.appendZiCodeMessage(
-                    ZiCodeMessage(
-                        sessionId = sid,
-                        role = "assistant",
-                        content = "任务执行失败：${throwable.message ?: "Unknown error"}"
+                val failureText = "任务执行失败：${throwable.message ?: "Unknown error"}"
+                if (streamingMessageId.isNullOrBlank()) {
+                    repository.appendZiCodeMessage(
+                        ZiCodeMessage(
+                            sessionId = sid,
+                            role = "assistant",
+                            content = failureText
+                        )
                     )
-                )
+                } else {
+                    repository.updateZiCodeMessage(
+                        messageId = streamingMessageId.orEmpty(),
+                        content = failureText
+                    )
+                }
             } finally {
                 isRunningTask = false
             }
@@ -424,7 +464,7 @@ fun ZiCodeScreen(navController: NavController) {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Surface)
+            .background(ChatBackground)
     ) {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
@@ -441,6 +481,7 @@ fun ZiCodeScreen(navController: NavController) {
                     translationX = -widthPx * 0.08f * pageProgress
                     alpha = 1f - 0.08f * pageProgress
                 }
+                .background(ChatBackground)
         ) {
             ZiCodeListHeader(
                 onBack = { navController.popBackStack() }
@@ -461,7 +502,7 @@ fun ZiCodeScreen(navController: NavController) {
                 .graphicsLayer {
                     translationX = widthPx * (1f - pageProgress)
                 }
-                .background(Surface)
+                .background(ChatBackground)
         ) {
             ZiCodeChatHeader(
                 modelName = chatWorkspace?.repo.orEmpty().ifBlank { selectedModelName },
@@ -545,48 +586,32 @@ private fun ZiCodeListHeader(
         HeaderTranslucentBackdrop(
             modifier = Modifier
                 .fillMaxWidth()
-                .matchParentSize()
+                .matchParentSize(),
+            containerColor = ChatBackground
         )
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
                         .size(42.dp)
-                        .shadow(
-                            elevation = 8.dp,
-                            shape = CircleShape,
-                            clip = false,
-                            ambientColor = Color.Black.copy(alpha = 0.08f),
-                            spotColor = Color.Black.copy(alpha = 0.08f)
-                        )
+                        .headerActionButtonShadow(CircleShape)
                         .clip(CircleShape)
                         .background(Surface, CircleShape)
                         .pressableScale(pressedScale = 0.95f, onClick = onBack),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(5.dp),
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(20.dp)
-                                .height(2.dp)
-                                .background(TextPrimary, RoundedCornerShape(1.dp))
-                        )
-                        Box(
-                            modifier = Modifier
-                                .width(12.dp)
-                                .height(2.dp)
-                                .background(TextPrimary, RoundedCornerShape(1.dp))
-                        )
-                    }
+                    Icon(
+                        imageVector = AppIcons.HamburgerMenu,
+                        contentDescription = null,
+                        tint = TextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
                 Text(
                     text = stringResource(R.string.zicode_title),
@@ -599,7 +624,7 @@ private fun ZiCodeListHeader(
                 )
                 Spacer(modifier = Modifier.size(42.dp))
             }
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
@@ -615,7 +640,7 @@ private fun ZiCodeModelList(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Surface)
+            .background(ChatBackground)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -773,14 +798,15 @@ private fun ZiCodeChatHeader(
         HeaderTranslucentBackdrop(
             modifier = Modifier
                 .fillMaxWidth()
-                .matchParentSize()
+                .matchParentSize(),
+            containerColor = ChatBackground
         )
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -803,12 +829,12 @@ private fun ZiCodeChatHeader(
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.Start
                 ) {
                     Text(
                         text = modelName.ifBlank { "ZiCode" },
-                        textAlign = TextAlign.Center,
-                        fontSize = 20.sp,
+                        textAlign = TextAlign.Start,
+                        fontSize = 19.sp,
                         fontWeight = FontWeight.SemiBold,
                         fontFamily = SourceSans3,
                         color = TextPrimary,
@@ -818,7 +844,7 @@ private fun ZiCodeChatHeader(
                     if (subtitle.isNotBlank()) {
                         Text(
                             text = subtitle,
-                            textAlign = TextAlign.Center,
+                            textAlign = TextAlign.Start,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             fontFamily = SourceSans3,
@@ -832,9 +858,9 @@ private fun ZiCodeChatHeader(
                     CircleActionButton(
                         icon = {
                             Icon(
-                                imageVector = AppIcons.Files,
+                                painter = rememberResourceDrawablePainter(R.drawable.ic_zicode_repo),
                                 contentDescription = null,
-                                tint = TextPrimary,
+                                tint = Color.Unspecified,
                                 modifier = Modifier.size(19.dp)
                             )
                         },
@@ -853,7 +879,7 @@ private fun ZiCodeChatHeader(
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
@@ -898,7 +924,7 @@ private fun ZiCodeChatMessages(
     LazyColumn(
         modifier = modifier
             .fillMaxWidth()
-            .background(Surface)
+            .background(ChatBackground)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {

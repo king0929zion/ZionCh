@@ -3,6 +3,7 @@ package com.zionchat.app.data
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.zionchat.app.data.extractRemoteModelId
+import kotlinx.coroutines.flow.collect
 
 data class ZiCodeModelAgentResult(
     val success: Boolean,
@@ -31,7 +32,9 @@ class ZiCodeModelAgent(
         provider: ProviderConfig,
         model: ModelConfig,
         userPrompt: String,
-        recentMessages: List<ZiCodeMessage>
+        recentMessages: List<ZiCodeMessage>,
+        onStatus: suspend (String) -> Unit = {},
+        onStreamAnswer: suspend (String) -> Unit = {}
     ): ZiCodeModelAgentResult {
         val resolvedProvider =
             runCatching { providerAuthManager.ensureValidProvider(provider) }
@@ -51,6 +54,7 @@ class ZiCodeModelAgent(
 
         val modelId = extractRemoteModelId(model.id).ifBlank { model.id }
         for (turn in 1..maxTurns) {
+            onStatus("ZiCode 正在规划第 $turn 轮...")
             val plannerPrompt =
                 buildPlannerPrompt(
                     workspace = workspace,
@@ -59,24 +63,45 @@ class ZiCodeModelAgent(
                     toolSpec = toolSpec,
                     stepSummaries = stepSummaries
                 )
-            val raw =
-                chatApiClient.chatCompletions(
-                    provider = resolvedProvider,
-                    modelId = modelId,
-                    messages = listOf(
-                        Message(role = "system", content = MODEL_AGENT_SYSTEM_PROMPT),
-                        Message(role = "user", content = plannerPrompt)
-                    ),
-                    extraHeaders = model.headers,
-                    reasoningEffort = model.reasoningEffort,
-                    enableThinking = true,
-                    maxTokens = 1800
-                ).getOrElse { error ->
-                    return ZiCodeModelAgentResult(
-                        success = false,
-                        finalMessage = "ZiCode 模型调用失败：${error.message.orEmpty().ifBlank { "unknown error" }}"
-                    )
+            val rawBuilder = StringBuilder()
+            var streamedAnswer = ""
+            val streamedResult =
+                runCatching {
+                    chatApiClient.chatCompletionsStream(
+                        provider = resolvedProvider,
+                        modelId = modelId,
+                        messages = listOf(
+                            Message(role = "system", content = MODEL_AGENT_SYSTEM_PROMPT),
+                            Message(role = "user", content = plannerPrompt)
+                        ),
+                        extraHeaders = model.headers,
+                        reasoningEffort = model.reasoningEffort,
+                        enableThinking = true,
+                        maxTokens = 1800
+                    ).collect { delta ->
+                        val chunk = delta.content.orEmpty()
+                        if (chunk.isBlank()) return@collect
+                        rawBuilder.append(chunk)
+                        val partial = extractFinalAnswerFromPartialEnvelope(rawBuilder.toString()) ?: return@collect
+                        if (partial.length <= streamedAnswer.length) return@collect
+                        streamedAnswer = partial
+                        onStreamAnswer(streamedAnswer)
+                    }
                 }
+            if (streamedResult.isFailure) {
+                return ZiCodeModelAgentResult(
+                    success = false,
+                    finalMessage = "ZiCode 模型调用失败：${streamedResult.exceptionOrNull()?.message.orEmpty().ifBlank { "unknown error" }}"
+                )
+            }
+
+            val raw = rawBuilder.toString().trim()
+            if (raw.isBlank()) {
+                return ZiCodeModelAgentResult(
+                    success = false,
+                    finalMessage = "ZiCode 模型返回为空，请重试。"
+                )
+            }
 
             val envelope = parseEnvelopeWithRetry(raw, resolvedProvider, modelId, model.headers)
             if (envelope == null) {
@@ -99,6 +124,7 @@ class ZiCodeModelAgent(
                         stepSummaries += "第 $turn 轮决策缺少工具名，已跳过。"
                         continue
                     }
+                    onStatus("正在执行工具：$toolName")
                     val callResult =
                         runCatching {
                             toolDispatcher.dispatch(
@@ -109,7 +135,8 @@ class ZiCodeModelAgent(
                                 argsJson = envelope.argsJson
                             )
                         }.getOrElse { error ->
-                            stepSummaries += "工具 `$toolName` 调用异常：${error.message.orEmpty()}"
+                            val friendly = buildFriendlyToolError(toolName, error.message)
+                            stepSummaries += "工具 `$toolName` 调用异常：$friendly"
                             continue
                         }
 
@@ -141,8 +168,12 @@ class ZiCodeModelAgent(
                             }
                         }
                     } else {
-                        stepSummaries +=
-                            "工具 `$toolName` 失败：${callResult.error.orEmpty().ifBlank { "unknown error" }}"
+                        val friendly = buildFriendlyToolError(toolName, callResult.error)
+                        stepSummaries += "工具 `$toolName` 失败：$friendly"
+                        if (isRepositoryEmptyError(callResult.error)) {
+                            finalAnswer = "当前仓库还是空仓库，先创建至少一个提交后再执行开发任务。你可以先在仓库新建 README，再让我继续自动化。"
+                            break
+                        }
                     }
                 }
 
@@ -547,8 +578,71 @@ class ZiCodeModelAgent(
         }
         val lines = mutableListOf<String>()
         workflowHint?.takeIf { it.isNotBlank() }?.let { lines += it }
-        stepSummaries.takeLast(4).forEach { lines += it }
+        stepSummaries.takeLast(3).forEach { lines += it }
         return lines.joinToString("\n")
+    }
+
+    private fun buildFriendlyToolError(toolName: String, rawError: String?): String {
+        if (isRepositoryEmptyError(rawError)) {
+            return "仓库为空，暂时无法执行 `$toolName`。请先创建初始提交。"
+        }
+        val compact = rawError.orEmpty().trim().replace("\n", " ").replace(Regex("\\s+"), " ")
+        return compact.ifBlank { "unknown error" }.take(180)
+    }
+
+    private fun isRepositoryEmptyError(rawError: String?): Boolean {
+        val normalized = rawError.orEmpty().lowercase()
+        return normalized.contains("repository is empty") ||
+            normalized.contains("this repository is empty") ||
+            normalized.contains("git repository is empty")
+    }
+
+    private fun extractFinalAnswerFromPartialEnvelope(raw: String): String? {
+        val keyIndex = raw.indexOf("\"final_answer\"")
+        if (keyIndex < 0) return null
+        val colonIndex = raw.indexOf(':', startIndex = keyIndex)
+        if (colonIndex < 0) return null
+        var cursor = colonIndex + 1
+        while (cursor < raw.length && raw[cursor].isWhitespace()) {
+            cursor += 1
+        }
+        if (cursor >= raw.length || raw[cursor] != '"') return null
+        cursor += 1
+        val answer = StringBuilder()
+        var escaped = false
+        while (cursor < raw.length) {
+            val ch = raw[cursor]
+            if (escaped) {
+                when (ch) {
+                    '\\', '"', '/' -> answer.append(ch)
+                    'b' -> answer.append('\b')
+                    'f' -> answer.append('\u000C')
+                    'n' -> answer.append('\n')
+                    'r' -> answer.append('\r')
+                    't' -> answer.append('\t')
+                    'u' -> {
+                        if (cursor + 4 < raw.length) {
+                            val hex = raw.substring(cursor + 1, cursor + 5)
+                            val parsed = hex.toIntOrNull(16)
+                            if (parsed != null) {
+                                answer.append(parsed.toChar())
+                                cursor += 4
+                            }
+                        }
+                    }
+                    else -> answer.append(ch)
+                }
+                escaped = false
+            } else if (ch == '\\') {
+                escaped = true
+            } else if (ch == '"') {
+                return answer.toString()
+            } else {
+                answer.append(ch)
+            }
+            cursor += 1
+        }
+        return answer.toString()
     }
 
     private fun stripCodeFence(raw: String): String {

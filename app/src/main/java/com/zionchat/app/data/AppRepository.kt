@@ -1905,6 +1905,49 @@ class AppRepository(context: Context) {
         return sanitized
     }
 
+    suspend fun updateZiCodeMessage(
+        messageId: String,
+        content: String,
+        toolHints: List<String>? = null
+    ): ZiCodeMessage? {
+        val key = messageId.trim()
+        if (key.isBlank()) return null
+        val messages = zicodeMessagesFlow.first().toMutableList()
+        val index = messages.indexOfFirst { it.id == key }
+        if (index < 0) return null
+
+        val existing = messages[index]
+        val normalizedContent = content.trim().ifBlank { "…" }
+        val nextHints =
+            toolHints
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                ?: existing.toolHints
+
+        val sanitized =
+            sanitizeZiCodeMessage(
+                existing.copy(
+                    content = normalizedContent,
+                    toolHints = nextHints
+                )
+            ) ?: return null
+
+        messages[index] = sanitized
+        val sessions = zicodeSessionsFlow.first().toMutableList()
+        val sessionIndex = sessions.indexOfFirst { it.id == sanitized.sessionId }
+        if (sessionIndex >= 0) {
+            sessions[sessionIndex] = sessions[sessionIndex].copy(updatedAt = System.currentTimeMillis())
+        }
+
+        dataStore.edit { prefs ->
+            prefs[zicodeMessagesKey] = gson.toJson(messages)
+            if (sessionIndex >= 0) {
+                prefs[zicodeSessionsKey] = gson.toJson(sessions)
+            }
+        }
+        return sanitized
+    }
+
     suspend fun clearZiCodeMessages(sessionId: String) {
         val key = sessionId.trim()
         if (key.isBlank()) return
