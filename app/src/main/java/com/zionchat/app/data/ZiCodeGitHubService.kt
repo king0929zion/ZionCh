@@ -1,6 +1,7 @@
 package com.zionchat.app.data
 
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,6 +36,8 @@ interface ZiCodeGitHubService {
     suspend fun getRepo(workspace: ZiCodeWorkspace, pat: String): Result<ZiCodeGitHubRepo>
 
     suspend fun checkWorkspaceAccess(workspace: ZiCodeWorkspace, pat: String): Result<ZiCodeWorkspaceAccess>
+
+    suspend fun listAccessibleRepos(pat: String, perPage: Int = 100): Result<List<ZiCodeGitHubRepo>>
 }
 
 class DefaultZiCodeGitHubService(
@@ -137,6 +140,45 @@ class DefaultZiCodeGitHubService(
                             privateRepo = obj.get("private")?.asBoolean ?: true
                         )
                     )
+                }
+            }
+        }
+    }
+
+    override suspend fun listAccessibleRepos(pat: String, perPage: Int): Result<List<ZiCodeGitHubRepo>> {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val token = pat.trim()
+                require(token.isNotBlank()) { "PAT 不能为空" }
+                val safePerPage = perPage.coerceIn(1, 100)
+                val url =
+                    "https://api.github.com/user/repos?sort=updated&direction=desc&per_page=$safePerPage&affiliation=owner,collaborator,organization_member"
+                val request = buildRequest(url, token)
+                client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        error(extractGitHubError(body).ifBlank { "获取项目列表失败: HTTP ${response.code}" })
+                    }
+                    val array = gson.fromJson(body, JsonArray::class.java) ?: JsonArray()
+                    array.mapNotNull { element ->
+                        val obj = element?.asJsonObject ?: return@mapNotNull null
+                        val fullName = obj.get("full_name")?.asString?.trim().orEmpty()
+                        val ownerLogin =
+                            obj.getAsJsonObject("owner")
+                                ?.get("login")
+                                ?.asString
+                                ?.trim()
+                                .orEmpty()
+                        val repoName = obj.get("name")?.asString?.trim().orEmpty()
+                        if (ownerLogin.isBlank() || repoName.isBlank()) return@mapNotNull null
+                        ZiCodeGitHubRepo(
+                            owner = ownerLogin,
+                            name = repoName,
+                            fullName = fullName.ifBlank { "$ownerLogin/$repoName" },
+                            defaultBranch = obj.get("default_branch")?.asString?.trim().orEmpty().ifBlank { "main" },
+                            privateRepo = obj.get("private")?.asBoolean ?: true
+                        )
+                    }
                 }
             }
         }

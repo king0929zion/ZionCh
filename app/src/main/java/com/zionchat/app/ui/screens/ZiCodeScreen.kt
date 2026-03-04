@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -79,7 +80,7 @@ import com.zionchat.app.LocalZiCodeGitHubService
 import com.zionchat.app.LocalZiCodeToolDispatcher
 import com.zionchat.app.LocalZiCodeWorkflowTemplateService
 import com.zionchat.app.R
-import com.zionchat.app.data.ModelConfig
+import com.zionchat.app.data.ZiCodeGitHubRepo
 import com.zionchat.app.data.ZiCodeAgentRunSummary
 import com.zionchat.app.data.ZiCodeAgentTask
 import com.zionchat.app.data.ZiCodeMessage
@@ -93,9 +94,7 @@ import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
-import com.zionchat.app.ui.theme.ChatBackground
 import com.zionchat.app.ui.theme.GrayLight
-import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.Surface
 import com.zionchat.app.ui.theme.TextPrimary
@@ -114,9 +113,6 @@ fun ZiCodeScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
     val gson = remember { Gson() }
 
-    val enabledModels by repository.modelsFlow.collectAsState(initial = emptyList())
-    val modelNames = remember(enabledModels) { buildZiCodeModelNames(enabledModels) }
-
     val zicodeSettings by repository.zicodeSettingsFlow.collectAsState(initial = ZiCodeSettings())
     val workspaces by repository.zicodeWorkspacesFlow.collectAsState(initial = emptyList())
     val sessions by repository.zicodeSessionsFlow.collectAsState(initial = emptyList())
@@ -124,13 +120,45 @@ fun ZiCodeScreen(navController: NavController) {
     val allToolCalls by repository.zicodeToolCallsFlow.collectAsState(initial = emptyList())
     val allRuns by repository.zicodeRunsFlow.collectAsState(initial = emptyList())
 
+    var remoteRepos by remember { mutableStateOf<List<ZiCodeGitHubRepo>>(emptyList()) }
+    var reposLoading by remember { mutableStateOf(false) }
+    var reposError by remember { mutableStateOf<String?>(null) }
+
+    val projectWorkspaces = remember(remoteRepos, workspaces) {
+        if (remoteRepos.isNotEmpty()) {
+            remoteRepos.map { repo ->
+                val existing =
+                    workspaces.firstOrNull {
+                        it.owner.equals(repo.owner, ignoreCase = true) &&
+                            it.repo.equals(repo.name, ignoreCase = true)
+                    }
+                if (existing != null) {
+                    existing.copy(
+                        defaultBranch = repo.defaultBranch,
+                        displayName = repo.fullName.ifBlank { "${repo.owner}/${repo.name}" }
+                    )
+                } else {
+                    ZiCodeWorkspace(
+                        id = buildStableZiCodeWorkspaceId(repo.owner, repo.name),
+                        owner = repo.owner,
+                        repo = repo.name,
+                        defaultBranch = repo.defaultBranch,
+                        displayName = repo.fullName.ifBlank { "${repo.owner}/${repo.name}" }
+                    )
+                }
+            }
+        } else {
+            workspaces
+        }
+    }
+
     val currentWorkspace = remember(workspaces, zicodeSettings.currentWorkspaceId) {
         val selected = zicodeSettings.currentWorkspaceId?.trim().orEmpty()
         if (selected.isBlank()) workspaces.firstOrNull() else workspaces.firstOrNull { it.id == selected }
     }
 
     var showChatPage by remember { mutableStateOf(false) }
-    var selectedModelName by remember { mutableStateOf(modelNames.firstOrNull().orEmpty()) }
+    var selectedModelName by remember { mutableStateOf("") }
     var selectedSessionId by remember { mutableStateOf<String?>(null) }
     var inputText by remember { mutableStateOf("") }
     var isRunningTask by remember { mutableStateOf(false) }
@@ -144,6 +172,41 @@ fun ZiCodeScreen(navController: NavController) {
     val hintSearchText = stringResource(R.string.zicode_hint_search)
     val hintReadFileText = stringResource(R.string.zicode_hint_read_file)
     val assistantMockReply = stringResource(R.string.zicode_assistant_mock_reply)
+
+    LaunchedEffect(zicodeSettings.pat) {
+        val token = zicodeSettings.pat.trim()
+        if (token.isBlank()) {
+            remoteRepos = emptyList()
+            reposError = null
+            reposLoading = false
+            return@LaunchedEffect
+        }
+        reposLoading = true
+        reposError = null
+        gitHubService.listAccessibleRepos(token)
+            .onSuccess { repos ->
+                remoteRepos = repos
+            }
+            .onFailure { throwable ->
+                remoteRepos = emptyList()
+                reposError = throwable.message ?: "Failed to load repositories."
+            }
+        reposLoading = false
+    }
+
+    LaunchedEffect(projectWorkspaces, currentWorkspace?.id) {
+        if (selectedModelName.isNotBlank()) return@LaunchedEffect
+        selectedModelName =
+            currentWorkspace?.displayName
+                ?: projectWorkspaces.firstOrNull()?.displayName
+                ?: ""
+    }
+
+    LaunchedEffect(currentWorkspace?.id) {
+        currentWorkspace?.displayName
+            ?.takeIf { it.isNotBlank() }
+            ?.let { selectedModelName = it }
+    }
 
     val currentSessionMessages = remember(allMessages, selectedSessionId) {
         val sid = selectedSessionId?.trim().orEmpty()
@@ -172,12 +235,7 @@ fun ZiCodeScreen(navController: NavController) {
         }
     }
 
-    fun ensureSession(modelName: String, forceNew: Boolean) {
-        val workspace = currentWorkspace
-        if (workspace == null) {
-            showWorkspaceSheet = true
-            return
-        }
+    fun ensureSession(workspace: ZiCodeWorkspace, modelName: String, forceNew: Boolean) {
         scope.launch {
             val session =
                 if (forceNew) {
@@ -218,10 +276,22 @@ fun ZiCodeScreen(navController: NavController) {
         }
     }
 
-    fun openChat(modelName: String) {
-        selectedModelName = modelName
-        showChatPage = true
-        ensureSession(modelName, forceNew = false)
+    fun openChat(workspace: ZiCodeWorkspace) {
+        scope.launch {
+            val now = System.currentTimeMillis()
+            val merged =
+                repository.upsertZiCodeWorkspace(
+                    workspace.copy(
+                        displayName = workspace.displayName.ifBlank { "${workspace.owner}/${workspace.repo}" },
+                        createdAt = workspace.createdAt.takeIf { it > 0 } ?: now,
+                        updatedAt = now
+                    )
+                ) ?: return@launch
+            repository.setZiCodeCurrentWorkspace(merged.id)
+            selectedModelName = merged.displayName
+            showChatPage = true
+            ensureSession(merged, merged.displayName, forceNew = false)
+        }
     }
 
     fun sendMessage() {
@@ -234,7 +304,8 @@ fun ZiCodeScreen(navController: NavController) {
             return
         }
         if (sid.isBlank()) {
-            ensureSession(selectedModelName, forceNew = false)
+            val sessionLabel = selectedModelName.ifBlank { workspace.displayName }
+            ensureSession(workspace, sessionLabel, forceNew = false)
             return
         }
         inputText = ""
@@ -303,7 +374,6 @@ fun ZiCodeScreen(navController: NavController) {
                         gson = gson,
                         sessionId = sid,
                         workspace = workspace,
-                        modelName = selectedModelName,
                         prompt = trimmed
                     )
                 val summary = orchestrator.executeTask(task, zicodeSettings)
@@ -352,10 +422,15 @@ fun ZiCodeScreen(navController: NavController) {
     }
 
     fun createNewChat() {
-        if (selectedModelName.isBlank()) {
-            selectedModelName = modelNames.firstOrNull().orEmpty()
+        val workspace = currentWorkspace
+        if (workspace == null) {
+            showWorkspaceSheet = true
+            return
         }
-        ensureSession(selectedModelName, forceNew = true)
+        if (selectedModelName.isBlank()) {
+            selectedModelName = workspace.displayName
+        }
+        ensureSession(workspace, selectedModelName, forceNew = true)
     }
 
     LaunchedEffect(currentWorkspace?.id, selectedModelName, sessions) {
@@ -387,7 +462,6 @@ fun ZiCodeScreen(navController: NavController) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.statusBars)
                 .graphicsLayer {
                     translationX = -widthPx * 0.08f * pageProgress
                     alpha = 1f - 0.08f * pageProgress
@@ -397,7 +471,10 @@ fun ZiCodeScreen(navController: NavController) {
                 onBack = { navController.popBackStack() }
             )
             ZiCodeModelList(
-                models = modelNames,
+                workspaces = projectWorkspaces,
+                isLoading = reposLoading,
+                errorMessage = reposError,
+                onOpenSettings = { navController.navigate("zicode_settings") },
                 onModelClick = ::openChat
             )
         }
@@ -410,7 +487,6 @@ fun ZiCodeScreen(navController: NavController) {
                     translationX = widthPx * (1f - pageProgress)
                 }
                 .background(Surface)
-                .windowInsetsPadding(WindowInsets.statusBars)
         ) {
             ZiCodeChatHeader(
                 modelName = selectedModelName,
@@ -487,80 +563,233 @@ fun ZiCodeScreen(navController: NavController) {
 private fun ZiCodeListHeader(
     onBack: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
+    val topColor = Color(0xFFFFFFFF).copy(alpha = 0.92f)
+    val midColor = Color(0xFFFFFFFF).copy(alpha = 0.52f)
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Spacer(
             modifier = Modifier
-                .size(40.dp)
-                .headerActionButtonShadow(CircleShape)
-                .clip(CircleShape)
-                .background(Color.White, CircleShape)
-                .pressableScale(pressedScale = 0.95f, onClick = onBack),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = AppIcons.HamburgerMenu,
-                contentDescription = null,
-                tint = TextPrimary,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-        Text(
-            text = stringResource(R.string.zicode_title),
-            modifier = Modifier.weight(1f),
-            textAlign = TextAlign.Center,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = SourceSans3,
-            color = TextPrimary
+                .fillMaxWidth()
+                .matchParentSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0.0f to topColor,
+                        0.55f to topColor,
+                        0.78f to midColor,
+                        1.0f to Color.Transparent
+                    )
+                )
         )
-        Spacer(modifier = Modifier.size(40.dp))
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = CircleShape,
+                            clip = false,
+                            ambientColor = Color.Black.copy(alpha = 0.08f),
+                            spotColor = Color.Black.copy(alpha = 0.08f)
+                        )
+                        .clip(CircleShape)
+                        .background(Surface, CircleShape)
+                        .pressableScale(pressedScale = 0.95f, onClick = onBack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(20.dp)
+                                .height(2.dp)
+                                .background(TextPrimary, RoundedCornerShape(1.dp))
+                        )
+                        Box(
+                            modifier = Modifier
+                                .width(12.dp)
+                                .height(2.dp)
+                                .background(TextPrimary, RoundedCornerShape(1.dp))
+                        )
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.zicode_title),
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = SourceSans3,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.size(42.dp))
+            }
+            Spacer(modifier = Modifier.height(22.dp))
+        }
     }
 }
 
 @Composable
 private fun ZiCodeModelList(
-    models: List<String>,
-    onModelClick: (String) -> Unit
+    workspaces: List<ZiCodeWorkspace>,
+    isLoading: Boolean,
+    errorMessage: String?,
+    onOpenSettings: () -> Unit,
+    onModelClick: (ZiCodeWorkspace) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .background(Surface)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(models, key = { it }) { model ->
+        if (isLoading) {
+            item(key = "zicode_loading") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "正在加载 GitHub 项目...",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = SourceSans3,
+                        color = TextSecondary
+                    )
+                }
+            }
+        }
+
+        if (!errorMessage.isNullOrBlank()) {
+            item(key = "zicode_error") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFF1F1F1), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = errorMessage,
+                        fontSize = 13.sp,
+                        fontFamily = SourceSans3,
+                        color = Color(0xFFB3261E),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White, RoundedCornerShape(14.dp))
+                            .pressableScale(pressedScale = 0.97f, onClick = onOpenSettings)
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "去 ZiCode 设置",
+                            fontSize = 13.sp,
+                            fontFamily = SourceSans3,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                    }
+                }
+            }
+        }
+
+        if (workspaces.isEmpty() && !isLoading) {
+            item(key = "zicode_empty_projects") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFF1F1F1), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "暂无项目，请先在 ZiCode 设置中配置 PAT 并同步项目。",
+                        fontSize = 14.sp,
+                        fontFamily = SourceSans3,
+                        color = TextSecondary
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White, RoundedCornerShape(14.dp))
+                            .pressableScale(pressedScale = 0.97f, onClick = onOpenSettings)
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "打开 ZiCode 设置",
+                            fontSize = 13.sp,
+                            fontFamily = SourceSans3,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                    }
+                }
+            }
+        }
+
+        items(workspaces, key = { "${it.owner}/${it.repo}" }) { workspace ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(GrayLighter, RoundedCornerShape(16.dp))
-                    .pressableScale(pressedScale = 0.98f, onClick = { onModelClick(model) })
+                    .background(Color(0xFFF1F1F1), RoundedCornerShape(16.dp))
+                    .pressableScale(pressedScale = 0.98f, onClick = { onModelClick(workspace) })
                     .padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Icon(
-                    painter = rememberResourceDrawablePainter(R.drawable.ic_files),
+                    painter = rememberResourceDrawablePainter(R.drawable.ic_zicode_repo),
                     contentDescription = null,
                     modifier = Modifier.size(22.dp),
                     tint = Color.Unspecified
                 )
-                Text(
-                    text = model,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = SourceSans3,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = workspace.displayName,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = SourceSans3,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = workspace.defaultBranch,
+                        fontSize = 12.sp,
+                        fontFamily = SourceSans3,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
+        item(key = "zicode_list_bottom_spacing") { Spacer(modifier = Modifier.height(10.dp)) }
     }
 }
 
@@ -572,80 +801,101 @@ private fun ZiCodeChatHeader(
     onOpenWorkspace: () -> Unit,
     onNewChat: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
+    val topColor = Color(0xFFFFFFFF).copy(alpha = 0.92f)
+    val midColor = Color(0xFFFFFFFF).copy(alpha = 0.52f)
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Spacer(
             modifier = Modifier
-                .size(40.dp)
-                .headerActionButtonShadow(CircleShape)
-                .clip(CircleShape)
-                .background(Color.White, CircleShape)
-                .pressableScale(pressedScale = 0.95f, onClick = onBack),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = AppIcons.Back,
-                contentDescription = null,
-                tint = TextPrimary,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = modelName.ifBlank { "ZiCode" },
-                textAlign = TextAlign.Center,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = SourceSans3,
-                color = TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    textAlign = TextAlign.Center,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = SourceSans3,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                .fillMaxWidth()
+                .matchParentSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0.0f to topColor,
+                        0.55f to topColor,
+                        0.78f to midColor,
+                        1.0f to Color.Transparent
+                    )
                 )
+        )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .headerActionButtonShadow(CircleShape)
+                        .clip(CircleShape)
+                        .background(Color.White, CircleShape)
+                        .pressableScale(pressedScale = 0.95f, onClick = onBack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Back,
+                        contentDescription = null,
+                        tint = TextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = modelName.ifBlank { "ZiCode" },
+                        textAlign = TextAlign.Center,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = SourceSans3,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (subtitle.isNotBlank()) {
+                        Text(
+                            text = subtitle,
+                            textAlign = TextAlign.Center,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = SourceSans3,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircleActionButton(
+                        icon = {
+                            Icon(
+                                imageVector = AppIcons.GitHub,
+                                contentDescription = null,
+                                tint = TextPrimary,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        },
+                        onClick = onOpenWorkspace
+                    )
+                    CircleActionButton(
+                        icon = {
+                            Icon(
+                                imageVector = AppIcons.Plus,
+                                contentDescription = null,
+                                tint = TextPrimary,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        },
+                        onClick = onNewChat
+                    )
+                }
             }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CircleActionButton(
-                icon = {
-                    Icon(
-                        imageVector = AppIcons.GitHub,
-                        contentDescription = null,
-                        tint = TextPrimary,
-                        modifier = Modifier.size(19.dp)
-                    )
-                },
-                onClick = onOpenWorkspace
-            )
-            CircleActionButton(
-                icon = {
-                    Icon(
-                        imageVector = AppIcons.Plus,
-                        contentDescription = null,
-                        tint = TextPrimary,
-                        modifier = Modifier.size(19.dp)
-                    )
-                },
-                onClick = onNewChat
-            )
+            Spacer(modifier = Modifier.height(22.dp))
         }
     }
 }
@@ -694,7 +944,7 @@ private fun ZiCodeChatMessages(
     LazyColumn(
         modifier = modifier
             .fillMaxWidth()
-            .background(ChatBackground)
+            .background(Surface)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -1263,7 +1513,6 @@ private fun buildZiCodeTaskFromPrompt(
     gson: Gson,
     sessionId: String,
     workspace: ZiCodeWorkspace,
-    modelName: String,
     prompt: String
 ): ZiCodeAgentTask {
     val calls = mutableListOf<ZiCodePlannedToolCall>()
@@ -1406,8 +1655,8 @@ private fun extractWorkflowFile(prompt: String): String? {
     }
 }
 
-private fun buildZiCodeModelNames(models: List<ModelConfig>): List<String> {
-    val enabled = models.filter { it.enabled }.map { it.displayName.trim().ifBlank { it.id } }
-    if (enabled.isNotEmpty()) return enabled
-    return listOf("GPT-4", "Claude 3", "Gemini", "Llama 3", "Mistral", "DeepSeek")
+private fun buildStableZiCodeWorkspaceId(owner: String, repo: String): String {
+    val ownerKey = owner.trim().lowercase().replace(Regex("[^a-z0-9_-]"), "_")
+    val repoKey = repo.trim().lowercase().replace(Regex("[^a-z0-9_-]"), "_")
+    return "zicode_${ownerKey}_${repoKey}"
 }

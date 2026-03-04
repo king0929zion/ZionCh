@@ -247,7 +247,7 @@ fun SettingsScreen(navController: NavController) {
                 }
 
                 // AI Model 分组
-                SettingsGroup(title = stringResource(R.string.settings_group_ai_model), itemCount = 5) {
+                SettingsGroup(title = stringResource(R.string.settings_group_ai_model), itemCount = 4) {
                     SettingsItem(
                         icon = {
                             Icon(
@@ -288,9 +288,13 @@ fun SettingsScreen(navController: NavController) {
                         icon = { Icon(AppIcons.MCPTools, null, Modifier.size(SettingsItemIconSize), tint = Color.Unspecified) },
                         label = stringResource(R.string.settings_item_mcp_tools),
                         showChevron = true,
-                        showDivider = true,
+                        showDivider = false,
                         onClick = { navController.navigate("mcp") }
                     )
+                }
+
+                // Zion Labs 分组
+                SettingsGroup(title = stringResource(R.string.settings_group_zion_labs), itemCount = 2) {
                     SettingsItem(
                         icon = {
                             Icon(
@@ -302,7 +306,21 @@ fun SettingsScreen(navController: NavController) {
                         },
                         label = stringResource(R.string.settings_item_autosoul),
                         showChevron = true,
+                        showDivider = true,
                         onClick = { navController.navigate("autosoul") }
+                    )
+                    SettingsItem(
+                        icon = {
+                            Icon(
+                                painter = rememberResourceDrawablePainter(R.drawable.ic_zicode),
+                                contentDescription = null,
+                                modifier = Modifier.size(SettingsItemIconSize),
+                                tint = TextPrimary
+                            )
+                        },
+                        label = stringResource(R.string.settings_item_zicode_settings),
+                        showChevron = true,
+                        onClick = { navController.navigate("zicode_settings") }
                     )
                 }
 
