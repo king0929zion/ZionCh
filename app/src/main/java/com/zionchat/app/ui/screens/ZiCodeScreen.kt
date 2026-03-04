@@ -76,20 +76,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
-import com.zionchat.app.LocalZiCodeAgentOrchestrator
+import com.zionchat.app.LocalChatApiClient
+import com.zionchat.app.LocalProviderAuthManager
 import com.zionchat.app.LocalZiCodeGitHubService
+import com.zionchat.app.LocalZiCodePolicyService
 import com.zionchat.app.LocalZiCodeToolDispatcher
-import com.zionchat.app.LocalZiCodeWorkflowTemplateService
 import com.zionchat.app.R
+import com.zionchat.app.data.ModelConfig
+import com.zionchat.app.data.ProviderConfig
 import com.zionchat.app.data.ZiCodeGitHubRepo
-import com.zionchat.app.data.ZiCodeAgentRunSummary
-import com.zionchat.app.data.ZiCodeAgentTask
 import com.zionchat.app.data.ZiCodeMessage
-import com.zionchat.app.data.ZiCodePlannedToolCall
+import com.zionchat.app.data.ZiCodeModelAgent
 import com.zionchat.app.data.ZiCodeRunRecord
 import com.zionchat.app.data.ZiCodeSettings
 import com.zionchat.app.data.ZiCodeToolCall
 import com.zionchat.app.data.ZiCodeWorkspace
+import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.AppModalBottomSheet
 import com.zionchat.app.ui.components.HeaderTranslucentBackdrop
 import com.zionchat.app.ui.components.headerActionButtonShadow
@@ -108,14 +110,26 @@ import kotlinx.coroutines.launch
 @Composable
 fun ZiCodeScreen(navController: NavController) {
     val repository = LocalAppRepository.current
+    val chatApiClient = LocalChatApiClient.current
+    val providerAuthManager = LocalProviderAuthManager.current
     val gitHubService = LocalZiCodeGitHubService.current
+    val policyService = LocalZiCodePolicyService.current
     val toolDispatcher = LocalZiCodeToolDispatcher.current
-    val orchestrator = LocalZiCodeAgentOrchestrator.current
-    val workflowTemplateService = LocalZiCodeWorkflowTemplateService.current
     val scope = rememberCoroutineScope()
-    val gson = remember { Gson() }
+    val modelAgent = remember(chatApiClient, providerAuthManager, toolDispatcher, policyService) {
+        ZiCodeModelAgent(
+            chatApiClient = chatApiClient,
+            providerAuthManager = providerAuthManager,
+            toolDispatcher = toolDispatcher,
+            policyService = policyService
+        )
+    }
 
     val zicodeSettings by repository.zicodeSettingsFlow.collectAsState(initial = ZiCodeSettings())
+    val providers by repository.providersFlow.collectAsState(initial = emptyList())
+    val models by repository.modelsFlow.collectAsState(initial = emptyList())
+    val defaultZiCodeModelId by repository.defaultZiCodeModelIdFlow.collectAsState(initial = null)
+    val defaultChatModelId by repository.defaultChatModelIdFlow.collectAsState(initial = null)
     val workspaces by repository.zicodeWorkspacesFlow.collectAsState(initial = emptyList())
     val sessions by repository.zicodeSessionsFlow.collectAsState(initial = emptyList())
     val allMessages by repository.zicodeMessagesFlow.collectAsState(initial = emptyList())
@@ -164,7 +178,6 @@ fun ZiCodeScreen(navController: NavController) {
     var selectedSessionId by remember { mutableStateOf<String?>(null) }
     var inputText by remember { mutableStateOf("") }
     var isRunningTask by remember { mutableStateOf(false) }
-    var initializedWorkspaceId by remember { mutableStateOf<String?>(null) }
     var showDebugDetails by remember { mutableStateOf(false) }
 
     var showWorkspaceSheet by remember { mutableStateOf(false) }
@@ -174,7 +187,6 @@ fun ZiCodeScreen(navController: NavController) {
     val hintListTreeText = stringResource(R.string.zicode_hint_list_tree)
     val hintSearchText = stringResource(R.string.zicode_hint_search)
     val hintReadFileText = stringResource(R.string.zicode_hint_read_file)
-    val assistantMockReply = stringResource(R.string.zicode_assistant_mock_reply)
 
     LaunchedEffect(zicodeSettings.pat) {
         val token = zicodeSettings.pat.trim()
@@ -205,7 +217,8 @@ fun ZiCodeScreen(navController: NavController) {
                 ?: ""
     }
 
-    LaunchedEffect(currentWorkspace?.id) {
+    LaunchedEffect(currentWorkspace?.id, selectedSessionId) {
+        if (!selectedSessionId.isNullOrBlank()) return@LaunchedEffect
         currentWorkspace?.repo
             ?.takeIf { it.isNotBlank() }
             ?.let { selectedModelName = it }
@@ -237,6 +250,15 @@ fun ZiCodeScreen(navController: NavController) {
                 .take(6)
         }
     }
+    val selectedSession = remember(sessions, selectedSessionId) {
+        val sid = selectedSessionId?.trim().orEmpty()
+        if (sid.isBlank()) null else sessions.firstOrNull { it.id == sid }
+    }
+    val sessionWorkspace = remember(workspaces, selectedSession?.workspaceId) {
+        val workspaceId = selectedSession?.workspaceId?.trim().orEmpty()
+        if (workspaceId.isBlank()) null else workspaces.firstOrNull { it.id == workspaceId }
+    }
+    val chatWorkspace = sessionWorkspace ?: currentWorkspace
 
     fun ensureSession(workspace: ZiCodeWorkspace, modelName: String, forceNew: Boolean) {
         scope.launch {
@@ -264,7 +286,7 @@ fun ZiCodeScreen(navController: NavController) {
                         ZiCodeMessage(
                             sessionId = sid,
                             role = "assistant",
-                            content = "Welcome to ZiCode. Describe your coding task and I will orchestrate the GitHub workflow.",
+                            content = "Welcome to ZiCode. Describe your coding task and I will run a model-driven GitHub agent loop.",
                             toolHints =
                                 listOf(
                                     hintLoadToolSpecText,
@@ -301,7 +323,14 @@ fun ZiCodeScreen(navController: NavController) {
         val sid = selectedSessionId?.trim().orEmpty()
         val trimmed = inputText.trim()
         if (trimmed.isBlank()) return
-        val workspace = currentWorkspace
+        val workspace =
+            if (sid.isBlank()) {
+                currentWorkspace
+            } else {
+                val session = sessions.firstOrNull { it.id == sid }
+                val workspaceId = session?.workspaceId?.trim().orEmpty()
+                workspaces.firstOrNull { it.id == workspaceId } ?: currentWorkspace
+            }
         if (workspace == null) {
             showWorkspaceSheet = true
             return
@@ -349,66 +378,54 @@ fun ZiCodeScreen(navController: NavController) {
                     return@launch
                 }
 
-                if (zicodeSettings.autoInitWorkflowTemplates && initializedWorkspaceId != workspace.id) {
-                    val initResult =
-                        workflowTemplateService.ensureWorkflowTemplates(
-                            sessionId = sid,
-                            workspace = workspace,
-                            settings = zicodeSettings,
-                            baseBranch = workspace.defaultBranch
-                        )
-                    initializedWorkspaceId = workspace.id
+                val selected = resolveZiCodeModelSelection(
+                    models = models,
+                    providers = providers,
+                    preferredZiCodeModelId = defaultZiCodeModelId,
+                    fallbackChatModelId = defaultChatModelId
+                )
+                if (selected == null) {
                     repository.appendZiCodeMessage(
                         ZiCodeMessage(
                             sessionId = sid,
                             role = "assistant",
-                            content = initResult.message,
-                            toolHints =
-                                listOfNotNull(
-                                    "📋 正在创建 Pull Request…".takeIf { initResult.pullRequestUrl != null },
-                                    "📄 正在读取文件 `.github/workflows`…"
-                                )
+                            content = "ZiCode 模型未配置或不可用。请前往 Settings -> Default Model 先设置 ZiCode 默认模型。",
+                            toolHints = listOf("前往 Settings -> Default Model 设置 ZiCode 默认模型")
                         )
                     )
+                    return@launch
                 }
 
-                val task =
-                    buildZiCodeTaskFromPrompt(
-                        gson = gson,
+                val recentMessages = repository.listZiCodeMessages(sid).takeLast(16)
+                val summary =
+                    modelAgent.runTask(
                         sessionId = sid,
                         workspace = workspace,
-                        prompt = trimmed
+                        settings = zicodeSettings,
+                        provider = selected.provider,
+                        model = selected.model,
+                        userPrompt = trimmed,
+                        recentMessages = recentMessages
                     )
-                val summary = orchestrator.executeTask(task, zicodeSettings)
                 val latestHints =
                     repository.zicodeToolCallsFlow.first()
                         .filter { it.sessionId == sid }
                         .sortedByDescending { it.startedAt }
                         .mapNotNull { call -> call.userHint.takeIf { it.isNotBlank() } }
                         .distinct()
-                        .take(4)
+                        .take(6)
                 repository.appendZiCodeMessage(
                     ZiCodeMessage(
                         sessionId = sid,
                         role = "assistant",
-                        content = buildZiCodeSummaryText(summary, assistantMockReply),
-                        toolHints = latestHints.ifEmpty { listOf(hintListTreeText, hintSearchText, hintReadFileText) }
+                        content = summary.finalMessage,
+                        toolHints =
+                            summary.toolHints
+                                .ifEmpty {
+                                    latestHints.ifEmpty { listOf(hintListTreeText, hintSearchText, hintReadFileText) }
+                                }
                     )
                 )
-                summary.latestRunId?.let { runId ->
-                    repository.upsertZiCodeRun(
-                        ZiCodeRunRecord(
-                            sessionId = sid,
-                            workflow = task.workflowFile.orEmpty().ifBlank { "manual-task" },
-                            runId = runId,
-                            status = if (summary.success) "success" else "failure",
-                            summary = summary.message,
-                            runUrl = null,
-                            createdAt = System.currentTimeMillis(),
-                            updatedAt = System.currentTimeMillis()
-                        )
-                    )
-                }
             } catch (throwable: Throwable) {
                 repository.appendZiCodeMessage(
                     ZiCodeMessage(
@@ -425,7 +442,7 @@ fun ZiCodeScreen(navController: NavController) {
     }
 
     fun createNewChat() {
-        val workspace = currentWorkspace
+        val workspace = chatWorkspace ?: currentWorkspace
         if (workspace == null) {
             showWorkspaceSheet = true
             return
@@ -436,17 +453,15 @@ fun ZiCodeScreen(navController: NavController) {
         ensureSession(workspace, selectedModelName, forceNew = true)
     }
 
-    LaunchedEffect(currentWorkspace?.id, selectedModelName, sessions) {
+    LaunchedEffect(currentWorkspace?.id, selectedModelName, sessions, selectedSessionId) {
+        val currentSession = selectedSessionId?.trim().orEmpty()
+        if (currentSession.isNotBlank() && sessions.any { it.id == currentSession }) return@LaunchedEffect
         val workspaceId = currentWorkspace?.id.orEmpty()
         if (workspaceId.isBlank() || selectedModelName.isBlank()) return@LaunchedEffect
-        val currentSession = selectedSessionId?.trim().orEmpty()
-        val exists = sessions.any { it.id == currentSession }
-        if (currentSession.isBlank() || !exists) {
-            selectedSessionId =
-                sessions.firstOrNull {
-                    it.workspaceId == workspaceId && it.modelName.equals(selectedModelName, ignoreCase = true)
-                }?.id
-        }
+        selectedSessionId =
+            sessions.firstOrNull {
+                it.workspaceId == workspaceId && it.modelName.equals(selectedModelName, ignoreCase = true)
+            }?.id
     }
 
     BoxWithConstraints(
@@ -492,10 +507,15 @@ fun ZiCodeScreen(navController: NavController) {
                 .background(Surface)
         ) {
             ZiCodeChatHeader(
-                modelName = selectedModelName,
-                subtitle = currentWorkspace?.defaultBranch.orEmpty(),
+                modelName = chatWorkspace?.repo.orEmpty().ifBlank { selectedModelName },
+                subtitle = chatWorkspace?.defaultBranch.orEmpty(),
                 onBack = { showChatPage = false },
-                onOpenWorkspace = { navController.navigate("zicode_repo_browser") },
+                onOpenWorkspace = {
+                    scope.launch {
+                        chatWorkspace?.let { repository.setZiCodeCurrentWorkspace(it.id) }
+                        navController.navigate("zicode_repo_browser")
+                    }
+                },
                 onNewChat = ::createNewChat
             )
             ZiCodeChatMessages(
@@ -1568,150 +1588,35 @@ private fun parseDirectToolCommand(prompt: String): Pair<String, String>? {
     return toolName to argsJson
 }
 
-private fun buildZiCodeTaskFromPrompt(
-    gson: Gson,
-    sessionId: String,
-    workspace: ZiCodeWorkspace,
-    prompt: String
-): ZiCodeAgentTask {
-    val calls = mutableListOf<ZiCodePlannedToolCall>()
+private data class ZiCodeResolvedModel(
+    val model: ModelConfig,
+    val provider: ProviderConfig
+)
 
-    calls += ZiCodePlannedToolCall(
-        toolName = "policy.get_toolspec",
-        argsJson = "{}"
-    )
-    calls += ZiCodePlannedToolCall(
-        toolName = "repo.list_tree",
-        argsJson =
-            gson.toJson(
-                JsonObject().apply {
-                    addProperty("ref", workspace.defaultBranch)
-                }
-            )
-    )
+private fun resolveZiCodeModelSelection(
+    models: List<ModelConfig>,
+    providers: List<ProviderConfig>,
+    preferredZiCodeModelId: String?,
+    fallbackChatModelId: String?
+): ZiCodeResolvedModel? {
+    val enabledModels = models.filter { it.enabled }
+    if (enabledModels.isEmpty()) return null
 
-    if (prompt.contains("mcp", ignoreCase = true) || prompt.contains("tool", ignoreCase = true)) {
-        calls += ZiCodePlannedToolCall(
-            toolName = "mcp.list_servers",
-            argsJson = "{}"
-        )
-    }
-
-    extractSearchKeyword(prompt)?.let { keyword ->
-        calls += ZiCodePlannedToolCall(
-            toolName = "repo.search",
-            argsJson =
-                gson.toJson(
-                    JsonObject().apply {
-                        addProperty("keyword", keyword)
-                        addProperty("per_page", 20)
-                    }
-                )
-        )
-    }
-
-    extractReadablePath(prompt)?.let { path ->
-        calls += ZiCodePlannedToolCall(
-            toolName = "repo.read_file",
-            argsJson =
-                gson.toJson(
-                    JsonObject().apply {
-                        addProperty("path", path)
-                        addProperty("ref", workspace.defaultBranch)
-                    }
-                )
-        )
-    }
-
-    val workflowFile = extractWorkflowFile(prompt)
-    if (workflowFile != null) {
-        calls += ZiCodePlannedToolCall(
-            toolName = "actions.trigger_workflow",
-            argsJson =
-                gson.toJson(
-                    JsonObject().apply {
-                        addProperty("workflow", workflowFile)
-                        addProperty("ref", workspace.defaultBranch)
-                    }
-                )
-        )
-        calls += ZiCodePlannedToolCall(
-            toolName = "actions.get_latest_run",
-            argsJson =
-                gson.toJson(
-                    JsonObject().apply {
-                        addProperty("workflow", workflowFile)
-                        addProperty("branch", workspace.defaultBranch)
-                    }
-                )
-        )
-    }
-
-    return ZiCodeAgentTask(
-        taskId = "task-${System.currentTimeMillis()}",
-        sessionId = sessionId,
-        workspace = workspace,
-        plannedCalls = calls,
-        workflowFile = workflowFile,
-    )
+    val preferred =
+        findEnabledModelByKey(enabledModels, preferredZiCodeModelId)
+            ?: findEnabledModelByKey(enabledModels, fallbackChatModelId)
+            ?: enabledModels.firstOrNull()
+            ?: return null
+    val providerId = preferred.providerId?.trim().orEmpty()
+    if (providerId.isBlank()) return null
+    val provider = providers.firstOrNull { it.id == providerId } ?: return null
+    return ZiCodeResolvedModel(model = preferred, provider = provider)
 }
 
-private fun buildZiCodeSummaryText(summary: ZiCodeAgentRunSummary, fallback: String): String {
-    if (summary.totalCalls <= 0 && summary.success) return fallback
-    return if (summary.success) {
-        "执行完成：${summary.message}（共 ${summary.totalCalls} 个工具调用）"
-    } else {
-        "执行失败：${summary.message}（失败点：${summary.failedCall ?: "unknown"}）"
-    }
-}
-
-private fun extractSearchKeyword(prompt: String): String? {
-    val normalized = prompt.trim()
-    if (normalized.isBlank()) return null
-    val direct =
-        Regex("(?:搜索|search)\\s*[:：]?\\s*([A-Za-z0-9_./-]{2,})", RegexOption.IGNORE_CASE)
-            .find(normalized)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-    if (direct != null) return direct
-    return if (normalized.contains("搜索") || normalized.contains("search", ignoreCase = true)) {
-        normalized.split(" ").lastOrNull()?.trim()?.takeIf { it.length >= 2 }
-    } else {
-        null
-    }
-}
-
-private fun extractReadablePath(prompt: String): String? {
-    val normalized = prompt.trim()
-    if (normalized.isBlank()) return null
-    val pathInBackticks = Regex("`([^`]+)`").find(normalized)?.groupValues?.getOrNull(1)?.trim()
-    if (!pathInBackticks.isNullOrBlank() && pathInBackticks.contains("/")) return pathInBackticks
-    val genericPath =
-        Regex("([A-Za-z0-9_./-]+\\.[A-Za-z0-9]{1,8})")
-            .find(normalized)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.trim()
-    return genericPath?.takeIf { it.contains("/") || it.contains(".") }
-}
-
-private fun extractWorkflowFile(prompt: String): String? {
-    val normalized = prompt.trim()
-    if (normalized.isBlank()) return null
-    val explicit =
-        Regex("([A-Za-z0-9_.-]+\\.ya?ml)", RegexOption.IGNORE_CASE)
-            .find(normalized)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.trim()
-    if (!explicit.isNullOrBlank()) return explicit
-    return if (normalized.contains("workflow", ignoreCase = true) || normalized.contains("工作流")) {
-        "build.yml"
-    } else {
-        null
-    }
+private fun findEnabledModelByKey(models: List<ModelConfig>, key: String?): ModelConfig? {
+    val target = key?.trim().orEmpty()
+    if (target.isBlank()) return null
+    return models.firstOrNull { it.id == target || extractRemoteModelId(it.id) == target }
 }
 
 private fun buildStableZiCodeWorkspaceId(owner: String, repo: String): String {
