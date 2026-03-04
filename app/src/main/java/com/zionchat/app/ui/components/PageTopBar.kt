@@ -68,7 +68,6 @@ fun HeaderTranslucentBackdrop(
 ) {
     val topColor = containerColor.copy(alpha = containerAlpha.coerceIn(0.62f, 0.9f))
     val midColor = containerColor.copy(alpha = (containerAlpha * 0.66f).coerceIn(0.42f, 0.76f))
-    val glassHighlight = Color.White.copy(alpha = 0.24f)
 
     Box(modifier = modifier) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -81,7 +80,6 @@ fun HeaderTranslucentBackdrop(
                                 .createBlurEffect(26f, 26f, Shader.TileMode.CLAMP)
                                 .asComposeRenderEffect()
                     }
-                    .background(Color.White.copy(alpha = 0.10f))
             )
         }
 
@@ -97,17 +95,6 @@ fun HeaderTranslucentBackdrop(
                     )
                 )
         )
-        Spacer(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to glassHighlight,
-                        0.45f to Color.Transparent,
-                        1.0f to Color.Transparent
-                    )
-                )
-        )
     }
 }
 
@@ -119,7 +106,6 @@ fun FooterTranslucentBackdrop(
 ) {
     val bottomColor = containerColor.copy(alpha = containerAlpha.coerceIn(0.62f, 0.9f))
     val midColor = containerColor.copy(alpha = (containerAlpha * 0.66f).coerceIn(0.42f, 0.76f))
-    val glassHighlight = Color.White.copy(alpha = 0.22f)
 
     Box(modifier = modifier) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -132,7 +118,6 @@ fun FooterTranslucentBackdrop(
                                 .createBlurEffect(26f, 26f, Shader.TileMode.CLAMP)
                                 .asComposeRenderEffect()
                     }
-                    .background(Color.White.copy(alpha = 0.10f))
             )
         }
 
@@ -145,17 +130,6 @@ fun FooterTranslucentBackdrop(
                         0.22f to midColor,
                         0.58f to bottomColor,
                         1.0f to bottomColor
-                    )
-                )
-        )
-        Spacer(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to Color.Transparent,
-                        0.62f to Color.Transparent,
-                        1.0f to glassHighlight
                     )
                 )
         )
@@ -174,7 +148,7 @@ fun PageTopBar(
     modifier: Modifier = Modifier,
     containerColor: Color = Color(0xFFFFFFFF),
     containerAlpha: Float = 0.92f,
-    fadeHeight: Dp = 32.dp,
+    fadeHeight: Dp = 0.dp,
     trailing: (@Composable () -> Unit)? = null
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
@@ -228,8 +202,9 @@ fun PageTopBar(
                     }
                 }
             }
-            // Extra space for gradient tail to breathe
-            Spacer(modifier = Modifier.height(fadeHeight))
+            if (fadeHeight > 0.dp) {
+                Spacer(modifier = Modifier.height(fadeHeight))
+            }
         }
     }
 }
