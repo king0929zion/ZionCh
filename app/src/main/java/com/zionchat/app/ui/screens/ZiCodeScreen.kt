@@ -2,6 +2,7 @@
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -29,6 +30,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -54,11 +57,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -88,6 +94,7 @@ import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.ChatBackground
+import com.zionchat.app.ui.theme.GrayLight
 import com.zionchat.app.ui.theme.GrayLighter
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.Surface
@@ -688,107 +695,68 @@ private fun ZiCodeChatMessages(
         modifier = modifier
             .fillMaxWidth()
             .background(ChatBackground)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(list, key = { it.id }) { message ->
-            if (message.role == "user") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+            val isUser = message.role == "user"
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+            ) {
+                val bubbleShape = if (isUser) RoundedCornerShape(18.dp) else RoundedCornerShape(16.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(if (isUser) 0.9f else 1f)
+                        .clip(bubbleShape)
+                        .background(if (isUser) Color(0xFF1C1C1E) else Color.White, bubbleShape)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E))
-                    ) {
-                        Text(
-                            text = message.content,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontFamily = SourceSans3
-                        )
-                    }
+                    Text(
+                        text = message.content,
+                        color = if (isUser) Color.White else TextPrimary,
+                        fontSize = 15.sp,
+                        fontFamily = SourceSans3
+                    )
                 }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.Top
+            }
+            if (!isUser && message.toolHints.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.padding(start = 2.dp, top = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFE9EAEE), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    message.toolHints.forEach { hint ->
                         Text(
-                            text = "Z",
-                            color = TextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            text = "• $hint",
+                            color = TextSecondary,
+                            fontSize = 12.sp,
                             fontFamily = SourceSans3
                         )
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White)
-                        ) {
-                            Text(
-                                text = message.content,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                color = TextPrimary,
-                                fontSize = 15.sp,
-                                fontFamily = SourceSans3
-                            )
-                        }
-                        message.toolHints.forEach { hint ->
-                            Card(
-                                shape = RoundedCornerShape(14.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F7))
-                            ) {
-                                Text(
-                                    text = hint,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                                    color = TextSecondary,
-                                    fontSize = 13.sp,
-                                    fontFamily = SourceSans3
-                                )
-                            }
-                        }
                     }
                 }
             }
         }
         if (isRunningTask) {
             item(key = "zicode_running") {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F7))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp, start = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 2.dp,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = "ZiCode 正在执行任务...",
-                            fontSize = 13.sp,
-                            fontFamily = SourceSans3,
-                            fontWeight = FontWeight.Medium,
-                            color = TextSecondary
-                        )
-                    }
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "ZiCode 正在执行任务...",
+                        fontSize = 13.sp,
+                        fontFamily = SourceSans3,
+                        fontWeight = FontWeight.Medium,
+                        color = TextSecondary
+                    )
                 }
             }
         }
@@ -804,42 +772,39 @@ private fun ZiCodeChatMessages(
                 )
             }
             items(callsToShow, key = { "tool_${it.id}" }) { call ->
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F7))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
+                    Text(
+                        text = call.userHint.ifBlank { "⏳ 正在执行工具调用…" },
+                        fontSize = 13.sp,
+                        fontFamily = SourceSans3,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "`${call.toolName}` · ${call.status}",
+                        fontSize = 12.sp,
+                        fontFamily = SourceSans3,
+                        color =
+                            when (call.status) {
+                                "success" -> Color(0xFF0A7D34)
+                                "error" -> Color(0xFFB3261E)
+                                else -> TextSecondary
+                            }
+                    )
+                    if (!call.error.isNullOrBlank()) {
                         Text(
-                            text = call.userHint.ifBlank { "⏳ 正在执行工具调用…" },
-                            fontSize = 13.sp,
-                            fontFamily = SourceSans3,
-                            fontWeight = FontWeight.Medium,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = "`${call.toolName}` · ${call.status}",
+                            text = call.error.orEmpty(),
                             fontSize = 12.sp,
                             fontFamily = SourceSans3,
-                            color =
-                                when (call.status) {
-                                    "success" -> Color(0xFF0A7D34)
-                                    "error" -> Color(0xFFB3261E)
-                                    else -> TextSecondary
-                                }
+                            color = Color(0xFFB3261E),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        if (!call.error.isNullOrBlank()) {
-                            Text(
-                                text = call.error.orEmpty(),
-                                fontSize = 12.sp,
-                                fontFamily = SourceSans3,
-                                color = Color(0xFFB3261E),
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
                     }
                 }
             }
@@ -856,30 +821,27 @@ private fun ZiCodeChatMessages(
                 )
             }
             items(runsToShow, key = { "run_${it.id}" }) { run ->
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "${run.workflow} · #${run.runId ?: 0}",
-                            fontSize = 13.sp,
-                            fontFamily = SourceSans3,
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = run.summary.ifBlank { run.status },
-                            fontSize = 12.sp,
-                            fontFamily = SourceSans3,
-                            color = TextSecondary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    Text(
+                        text = "${run.workflow} · #${run.runId ?: 0}",
+                        fontSize = 13.sp,
+                        fontFamily = SourceSans3,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = run.summary.ifBlank { run.status },
+                        fontSize = 12.sp,
+                        fontFamily = SourceSans3,
+                        color = TextSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -892,64 +854,106 @@ private fun ZiCodeInputBar(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit
 ) {
-    Row(
+    val hasText = value.trim().isNotEmpty()
+    val actionBackground by animateColorAsState(
+        targetValue = if (hasText) TextPrimary else GrayLight,
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        label = "zicode_send_bg"
+    )
+    val actionIconTint by animateColorAsState(
+        targetValue = if (hasText) Color.White else TextSecondary,
+        animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),
+        label = "zicode_send_icon"
+    )
+    val inputCapsuleShape = RoundedCornerShape(23.dp)
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        contentAlignment = Alignment.BottomStart
     ) {
-        Card(
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(999.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F1F1))
-        ) {
-            TextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = {
-                    Text(
-                        text = stringResource(R.string.zicode_input_placeholder),
-                        fontSize = 15.sp,
-                        fontFamily = SourceSans3,
-                        color = TextSecondary
-                    )
-                },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    cursorColor = TextPrimary
-                ),
-                textStyle = androidx.compose.ui.text.TextStyle(
-                    fontSize = 15.sp,
-                    fontFamily = SourceSans3,
-                    color = TextPrimary
-                ),
-                maxLines = 4
-            )
-        }
         Box(
             modifier = Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(Color.Black, CircleShape)
-                .pressableScale(pressedScale = 0.95f, onClick = onSend),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .heightIn(min = 46.dp)
+                .shadow(
+                    elevation = 8.dp,
+                    shape = inputCapsuleShape,
+                    clip = false,
+                    ambientColor = Color.Black.copy(alpha = 0.08f),
+                    spotColor = Color.Black.copy(alpha = 0.08f)
+                )
+                .clip(inputCapsuleShape)
+                .background(Surface, inputCapsuleShape),
+            contentAlignment = Alignment.CenterStart
         ) {
-            Icon(
-                imageVector = AppIcons.Send,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(20.dp)
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 48.dp, top = 8.dp, bottom = 8.dp)
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 24.dp, max = 120.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 17.sp,
+                        lineHeight = 22.sp,
+                        color = TextPrimary
+                    ),
+                    cursorBrush = SolidColor(TextPrimary),
+                    keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = { if (hasText) onSend() }
+                    ),
+                    minLines = 1,
+                    maxLines = 5,
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (value.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.zicode_input_placeholder),
+                                    fontSize = 17.sp,
+                                    lineHeight = 22.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 6.dp, bottom = 4.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(actionBackground, CircleShape)
+                    .pressableScale(
+                        enabled = hasText,
+                        pressedScale = 0.95f,
+                        onClick = {
+                            if (hasText) onSend()
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Send,
+                    contentDescription = null,
+                    tint = actionIconTint,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }
