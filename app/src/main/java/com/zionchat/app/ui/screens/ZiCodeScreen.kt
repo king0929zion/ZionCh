@@ -495,7 +495,7 @@ fun ZiCodeScreen(navController: NavController) {
                 modelName = selectedModelName,
                 subtitle = currentWorkspace?.defaultBranch.orEmpty(),
                 onBack = { showChatPage = false },
-                onOpenWorkspace = { showWorkspaceSheet = true },
+                onOpenWorkspace = { navController.navigate("zicode_repo_browser") },
                 onNewChat = ::createNewChat
             )
             ZiCodeChatMessages(

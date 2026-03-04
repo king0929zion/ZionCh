@@ -1,8 +1,8 @@
-## ZionChat v0.31.70
+## ZionChat v0.31.71
 
-- ZiCode 列表页与对话页头部统一为设置页同源半透明过渡样式。
-- ZiCode 对话页标题改为仅显示仓库名，副标题显示默认分支。
-- 对话页右上仓库按钮图标改为文件夹风格图标。
-- ZiCode 用户消息气泡样式对齐主对话页（右对齐、18dp 圆角、60dp 左留白）。
-- 输入栏改为 `navigationBars + ime` 联合内边距，修复键盘顶起时底部遮挡。
-- Tool Calls / Workflow Runs 默认折叠，仅在“显示执行详情”后展开。
+- 新增全屏仓库浏览页 `zicode_repo_browser`，支持多层级目录懒加载。
+- ZiCode 右上文件夹按钮改为跳转仓库浏览页，不再弹旧工作区面板。
+- 新增 GitHub 服务层目录与文件读取接口：
+  - `listRepoDir(workspace, pat, ref, path)`
+  - `readRepoFile(workspace, pat, ref, path)`
+- 支持文件内容预览；空目录/404/PAT 失效/空仓库场景统一友好错误提示。

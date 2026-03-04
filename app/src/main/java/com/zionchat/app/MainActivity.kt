@@ -169,6 +169,7 @@ class MainActivity : AppCompatActivity() {
                             composable("zicode") { ZiCodeScreen(navController) }
                             composable("zicode_settings") { ZiCodeSettingsScreen(navController) }
                             composable("zicode_tools") { ZiCodeToolsScreen(navController) }
+                            composable("zicode_repo_browser") { ZiCodeRepoBrowserScreen(navController) }
                             composable("language") { LanguageScreen(navController) }
                             composable("personalization") { PersonalizationScreen(navController) }
                             composable("memories") { MemoriesScreen(navController) }
