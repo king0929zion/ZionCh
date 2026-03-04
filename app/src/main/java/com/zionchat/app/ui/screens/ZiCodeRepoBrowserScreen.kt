@@ -261,7 +261,7 @@ fun ZiCodeRepoBrowserScreen(navController: NavController) {
                 items(currentState.entries, key = { "${it.type}:${it.path}" }) { entry ->
                     RepoEntryRow(
                         title = entry.name,
-                        subtitle = if (entry.type.equals("dir", ignoreCase = true)) "目录" else "${entry.size} B",
+                        subtitle = if (entry.type.equals("dir", ignoreCase = true)) "目录" else "",
                         isDir = entry.type.equals("dir", ignoreCase = true),
                         onClick = {
                             if (entry.type.equals("dir", ignoreCase = true)) {
@@ -401,14 +401,16 @@ private fun RepoEntryRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = subtitle,
-                fontFamily = SourceSans3,
-                fontSize = 12.sp,
-                color = TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    fontFamily = SourceSans3,
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         if (isDir) {
             Icon(

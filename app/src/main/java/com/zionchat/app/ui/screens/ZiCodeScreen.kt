@@ -5,6 +5,7 @@ import android.os.Build
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -97,6 +99,7 @@ import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.AppModalBottomSheet
 import com.zionchat.app.ui.components.FooterTranslucentBackdrop
 import com.zionchat.app.ui.components.HeaderTranslucentBackdrop
+import com.zionchat.app.ui.components.PageTopBarContentTopPadding
 import com.zionchat.app.ui.components.headerActionButtonShadow
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
@@ -286,22 +289,22 @@ fun ZiCodeScreen(navController: NavController) {
     }
 
     fun sendMessage() {
-        val sid = selectedSessionId?.trim().orEmpty()
         val trimmed = inputText.trim()
         if (trimmed.isBlank()) return
-        val session = sessions.firstOrNull { it.id == sid }
-        val workspace =
-            if (sid.isBlank()) {
+        val sidSnapshot = selectedSessionId?.trim().orEmpty()
+        val sessionSnapshot = sessions.firstOrNull { it.id == sidSnapshot }
+        val workspaceSnapshot =
+            if (sidSnapshot.isBlank()) {
                 currentWorkspace
             } else {
-                val workspaceId = session?.workspaceId?.trim().orEmpty()
+                val workspaceId = sessionSnapshot?.workspaceId?.trim().orEmpty()
                 workspaces.firstOrNull { it.id == workspaceId }
             }
-        if (sid.isNotBlank() && session != null && workspace == null) {
+        if (sidSnapshot.isNotBlank() && sessionSnapshot != null && workspaceSnapshot == null) {
             scope.launch {
                 repository.appendZiCodeMessage(
                     ZiCodeMessage(
-                        sessionId = sid,
+                        sessionId = sidSnapshot,
                         role = "assistant",
                         content = "当前会话绑定的仓库已不可用。请返回项目列表重新进入目标仓库，或新建会话。"
                     )
@@ -309,17 +312,41 @@ fun ZiCodeScreen(navController: NavController) {
             }
             return
         }
-        if (workspace == null) {
+        if (workspaceSnapshot == null) {
             showWorkspaceSheet = true
             return
         }
-        if (sid.isBlank()) {
-            val sessionLabel = selectedModelName.ifBlank { workspace.displayName }
-            ensureSession(workspace, sessionLabel, forceNew = false)
-            return
-        }
-        inputText = ""
         scope.launch {
+            val workspace = workspaceSnapshot
+            var sid = sidSnapshot
+            if (sid.isBlank()) {
+                val sessionLabel =
+                    selectedModelName
+                        .ifBlank { workspace.repo }
+                        .ifBlank { workspace.displayName }
+                val session =
+                    repository.findLatestZiCodeSession(workspace.id, sessionLabel)
+                        ?: repository.createZiCodeSession(
+                            workspaceId = workspace.id,
+                            modelName = sessionLabel,
+                            title = "$sessionLabel Session"
+                        )
+                sid = session?.id.orEmpty()
+                if (sid.isBlank()) return@launch
+                selectedSessionId = sid
+                val existing = repository.listZiCodeMessages(sid)
+                if (existing.isEmpty()) {
+                    repository.appendZiCodeMessage(
+                        ZiCodeMessage(
+                            sessionId = sid,
+                            role = "assistant",
+                            content = "请描述你的编码目标，我会开始执行。"
+                        )
+                    )
+                }
+            }
+
+            inputText = ""
             repository.appendZiCodeMessage(
                 ZiCodeMessage(
                     sessionId = sid,
@@ -479,7 +506,7 @@ fun ZiCodeScreen(navController: NavController) {
             label = "zicode_page_progress"
         )
 
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
@@ -488,19 +515,23 @@ fun ZiCodeScreen(navController: NavController) {
                 }
                 .background(ChatBackground)
         ) {
-            ZiCodeListHeader(
-                onBack = { navController.popBackStack() }
-            )
             ZiCodeModelList(
                 workspaces = projectWorkspaces,
                 isLoading = reposLoading,
                 errorMessage = reposError,
                 onOpenSettings = { navController.navigate("zicode_settings") },
-                onModelClick = ::openChat
+                onModelClick = ::openChat,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = PageTopBarContentTopPadding)
+            )
+            ZiCodeListHeader(
+                onBack = { navController.popBackStack() }
             )
         }
 
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth()
@@ -509,6 +540,23 @@ fun ZiCodeScreen(navController: NavController) {
                 }
                 .background(ChatBackground)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = PageTopBarContentTopPadding)
+            ) {
+                ZiCodeChatMessages(
+                    messages = currentSessionMessages,
+                    isRunningTask = isRunningTask,
+                    modifier = Modifier.weight(1f)
+                )
+                ZiCodeInputBar(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    onSend = ::sendMessage
+                )
+            }
             ZiCodeChatHeader(
                 modelName = chatWorkspace?.repo.orEmpty().ifBlank { selectedModelName },
                 subtitle = chatWorkspace?.defaultBranch.orEmpty(),
@@ -520,16 +568,6 @@ fun ZiCodeScreen(navController: NavController) {
                     }
                 },
                 onNewChat = ::createNewChat
-            )
-            ZiCodeChatMessages(
-                messages = currentSessionMessages,
-                isRunningTask = isRunningTask,
-                modifier = Modifier.weight(1f)
-            )
-            ZiCodeInputBar(
-                value = inputText,
-                onValueChange = { inputText = it },
-                onSend = ::sendMessage
             )
         }
     }
@@ -600,12 +638,12 @@ private fun ZiCodeListHeader(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(40.dp)
                         .headerActionButtonShadow(CircleShape)
                         .clip(CircleShape)
                         .background(Surface, CircleShape)
@@ -628,9 +666,8 @@ private fun ZiCodeListHeader(
                     fontFamily = SourceSans3,
                     color = TextPrimary
                 )
-                Spacer(modifier = Modifier.size(42.dp))
+                Spacer(modifier = Modifier.size(40.dp))
             }
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
@@ -641,12 +678,12 @@ private fun ZiCodeModelList(
     isLoading: Boolean,
     errorMessage: String?,
     onOpenSettings: () -> Unit,
-    onModelClick: (ZiCodeWorkspace) -> Unit
+    onModelClick: (ZiCodeWorkspace) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     LazyColumn(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .background(ChatBackground)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -813,7 +850,7 @@ private fun ZiCodeChatHeader(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -882,11 +919,11 @@ private fun ZiCodeChatHeader(
                                 modifier = Modifier.size(19.dp)
                             )
                         },
-                        onClick = onNewChat
+                        onClick = onNewChat,
+                        enabled = false
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
@@ -894,15 +931,21 @@ private fun ZiCodeChatHeader(
 @Composable
 private fun CircleActionButton(
     icon: @Composable () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    enabled: Boolean = true
 ) {
     Box(
         modifier = Modifier
             .size(40.dp)
+            .graphicsLayer { alpha = if (enabled) 1f else 0.4f }
             .headerActionButtonShadow(CircleShape)
             .clip(CircleShape)
             .background(Color.White, CircleShape)
-            .pressableScale(pressedScale = 0.95f, onClick = onClick),
+            .pressableScale(
+                enabled = enabled,
+                pressedScale = 0.95f,
+                onClick = { if (enabled) onClick() }
+            ),
         contentAlignment = Alignment.Center
     ) {
         icon()
@@ -928,7 +971,23 @@ private fun ZiCodeChatMessages(
         messages
     }
 
+    val listState = rememberLazyListState()
+    val totalItems = list.size + if (isRunningTask) 1 else 0
+
+    LaunchedEffect(totalItems) {
+        if (totalItems <= 0) return@LaunchedEffect
+        runCatching { listState.animateScrollToItem(totalItems - 1) }
+    }
+
+    val tailContent = list.lastOrNull()?.content.orEmpty()
+    LaunchedEffect(isRunningTask, tailContent) {
+        if (!isRunningTask) return@LaunchedEffect
+        if (totalItems <= 0) return@LaunchedEffect
+        runCatching { listState.scrollToItem(totalItems - 1) }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = modifier
             .fillMaxWidth()
             .background(ChatBackground)
@@ -1021,58 +1080,41 @@ private fun ZiCodeInputBar(
         label = "zicode_send_icon"
     )
     val inputCapsuleShape = RoundedCornerShape(23.dp)
-    val glassContainerColor = Color.White.copy(alpha = 0.76f)
-    val glassBorderColor = Color.White.copy(alpha = 0.58f)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
         contentAlignment = Alignment.BottomStart
     ) {
         FooterTranslucentBackdrop(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.matchParentSize(),
             containerColor = Color.White,
             containerAlpha = 0.92f
         )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 6.dp, bottom = 10.dp)
                 .heightIn(min = 46.dp)
                 .shadow(
-                    elevation = 10.dp,
+                    elevation = 8.dp,
                     shape = inputCapsuleShape,
                     clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.10f),
-                    spotColor = Color.Black.copy(alpha = 0.10f)
+                    ambientColor = Color.Black.copy(alpha = 0.08f),
+                    spotColor = Color.Black.copy(alpha = 0.08f)
                 )
                 .clip(inputCapsuleShape)
-                .background(Color.Transparent, inputCapsuleShape),
+                .background(Surface, inputCapsuleShape),
             contentAlignment = Alignment.CenterStart
         ) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .graphicsLayer {
-                            renderEffect =
-                                android.graphics.RenderEffect
-                                    .createBlurEffect(22f, 22f, Shader.TileMode.CLAMP)
-                                    .asComposeRenderEffect()
-                        }
-                        .background(Color.White.copy(alpha = 0.08f), inputCapsuleShape)
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(glassContainerColor, inputCapsuleShape)
-                    .border(width = 0.8.dp, color = glassBorderColor, shape = inputCapsuleShape)
-            )
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .animateContentSize(
+                        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                    )
                     .padding(start = 12.dp, end = 48.dp, top = 8.dp, bottom = 8.dp)
             ) {
                 BasicTextField(
