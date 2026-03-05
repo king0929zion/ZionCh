@@ -147,9 +147,7 @@ class DefaultZiCodeToolDispatcher(
                     runCatching {
                         initializeRepositoryIfEmpty(workspace, pat, ref)
                     }.getOrElse { initError ->
-                        error(
-                            "仓库为空，自动初始化失败：${initError.message.orEmpty().ifBlank { "unknown error" }}"
-                        )
+                        error(composeRepositoryInitFailure(initError.message))
                     }
                     getGitTree(workspace, pat, ref, recursive = true)
                 } else {
@@ -173,9 +171,7 @@ class DefaultZiCodeToolDispatcher(
                     runCatching {
                         initializeRepositoryIfEmpty(workspace, pat, ref)
                     }.getOrElse { initError ->
-                        error(
-                            "仓库为空，自动初始化失败：${initError.message.orEmpty().ifBlank { "unknown error" }}"
-                        )
+                        error(composeRepositoryInitFailure(initError.message))
                     }
                     listDirectory(workspace, pat, ref, path)
                 } else {
@@ -832,7 +828,36 @@ class DefaultZiCodeToolDispatcher(
         pat: String,
         branch: String
     ): JsonObject {
-        val targetBranch = branch.trim().ifBlank { workspace.defaultBranch.ifBlank { "main" } }
+        val primaryBranch = workspace.defaultBranch.trim().ifBlank { "main" }
+        val requestedBranch = branch.trim().ifBlank { primaryBranch }
+        return runCatching {
+            initializeRepositoryByGitData(
+                workspace = workspace,
+                pat = pat,
+                primaryBranch = primaryBranch,
+                requestedBranch = requestedBranch
+            )
+        }.getOrElse { gitDataError ->
+            runCatching {
+                initializeRepositoryByContentsApi(
+                    workspace = workspace,
+                    pat = pat,
+                    primaryBranch = primaryBranch,
+                    requestedBranch = requestedBranch
+                )
+            }.getOrElse { contentsError ->
+                val errorMessage = contentsError.message.orEmpty().ifBlank { gitDataError.message.orEmpty() }
+                error(composeRepositoryInitFailure(errorMessage))
+            }
+        }
+    }
+
+    private fun initializeRepositoryByGitData(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        primaryBranch: String,
+        requestedBranch: String
+    ): JsonObject {
         val initContent = buildInitialRepoContent(workspace)
         val blobSha = createBlob(workspace, pat, initContent)
         val treeItems = JsonArray().apply {
@@ -853,25 +878,110 @@ class DefaultZiCodeToolDispatcher(
             treeSha = treeSha,
             parentSha = null
         )
+        val primaryRef = createOrGetRef(workspace, pat, primaryBranch, commitSha)
+        val requestedRef =
+            if (requestedBranch.equals(primaryBranch, ignoreCase = true)) {
+                primaryRef
+            } else {
+                createOrGetRef(workspace, pat, requestedBranch, commitSha)
+            }
+        return JsonObject().apply {
+            addProperty("initialized", true)
+            addProperty("branch", primaryBranch)
+            addProperty("requested_branch", requestedBranch)
+            addProperty("commit_sha", commitSha)
+            add("ref", primaryRef)
+            add("requested_ref", requestedRef)
+        }
+    }
+
+    private fun initializeRepositoryByContentsApi(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        primaryBranch: String,
+        requestedBranch: String
+    ): JsonObject {
+        val initContent = buildInitialRepoContent(workspace)
+        val commitSha =
+            runCatching {
+                putRepositoryFile(
+                    workspace = workspace,
+                    pat = pat,
+                    path = "README.md",
+                    content = initContent,
+                    branch = primaryBranch,
+                    message = "chore: initialize repository for ZiCode"
+                )
+            }.recoverCatching {
+                putRepositoryFile(
+                    workspace = workspace,
+                    pat = pat,
+                    path = "README.md",
+                    content = initContent,
+                    branch = null,
+                    message = "chore: initialize repository for ZiCode"
+                )
+            }.getOrElse { throwable ->
+                throw IllegalStateException(throwable.message ?: "initialize by contents api failed")
+            }
+
+        val primaryRef = createOrGetRef(workspace, pat, primaryBranch, commitSha)
+        val requestedRef =
+            if (requestedBranch.equals(primaryBranch, ignoreCase = true)) {
+                primaryRef
+            } else {
+                createOrGetRef(workspace, pat, requestedBranch, commitSha)
+            }
+
+        return JsonObject().apply {
+            addProperty("initialized", true)
+            addProperty("branch", primaryBranch)
+            addProperty("requested_branch", requestedBranch)
+            addProperty("commit_sha", commitSha)
+            add("ref", primaryRef)
+            add("requested_ref", requestedRef)
+        }
+    }
+
+    private fun createOrGetRef(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        branch: String,
+        commitSha: String
+    ): JsonObject {
+        val safeBranch = branch.trim().ifBlank { error("分支名不能为空") }
         val body = JsonObject().apply {
-            addProperty("ref", "refs/heads/$targetBranch")
+            addProperty("ref", "refs/heads/$safeBranch")
             addProperty("sha", commitSha)
         }
         val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/git/refs"
-        val refObject =
-            runCatching { postJson(url, pat, body) }
-                .getOrElse { throwable ->
-                    if (isReferenceAlreadyExists(throwable.message)) {
-                        getBranchRef(workspace, pat, targetBranch)
-                    } else {
-                        throw throwable
-                    }
-                }
-        return JsonObject().apply {
-            addProperty("initialized", true)
-            addProperty("branch", targetBranch)
-            addProperty("commit_sha", commitSha)
-            add("ref", refObject)
+        return runCatching { postJson(url, pat, body) }.getOrElse { throwable ->
+            if (isReferenceAlreadyExists(throwable.message)) {
+                getBranchRef(workspace, pat, safeBranch)
+            } else {
+                throw throwable
+            }
+        }
+    }
+
+    private fun putRepositoryFile(
+        workspace: ZiCodeWorkspace,
+        pat: String,
+        path: String,
+        content: String,
+        branch: String?,
+        message: String
+    ): String {
+        val body = JsonObject().apply {
+            addProperty("message", message)
+            addProperty("content", Base64.getEncoder().encodeToString(content.toByteArray(StandardCharsets.UTF_8)))
+            branch?.trim()?.takeIf { it.isNotBlank() }?.let { addProperty("branch", it) }
+        }
+        val encodedPath = encodePath(path)
+        val url = "https://api.github.com/repos/${workspace.owner}/${workspace.repo}/contents/$encodedPath"
+        val response = putJson(url, pat, body)
+        return response.getAsJsonObject("commit")?.get("sha")?.asString.orEmpty().ifBlank {
+            error("初始化提交失败")
         }
     }
 
@@ -880,6 +990,26 @@ class DefaultZiCodeToolDispatcher(
             appendLine("# ${workspace.repo}")
             appendLine()
             appendLine("Initialized by ZiCode.")
+        }
+    }
+
+    private fun composeRepositoryInitFailure(rawMessage: String?): String {
+        val normalized = rawMessage.orEmpty().trim().lowercase()
+        return when {
+            normalized.contains("resource not accessible") ||
+                normalized.contains("permission") ||
+                normalized.contains("403") ||
+                normalized.contains("forbidden") ->
+                "空仓库自动初始化失败：PAT 缺少仓库写入权限。"
+
+            normalized.contains("not found") || normalized.contains("404") ->
+                "空仓库自动初始化失败：仓库不可访问或权限不足。"
+
+            normalized.contains("rate limit") || normalized.contains("timeout") ->
+                "空仓库自动初始化失败：网络或 GitHub 限流，请稍后重试。"
+
+            else ->
+                "空仓库自动初始化失败，请确认 PAT 具备 repo 写入权限后重试。"
         }
     }
 

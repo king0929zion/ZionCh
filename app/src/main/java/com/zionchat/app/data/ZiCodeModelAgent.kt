@@ -637,8 +637,6 @@ class ZiCodeModelAgent(
             return buildString {
                 append("执行遇到问题：")
                 append(lastError.take(220))
-                appendLine()
-                append("你可以直接重试；如果反复失败，请检查 PAT 是否具备仓库写入权限。")
             }.trim()
         }
 
@@ -656,7 +654,7 @@ class ZiCodeModelAgent(
 
     private fun buildFriendlyToolError(toolName: String, rawError: String?): String {
         if (isRepositoryEmptyError(rawError)) {
-            return "仓库为空，我会自动初始化首个提交后继续；若仍失败，请检查 PAT 是否有写入权限。"
+            return "仓库为空，已自动尝试初始化；若仍失败请确认 PAT 具备仓库写入权限。"
         }
         val compact = rawError.orEmpty().trim().replace("\n", " ").replace(Regex("\\s+"), " ")
         return compact.ifBlank { "unknown error" }.take(160)
