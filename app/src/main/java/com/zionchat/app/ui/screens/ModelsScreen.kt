@@ -1022,12 +1022,11 @@ private fun ModelConnectionTestModal(
                                         modifier =
                                             Modifier
                                                 .fillMaxWidth()
-                                                .shadow(if (selected) 5.dp else 3.dp, optionShape)
                                                 .clip(optionShape)
                                                 .background(Color.White, optionShape)
                                                 .border(
-                                                    width = 1.dp,
-                                                    color = Color(0xFFE0E0E5),
+                                                    width = if (selected) 1.4.dp else 1.dp,
+                                                    color = if (selected) Color(0xFFB9BAC1) else Color(0xFFE0E0E5),
                                                     shape = optionShape
                                                 )
                                                 .pressableScale(pressedScale = 0.98f, onClick = { onSelectModel(model.id) })

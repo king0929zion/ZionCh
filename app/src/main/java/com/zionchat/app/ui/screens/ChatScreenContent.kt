@@ -4252,8 +4252,8 @@ internal fun ChatScreenContent(
                         .background(Color(0xFFF8F8F8))
                         .zIndex(14f)
                 ) {
-                    if (isExpanded) {
-                        Column(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (isExpanded) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -4287,12 +4287,19 @@ internal fun ChatScreenContent(
                                 )
                             }
                         }
+                        }
                         Box(
                             modifier = Modifier
-                                .padding(horizontal = 8.dp, vertical = 8.dp)
+                                .then(
+                                    if (isExpanded) {
+                                        Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White)
+                                .clip(if (isExpanded) RoundedCornerShape(12.dp) else RoundedCornerShape(1.dp))
+                                .background(if (isExpanded) Color.White else Color.Transparent)
                         ) {
                             AppHtmlWebView(
                                 modifier = Modifier.fillMaxSize(),
@@ -4325,28 +4332,6 @@ internal fun ChatScreenContent(
                                 }
                             )
                         }
-                        }
-                    } else {
-                        AppHtmlWebView(
-                            modifier = Modifier.fillMaxSize(),
-                            state = webViewState,
-                            contentSignature = "autobrowser:${session.sessionId}:${session.renderNonce}:${session.currentUrl}",
-                            url = session.currentUrl,
-                            enableCookies = true,
-                            enableThirdPartyCookies = true,
-                            desktopMode = true,
-                            desktopViewportWidth = desktopViewportWidth,
-                            desktopViewportHeight = desktopViewportHeight,
-                            desktopScaleToFit = true,
-                            onRuntimeIssue = { issue ->
-                                updateAutoBrowserSession(session.conversationId) { current ->
-                                    current?.copy(lastError = issue)
-                                }
-                            },
-                            onPageFinished = { webView ->
-                                autoBrowserWebViewRefs[session.conversationId] = webView
-                            }
-                        )
                     }
                 }
             }
