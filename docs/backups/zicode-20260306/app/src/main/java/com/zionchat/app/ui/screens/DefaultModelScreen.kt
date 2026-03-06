@@ -52,7 +52,8 @@ private enum class DefaultModelType(
     VISION(title = "Vision Model", required = false, selectorTitle = "Select Vision Model"),
     IMAGE(title = "Image Generation", required = false, selectorTitle = "Select Image Generation"),
     TITLE(title = "Title Summary", required = false, selectorTitle = "Select Title Summary"),
-    APP_BUILDER(title = "App Development", required = false, selectorTitle = "Select App Development")
+    APP_BUILDER(title = "App Development", required = false, selectorTitle = "Select App Development"),
+    ZICODE(title = "ZiCode Model", required = false, selectorTitle = "Select ZiCode Model")
 }
 
 private val NeutralSelectorCard = Color.White
@@ -74,16 +75,18 @@ fun DefaultModelScreen(navController: NavController) {
     val imageModelId by repository.defaultImageModelIdFlow.collectAsState(initial = null)
     val titleModelId by repository.defaultTitleModelIdFlow.collectAsState(initial = null)
     val appBuilderModelId by repository.defaultAppBuilderModelIdFlow.collectAsState(initial = null)
+    val zicodeModelId by repository.defaultZiCodeModelIdFlow.collectAsState(initial = null)
 
     var selectorType by remember { mutableStateOf<DefaultModelType?>(null) }
 
-    val selectedMap = remember(chatModelId, visionModelId, imageModelId, titleModelId, appBuilderModelId) {
+    val selectedMap = remember(chatModelId, visionModelId, imageModelId, titleModelId, appBuilderModelId, zicodeModelId) {
         mapOf(
             DefaultModelType.CHAT to chatModelId,
             DefaultModelType.VISION to visionModelId,
             DefaultModelType.IMAGE to imageModelId,
             DefaultModelType.TITLE to titleModelId,
-            DefaultModelType.APP_BUILDER to appBuilderModelId
+            DefaultModelType.APP_BUILDER to appBuilderModelId,
+            DefaultModelType.ZICODE to zicodeModelId
         )
     }
 
@@ -155,6 +158,7 @@ fun DefaultModelScreen(navController: NavController) {
                     DefaultModelType.IMAGE -> repository.setDefaultImageModelId(modelId)
                     DefaultModelType.TITLE -> repository.setDefaultTitleModelId(modelId)
                     DefaultModelType.APP_BUILDER -> repository.setDefaultAppBuilderModelId(modelId)
+                    DefaultModelType.ZICODE -> repository.setDefaultZiCodeModelId(modelId)
                 }
             }
             selectorType = null
@@ -167,6 +171,7 @@ fun DefaultModelScreen(navController: NavController) {
                 DefaultModelType.IMAGE -> scope.launch { repository.setDefaultImageModelId(null) }
                 DefaultModelType.TITLE -> scope.launch { repository.setDefaultTitleModelId(null) }
                 DefaultModelType.APP_BUILDER -> scope.launch { repository.setDefaultAppBuilderModelId(null) }
+                DefaultModelType.ZICODE -> scope.launch { repository.setDefaultZiCodeModelId(null) }
             }
             selectorType = null
         },

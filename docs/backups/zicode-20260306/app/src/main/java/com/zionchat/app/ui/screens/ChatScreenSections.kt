@@ -1900,6 +1900,21 @@ fun SidebarContent(
                     navController.navigate("apps")
                 }
             )
+            SidebarMenuItem(
+                icon = {
+                    Icon(
+                        painter = rememberResourceDrawablePainter(R.drawable.ic_zicode),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = Color.Unspecified
+                    )
+                },
+                label = stringResource(R.string.zicode),
+                onClick = {
+                    onClose()
+                    navController.navigate("zicode")
+                }
+            )
         }
 
         // 历史记录区域

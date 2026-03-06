@@ -10,15 +10,6 @@ import com.zionchat.app.data.OAuthClient
 import com.zionchat.app.data.ProviderAuthManager
 import com.zionchat.app.data.RuntimePackagingService
 import com.zionchat.app.data.WebHostingService
-import com.zionchat.app.data.DefaultZiCodeGitHubService
-import com.zionchat.app.data.ZiCodeGitHubService
-import com.zionchat.app.data.DefaultZiCodeToolDispatcher
-import com.zionchat.app.data.ZiCodeToolDispatcher
-import com.zionchat.app.data.DefaultZiCodePolicyService
-import com.zionchat.app.data.ZiCodePolicyService
-import com.zionchat.app.data.ZiCodeAgentOrchestrator
-import com.zionchat.app.data.ZiCodeWorkflowTemplateService
-import com.zionchat.app.data.McpClient
 
 class AppContainer(context: Context) {
     val repository = AppRepository(context)
@@ -27,13 +18,6 @@ class AppContainer(context: Context) {
     val providerAuthManager = ProviderAuthManager(repository, oauthClient)
     val webHostingService: WebHostingService = DisabledWebHostingService()
     val runtimePackagingService: RuntimePackagingService = DisabledRuntimePackagingService()
-    val zicodeGitHubService: ZiCodeGitHubService = DefaultZiCodeGitHubService()
-    val mcpClient = McpClient()
-    val zicodePolicyService: ZiCodePolicyService = DefaultZiCodePolicyService()
-    val zicodeToolDispatcher: ZiCodeToolDispatcher =
-        DefaultZiCodeToolDispatcher(repository, zicodeGitHubService, zicodePolicyService, mcpClient)
-    val zicodeAgentOrchestrator = ZiCodeAgentOrchestrator(repository, zicodeToolDispatcher, zicodePolicyService)
-    val zicodeWorkflowTemplateService = ZiCodeWorkflowTemplateService(zicodeToolDispatcher)
 }
 
 val LocalAppRepository = staticCompositionLocalOf<AppRepository> {
@@ -58,24 +42,4 @@ val LocalWebHostingService = staticCompositionLocalOf<WebHostingService> {
 
 val LocalRuntimePackagingService = staticCompositionLocalOf<RuntimePackagingService> {
     error("LocalRuntimePackagingService not provided")
-}
-
-val LocalZiCodeGitHubService = staticCompositionLocalOf<ZiCodeGitHubService> {
-    error("LocalZiCodeGitHubService not provided")
-}
-
-val LocalZiCodeToolDispatcher = staticCompositionLocalOf<ZiCodeToolDispatcher> {
-    error("LocalZiCodeToolDispatcher not provided")
-}
-
-val LocalZiCodePolicyService = staticCompositionLocalOf<ZiCodePolicyService> {
-    error("LocalZiCodePolicyService not provided")
-}
-
-val LocalZiCodeAgentOrchestrator = staticCompositionLocalOf<ZiCodeAgentOrchestrator> {
-    error("LocalZiCodeAgentOrchestrator not provided")
-}
-
-val LocalZiCodeWorkflowTemplateService = staticCompositionLocalOf<ZiCodeWorkflowTemplateService> {
-    error("LocalZiCodeWorkflowTemplateService not provided")
 }

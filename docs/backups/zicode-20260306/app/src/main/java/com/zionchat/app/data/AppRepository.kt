@@ -55,6 +55,7 @@ class AppRepository(context: Context) {
     private val defaultTitleModelIdKey = stringPreferencesKey("default_title_model_id")
     private val defaultAppBuilderModelIdKey = stringPreferencesKey("default_app_builder_model_id")
     private val defaultAutoSoulModelIdKey = stringPreferencesKey("default_autosoul_model_id")
+    private val defaultZiCodeModelIdKey = stringPreferencesKey("default_zicode_model_id")
     private val chatThinkingEnabledKey = booleanPreferencesKey("chat_thinking_enabled")
     private val webHostingProviderKey = stringPreferencesKey("web_hosting_provider")
     private val vercelTokenKey = stringPreferencesKey("vercel_token")
@@ -72,17 +73,12 @@ class AppRepository(context: Context) {
     private val webSearchMaxResultsKey = intPreferencesKey("web_search_max_results")
     private val appModuleVersionModelKey = intPreferencesKey("app_module_version_model")
     private val mcpListKey = stringPreferencesKey("mcp_list_json")
-    private val deprecatedFeatureDefaultModelKey = stringPreferencesKey("default_zicode_model_id")
-    private val deprecatedFeatureStorageKeys =
-        listOf(
-            deprecatedFeatureDefaultModelKey,
-            stringPreferencesKey("zicode_workspaces_json"),
-            stringPreferencesKey("zicode_sessions_json"),
-            stringPreferencesKey("zicode_messages_json"),
-            stringPreferencesKey("zicode_runs_json"),
-            stringPreferencesKey("zicode_tool_calls_json"),
-            stringPreferencesKey("zicode_settings_json")
-        )
+    private val zicodeWorkspacesKey = stringPreferencesKey("zicode_workspaces_json")
+    private val zicodeSessionsKey = stringPreferencesKey("zicode_sessions_json")
+    private val zicodeMessagesKey = stringPreferencesKey("zicode_messages_json")
+    private val zicodeRunsKey = stringPreferencesKey("zicode_runs_json")
+    private val zicodeToolCallsKey = stringPreferencesKey("zicode_tool_calls_json")
+    private val zicodeSettingsKey = stringPreferencesKey("zicode_settings_json")
     private val supportedAccentKeys = setOf("default", "blue", "pink", "orange", "black")
     private val supportedSearchEngines = setOf("bing", "exa", "tavily", "linkup")
     private val supportedTavilyDepth = setOf("basic", "advanced")
@@ -99,11 +95,18 @@ class AppRepository(context: Context) {
     private val savedAppListType = object : TypeToken<List<SavedApp>>() {}.type
     private val savedAppVersionListType = object : TypeToken<List<SavedAppVersion>>() {}.type
     private val mcpListType = object : TypeToken<List<McpConfig>>() {}.type
+    private val zicodeWorkspaceListType = object : TypeToken<List<ZiCodeWorkspace>>() {}.type
+    private val zicodeSessionListType = object : TypeToken<List<ZiCodeSession>>() {}.type
+    private val zicodeMessageListType = object : TypeToken<List<ZiCodeMessage>>() {}.type
+    private val zicodeRunListType = object : TypeToken<List<ZiCodeRunRecord>>() {}.type
+    private val zicodeToolCallListType = object : TypeToken<List<ZiCodeToolCall>>() {}.type
+    private val zicodeSettingsType = object : TypeToken<ZiCodeSettings>() {}.type
     private val pendingAppAutomationTaskMutable = MutableStateFlow<AppAutomationTask?>(null)
     private val sensitiveEncryptedKeys: List<Preferences.Key<String>> =
         listOf(
             providersKey,
             mcpListKey,
+            zicodeSettingsKey,
             vercelTokenKey,
             webSearchExaApiKey,
             webSearchTavilyApiKey,
@@ -113,7 +116,6 @@ class AppRepository(context: Context) {
 
     init {
         repositoryScope.launch { migrateSensitiveStorageIfNeeded() }
-        repositoryScope.launch { purgeDeprecatedFeatureStorage() }
     }
 
     private fun readSensitiveString(
@@ -150,16 +152,6 @@ class AppRepository(context: Context) {
             dataStore.edit { prefs ->
                 sensitiveEncryptedKeys.forEach { key ->
                     migrateSensitiveKeyIfNeeded(prefs, key)
-                }
-            }
-        }
-    }
-
-    private suspend fun purgeDeprecatedFeatureStorage() {
-        runCatching {
-            dataStore.edit { prefs ->
-                deprecatedFeatureStorageKeys.forEach { key ->
-                    prefs.remove(key)
                 }
             }
         }
@@ -479,6 +471,123 @@ class AppRepository(context: Context) {
         )
     }
 
+    private fun sanitizeZiCodeWorkspace(item: ZiCodeWorkspace?): ZiCodeWorkspace? {
+        if (item == null) return null
+        val owner = safeTrim(item.owner)
+        val repo = safeTrim(item.repo)
+        if (owner.isBlank() || repo.isBlank()) return null
+        val now = System.currentTimeMillis()
+        val id = safeTrim(item.id).ifBlank { UUID.nameUUIDFromBytes("${owner}_${repo}".toByteArray()).toString() }
+        val branch = safeTrim(item.defaultBranch).ifBlank { "main" }
+        val displayName = safeTrim(item.displayName).ifBlank { "$owner/$repo" }
+        val createdAt = item.createdAt.takeIf { it > 0 } ?: now
+        val updatedAt = item.updatedAt.takeIf { it > 0 } ?: createdAt
+        return ZiCodeWorkspace(
+            id = id,
+            owner = owner,
+            repo = repo,
+            defaultBranch = branch,
+            displayName = displayName,
+            createdAt = createdAt,
+            updatedAt = updatedAt
+        )
+    }
+
+    private fun sanitizeZiCodeSession(item: ZiCodeSession?): ZiCodeSession? {
+        if (item == null) return null
+        val workspaceId = safeTrim(item.workspaceId)
+        val modelName = safeTrim(item.modelName)
+        if (workspaceId.isBlank() || modelName.isBlank()) return null
+        val now = System.currentTimeMillis()
+        val id = safeTrim(item.id).ifBlank { UUID.randomUUID().toString() }
+        val title = safeTrim(item.title).ifBlank { modelName }
+        val createdAt = item.createdAt.takeIf { it > 0 } ?: now
+        val updatedAt = item.updatedAt.takeIf { it > 0 } ?: createdAt
+        return ZiCodeSession(
+            id = id,
+            workspaceId = workspaceId,
+            modelName = modelName,
+            title = title,
+            branchName = safeTrimOrNull(item.branchName),
+            createdAt = createdAt,
+            updatedAt = updatedAt
+        )
+    }
+
+    private fun sanitizeZiCodeMessage(item: ZiCodeMessage?): ZiCodeMessage? {
+        if (item == null) return null
+        val sessionId = safeTrim(item.sessionId)
+        val role = safeTrim(item.role).ifBlank { "assistant" }
+        val content = item.content.trim()
+        if (sessionId.isBlank() || content.isBlank()) return null
+        val id = safeTrim(item.id).ifBlank { UUID.randomUUID().toString() }
+        val createdAt = item.createdAt.takeIf { it > 0 } ?: System.currentTimeMillis()
+        return ZiCodeMessage(
+            id = id,
+            sessionId = sessionId,
+            role = role,
+            content = content,
+            toolHints = item.toolHints.map { it.trim() }.filter { it.isNotBlank() },
+            createdAt = createdAt
+        )
+    }
+
+    private fun sanitizeZiCodeRun(item: ZiCodeRunRecord?): ZiCodeRunRecord? {
+        if (item == null) return null
+        val sessionId = safeTrim(item.sessionId)
+        val workflow = safeTrim(item.workflow)
+        val status = safeTrim(item.status)
+        if (sessionId.isBlank() || workflow.isBlank() || status.isBlank()) return null
+        val now = System.currentTimeMillis()
+        val id = safeTrim(item.id).ifBlank { UUID.randomUUID().toString() }
+        val createdAt = item.createdAt.takeIf { it > 0 } ?: now
+        val updatedAt = item.updatedAt.takeIf { it > 0 } ?: createdAt
+        return ZiCodeRunRecord(
+            id = id,
+            sessionId = sessionId,
+            workflow = workflow,
+            runId = item.runId?.takeIf { it > 0 },
+            status = status,
+            summary = item.summary.trim(),
+            runUrl = safeTrimOrNull(item.runUrl),
+            createdAt = createdAt,
+            updatedAt = updatedAt
+        )
+    }
+
+    private fun sanitizeZiCodeToolCall(item: ZiCodeToolCall?): ZiCodeToolCall? {
+        if (item == null) return null
+        val sessionId = safeTrim(item.sessionId)
+        val toolName = safeTrim(item.toolName)
+        val status = safeTrim(item.status)
+        if (sessionId.isBlank() || toolName.isBlank() || status.isBlank()) return null
+        val now = System.currentTimeMillis()
+        val startedAt = item.startedAt.takeIf { it > 0 } ?: now
+        return ZiCodeToolCall(
+            id = safeTrim(item.id).ifBlank { UUID.randomUUID().toString() },
+            sessionId = sessionId,
+            toolName = toolName,
+            argsJson = item.argsJson,
+            status = status,
+            startedAt = startedAt,
+            endedAt = item.endedAt?.takeIf { it >= startedAt },
+            result = item.result?.trim()?.takeIf { it.isNotBlank() },
+            error = item.error?.trim()?.takeIf { it.isNotBlank() },
+            userHint = item.userHint.trim()
+        )
+    }
+
+    private fun sanitizeZiCodeSettings(item: ZiCodeSettings?): ZiCodeSettings {
+        val raw = item ?: ZiCodeSettings()
+        return ZiCodeSettings(
+            pat = safeTrim(raw.pat),
+            currentWorkspaceId = safeTrimOrNull(raw.currentWorkspaceId),
+            autoInitWorkflowTemplates = raw.autoInitWorkflowTemplates,
+            autoMergePullRequest = raw.autoMergePullRequest,
+            maxSelfHealLoops = raw.maxSelfHealLoops.coerceIn(1, 10)
+        )
+    }
+
     val providersFlow: Flow<List<ProviderConfig>> = prefsFlow.map { prefs ->
         val json = readSensitiveString(prefs, providersKey, defaultValue = "[]")
         runCatching { gson.fromJson<List<ProviderConfig>>(json, providerListType) }
@@ -645,6 +754,10 @@ class AppRepository(context: Context) {
         prefs[defaultAutoSoulModelIdKey]
     }
 
+    val defaultZiCodeModelIdFlow: Flow<String?> = prefsFlow.map { prefs ->
+        prefs[defaultZiCodeModelIdKey]
+    }
+
     val chatThinkingEnabledFlow: Flow<Boolean> = prefsFlow.map { prefs ->
         prefs[chatThinkingEnabledKey] ?: true
     }
@@ -758,6 +871,12 @@ class AppRepository(context: Context) {
     suspend fun setDefaultAutoSoulModelId(modelId: String?) {
         dataStore.edit { prefs ->
             if (modelId.isNullOrBlank()) prefs.remove(defaultAutoSoulModelIdKey) else prefs[defaultAutoSoulModelIdKey] = modelId
+        }
+    }
+
+    suspend fun setDefaultZiCodeModelId(modelId: String?) {
+        dataStore.edit { prefs ->
+            if (modelId.isNullOrBlank()) prefs.remove(defaultZiCodeModelIdKey) else prefs[defaultZiCodeModelIdKey] = modelId
         }
     }
 
@@ -897,7 +1016,7 @@ class AppRepository(context: Context) {
             maybeClearDefaultModel(defaultTitleModelIdKey)
             maybeClearDefaultModel(defaultAppBuilderModelIdKey)
             maybeClearDefaultModel(defaultAutoSoulModelIdKey)
-            maybeClearDefaultModel(deprecatedFeatureDefaultModelKey)
+            maybeClearDefaultModel(defaultZiCodeModelIdKey)
         }
     }
 
@@ -980,7 +1099,7 @@ class AppRepository(context: Context) {
             maybeClearDefaultModel(defaultTitleModelIdKey)
             maybeClearDefaultModel(defaultAppBuilderModelIdKey)
             maybeClearDefaultModel(defaultAutoSoulModelIdKey)
-            maybeClearDefaultModel(deprecatedFeatureDefaultModelKey)
+            maybeClearDefaultModel(defaultZiCodeModelIdKey)
         }
     }
 
@@ -1539,6 +1658,57 @@ class AppRepository(context: Context) {
             .mapNotNull(::sanitizeMcpConfig)
     }
 
+    val zicodeWorkspacesFlow: Flow<List<ZiCodeWorkspace>> = prefsFlow.map { prefs ->
+        val json = prefs[zicodeWorkspacesKey] ?: "[]"
+        runCatching { gson.fromJson<List<ZiCodeWorkspace>>(json, zicodeWorkspaceListType) }
+            .getOrNull()
+            .orEmpty()
+            .mapNotNull(::sanitizeZiCodeWorkspace)
+            .sortedByDescending { it.updatedAt }
+    }
+
+    val zicodeSessionsFlow: Flow<List<ZiCodeSession>> = prefsFlow.map { prefs ->
+        val json = prefs[zicodeSessionsKey] ?: "[]"
+        runCatching { gson.fromJson<List<ZiCodeSession>>(json, zicodeSessionListType) }
+            .getOrNull()
+            .orEmpty()
+            .mapNotNull(::sanitizeZiCodeSession)
+            .sortedByDescending { it.updatedAt }
+    }
+
+    val zicodeMessagesFlow: Flow<List<ZiCodeMessage>> = prefsFlow.map { prefs ->
+        val json = prefs[zicodeMessagesKey] ?: "[]"
+        runCatching { gson.fromJson<List<ZiCodeMessage>>(json, zicodeMessageListType) }
+            .getOrNull()
+            .orEmpty()
+            .mapNotNull(::sanitizeZiCodeMessage)
+            .sortedBy { it.createdAt }
+    }
+
+    val zicodeRunsFlow: Flow<List<ZiCodeRunRecord>> = prefsFlow.map { prefs ->
+        val json = prefs[zicodeRunsKey] ?: "[]"
+        runCatching { gson.fromJson<List<ZiCodeRunRecord>>(json, zicodeRunListType) }
+            .getOrNull()
+            .orEmpty()
+            .mapNotNull(::sanitizeZiCodeRun)
+            .sortedByDescending { it.updatedAt }
+    }
+
+    val zicodeToolCallsFlow: Flow<List<ZiCodeToolCall>> = prefsFlow.map { prefs ->
+        val json = prefs[zicodeToolCallsKey] ?: "[]"
+        runCatching { gson.fromJson<List<ZiCodeToolCall>>(json, zicodeToolCallListType) }
+            .getOrNull()
+            .orEmpty()
+            .mapNotNull(::sanitizeZiCodeToolCall)
+            .sortedByDescending { it.startedAt }
+    }
+
+    val zicodeSettingsFlow: Flow<ZiCodeSettings> = prefsFlow.map { prefs ->
+        val json = readSensitiveString(prefs, zicodeSettingsKey, defaultValue = "{}")
+        val parsed = runCatching { gson.fromJson<ZiCodeSettings>(json, zicodeSettingsType) }.getOrNull()
+        sanitizeZiCodeSettings(parsed)
+    }
+
     suspend fun upsertMcp(mcp: McpConfig) {
         val mcpList = mcpListFlow.first().toMutableList()
         val index = mcpList.indexOfFirst { it.id == mcp.id }
@@ -1582,5 +1752,271 @@ class AppRepository(context: Context) {
                 prefs[mcpListKey] = encryptSensitiveJson(gson.toJson(mcpList))
             }
         }
+    }
+
+    suspend fun upsertZiCodeWorkspace(workspace: ZiCodeWorkspace): ZiCodeWorkspace? {
+        val sanitized = sanitizeZiCodeWorkspace(workspace) ?: return null
+        val list = zicodeWorkspacesFlow.first().toMutableList()
+        val now = System.currentTimeMillis()
+        val index = list.indexOfFirst { it.id == sanitized.id }
+        val merged =
+            if (index >= 0) {
+                list[index].copy(
+                    owner = sanitized.owner,
+                    repo = sanitized.repo,
+                    defaultBranch = sanitized.defaultBranch,
+                    displayName = sanitized.displayName,
+                    updatedAt = now
+                )
+            } else {
+                sanitized.copy(updatedAt = now)
+            }
+        if (index >= 0) {
+            list[index] = merged
+        } else {
+            list.add(0, merged)
+        }
+        dataStore.edit { prefs ->
+            prefs[zicodeWorkspacesKey] = gson.toJson(list)
+        }
+        return merged
+    }
+
+    suspend fun deleteZiCodeWorkspace(workspaceId: String) {
+        val key = workspaceId.trim()
+        if (key.isBlank()) return
+        val workspaces = zicodeWorkspacesFlow.first().filterNot { it.id == key }
+        val allSessions = zicodeSessionsFlow.first()
+        val sessions = allSessions.filterNot { it.workspaceId == key }
+        val removedSessionIds = allSessions.filter { it.workspaceId == key }.map { it.id }.toSet()
+        val messages = zicodeMessagesFlow.first().filterNot { removedSessionIds.contains(it.sessionId) }
+        val runs = zicodeRunsFlow.first().filterNot { removedSessionIds.contains(it.sessionId) }
+        val toolCalls = zicodeToolCallsFlow.first().filterNot { removedSessionIds.contains(it.sessionId) }
+        val settings = zicodeSettingsFlow.first()
+        dataStore.edit { prefs ->
+            prefs[zicodeWorkspacesKey] = gson.toJson(workspaces)
+            prefs[zicodeSessionsKey] = gson.toJson(sessions)
+            prefs[zicodeMessagesKey] = gson.toJson(messages)
+            prefs[zicodeRunsKey] = gson.toJson(runs)
+            prefs[zicodeToolCallsKey] = gson.toJson(toolCalls)
+            if (settings.currentWorkspaceId == key) {
+                val nextSettings = settings.copy(currentWorkspaceId = workspaces.firstOrNull()?.id)
+                prefs[zicodeSettingsKey] = encryptSensitiveJson(gson.toJson(nextSettings))
+            }
+        }
+    }
+
+    suspend fun upsertZiCodeSettings(settings: ZiCodeSettings) {
+        val sanitized = sanitizeZiCodeSettings(settings)
+        dataStore.edit { prefs ->
+            prefs[zicodeSettingsKey] = encryptSensitiveJson(gson.toJson(sanitized))
+        }
+    }
+
+    suspend fun setZiCodePat(pat: String) {
+        val current = zicodeSettingsFlow.first()
+        upsertZiCodeSettings(current.copy(pat = pat.trim()))
+    }
+
+    suspend fun setZiCodeCurrentWorkspace(workspaceId: String?) {
+        val current = zicodeSettingsFlow.first()
+        upsertZiCodeSettings(current.copy(currentWorkspaceId = workspaceId?.trim()?.takeIf { it.isNotBlank() }))
+    }
+
+    suspend fun createZiCodeSession(
+        workspaceId: String,
+        modelName: String,
+        title: String = modelName
+    ): ZiCodeSession? {
+        val workspaceKey = workspaceId.trim()
+        val model = modelName.trim()
+        if (workspaceKey.isBlank() || model.isBlank()) return null
+        val now = System.currentTimeMillis()
+        val session =
+            ZiCodeSession(
+                workspaceId = workspaceKey,
+                modelName = model,
+                title = title.trim().ifBlank { model },
+                createdAt = now,
+                updatedAt = now
+            )
+        val list = zicodeSessionsFlow.first().toMutableList()
+        list.add(0, session)
+        dataStore.edit { prefs ->
+            prefs[zicodeSessionsKey] = gson.toJson(list)
+        }
+        return session
+    }
+
+    suspend fun upsertZiCodeSession(session: ZiCodeSession): ZiCodeSession? {
+        val sanitized = sanitizeZiCodeSession(session) ?: return null
+        val list = zicodeSessionsFlow.first().toMutableList()
+        val index = list.indexOfFirst { it.id == sanitized.id }
+        val merged =
+            if (index >= 0) {
+                list[index].copy(
+                    title = sanitized.title,
+                    modelName = sanitized.modelName,
+                    workspaceId = sanitized.workspaceId,
+                    branchName = sanitized.branchName,
+                    updatedAt = System.currentTimeMillis()
+                )
+            } else {
+                sanitized
+            }
+        if (index >= 0) {
+            list[index] = merged
+        } else {
+            list.add(0, merged)
+        }
+        dataStore.edit { prefs ->
+            prefs[zicodeSessionsKey] = gson.toJson(list)
+        }
+        return merged
+    }
+
+    suspend fun deleteZiCodeSession(sessionId: String) {
+        val key = sessionId.trim()
+        if (key.isBlank()) return
+        val sessions = zicodeSessionsFlow.first().filterNot { it.id == key }
+        val messages = zicodeMessagesFlow.first().filterNot { it.sessionId == key }
+        val runs = zicodeRunsFlow.first().filterNot { it.sessionId == key }
+        val toolCalls = zicodeToolCallsFlow.first().filterNot { it.sessionId == key }
+        dataStore.edit { prefs ->
+            prefs[zicodeSessionsKey] = gson.toJson(sessions)
+            prefs[zicodeMessagesKey] = gson.toJson(messages)
+            prefs[zicodeRunsKey] = gson.toJson(runs)
+            prefs[zicodeToolCallsKey] = gson.toJson(toolCalls)
+        }
+    }
+
+    suspend fun appendZiCodeMessage(message: ZiCodeMessage): ZiCodeMessage? {
+        val sanitized = sanitizeZiCodeMessage(message) ?: return null
+        val sessions = zicodeSessionsFlow.first().toMutableList()
+        val sessionIndex = sessions.indexOfFirst { it.id == sanitized.sessionId }
+        if (sessionIndex < 0) return null
+        sessions[sessionIndex] = sessions[sessionIndex].copy(updatedAt = System.currentTimeMillis())
+        val messages = zicodeMessagesFlow.first().toMutableList()
+        messages.add(sanitized)
+        dataStore.edit { prefs ->
+            prefs[zicodeMessagesKey] = gson.toJson(messages)
+            prefs[zicodeSessionsKey] = gson.toJson(sessions)
+        }
+        return sanitized
+    }
+
+    suspend fun updateZiCodeMessage(
+        messageId: String,
+        content: String,
+        toolHints: List<String>? = null
+    ): ZiCodeMessage? {
+        val key = messageId.trim()
+        if (key.isBlank()) return null
+        val messages = zicodeMessagesFlow.first().toMutableList()
+        val index = messages.indexOfFirst { it.id == key }
+        if (index < 0) return null
+
+        val existing = messages[index]
+        val normalizedContent = content.trim().ifBlank { "…" }
+        val nextHints =
+            toolHints
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                ?: existing.toolHints
+
+        val sanitized =
+            sanitizeZiCodeMessage(
+                existing.copy(
+                    content = normalizedContent,
+                    toolHints = nextHints
+                )
+            ) ?: return null
+
+        messages[index] = sanitized
+        val sessions = zicodeSessionsFlow.first().toMutableList()
+        val sessionIndex = sessions.indexOfFirst { it.id == sanitized.sessionId }
+        if (sessionIndex >= 0) {
+            sessions[sessionIndex] = sessions[sessionIndex].copy(updatedAt = System.currentTimeMillis())
+        }
+
+        dataStore.edit { prefs ->
+            prefs[zicodeMessagesKey] = gson.toJson(messages)
+            if (sessionIndex >= 0) {
+                prefs[zicodeSessionsKey] = gson.toJson(sessions)
+            }
+        }
+        return sanitized
+    }
+
+    suspend fun clearZiCodeMessages(sessionId: String) {
+        val key = sessionId.trim()
+        if (key.isBlank()) return
+        val messages = zicodeMessagesFlow.first().filterNot { it.sessionId == key }
+        dataStore.edit { prefs ->
+            prefs[zicodeMessagesKey] = gson.toJson(messages)
+        }
+    }
+
+    suspend fun upsertZiCodeRun(record: ZiCodeRunRecord): ZiCodeRunRecord? {
+        val sanitized = sanitizeZiCodeRun(record) ?: return null
+        val list = zicodeRunsFlow.first().toMutableList()
+        val index = list.indexOfFirst { it.id == sanitized.id }
+        val merged =
+            if (index >= 0) {
+                list[index].copy(
+                    workflow = sanitized.workflow,
+                    runId = sanitized.runId,
+                    status = sanitized.status,
+                    summary = sanitized.summary,
+                    runUrl = sanitized.runUrl,
+                    updatedAt = System.currentTimeMillis()
+                )
+            } else {
+                sanitized
+            }
+        if (index >= 0) {
+            list[index] = merged
+        } else {
+            list.add(0, merged)
+        }
+        dataStore.edit { prefs ->
+            prefs[zicodeRunsKey] = gson.toJson(list)
+        }
+        return merged
+    }
+
+    suspend fun upsertZiCodeToolCall(toolCall: ZiCodeToolCall): ZiCodeToolCall? {
+        val sanitized = sanitizeZiCodeToolCall(toolCall) ?: return null
+        val list = zicodeToolCallsFlow.first().toMutableList()
+        val index = list.indexOfFirst { it.id == sanitized.id }
+        if (index >= 0) {
+            list[index] = sanitized
+        } else {
+            list.add(0, sanitized)
+        }
+        dataStore.edit { prefs ->
+            prefs[zicodeToolCallsKey] = gson.toJson(list)
+        }
+        return sanitized
+    }
+
+    suspend fun listZiCodeSessions(workspaceId: String, modelName: String? = null): List<ZiCodeSession> {
+        val workspaceKey = workspaceId.trim()
+        if (workspaceKey.isBlank()) return emptyList()
+        val modelKey = modelName?.trim().orEmpty()
+        return zicodeSessionsFlow.first().filter { session ->
+            session.workspaceId == workspaceKey &&
+                (modelKey.isBlank() || session.modelName.equals(modelKey, ignoreCase = true))
+        }.sortedByDescending { it.updatedAt }
+    }
+
+    suspend fun findLatestZiCodeSession(workspaceId: String, modelName: String): ZiCodeSession? {
+        return listZiCodeSessions(workspaceId, modelName).firstOrNull()
+    }
+
+    suspend fun listZiCodeMessages(sessionId: String): List<ZiCodeMessage> {
+        val key = sessionId.trim()
+        if (key.isBlank()) return emptyList()
+        return zicodeMessagesFlow.first().filter { it.sessionId == key }.sortedBy { it.createdAt }
     }
 }

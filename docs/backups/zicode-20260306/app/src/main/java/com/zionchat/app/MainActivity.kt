@@ -76,7 +76,12 @@ class MainActivity : AppCompatActivity() {
                         LocalOAuthClient provides appContainer.oauthClient,
                         LocalProviderAuthManager provides appContainer.providerAuthManager,
                         LocalWebHostingService provides appContainer.webHostingService,
-                        LocalRuntimePackagingService provides appContainer.runtimePackagingService
+                        LocalRuntimePackagingService provides appContainer.runtimePackagingService,
+                        LocalZiCodeGitHubService provides appContainer.zicodeGitHubService,
+                        LocalZiCodeToolDispatcher provides appContainer.zicodeToolDispatcher,
+                        LocalZiCodePolicyService provides appContainer.zicodePolicyService,
+                        LocalZiCodeAgentOrchestrator provides appContainer.zicodeAgentOrchestrator,
+                        LocalZiCodeWorkflowTemplateService provides appContainer.zicodeWorkflowTemplateService
                     ) {
                         val appLanguage by appContainer.repository.appLanguageFlow.collectAsState(initial = "__pending__")
                         LaunchedEffect(appLanguage) {
@@ -161,6 +166,10 @@ class MainActivity : AppCompatActivity() {
                                 AddBotScreen(navController, botId)
                             }
                             composable("apps") { AppsScreen(navController) }
+                            composable("zicode") { ZiCodeScreen(navController) }
+                            composable("zicode_settings") { ZiCodeSettingsScreen(navController) }
+                            composable("zicode_tools") { ZiCodeToolsScreen(navController) }
+                            composable("zicode_repo_browser") { ZiCodeRepoBrowserScreen(navController) }
                             composable("language") { LanguageScreen(navController) }
                             composable("personalization") { PersonalizationScreen(navController) }
                             composable("memories") { MemoriesScreen(navController) }

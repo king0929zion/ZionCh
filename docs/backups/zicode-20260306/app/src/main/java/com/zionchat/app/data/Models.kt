@@ -187,3 +187,77 @@ data class BotConfig(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
+
+data class ZiCodeWorkspace(
+    val id: String = UUID.randomUUID().toString(),
+    val owner: String,
+    val repo: String,
+    val defaultBranch: String = "main",
+    val displayName: String = "$owner/$repo",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+data class ZiCodeSession(
+    val id: String = UUID.randomUUID().toString(),
+    val workspaceId: String,
+    val modelName: String,
+    val title: String,
+    val branchName: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+data class ZiCodeMessage(
+    val id: String = UUID.randomUUID().toString(),
+    val sessionId: String,
+    val role: String,
+    val content: String,
+    val toolHints: List<String> = emptyList(),
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+data class ZiCodeToolCall(
+    val id: String = UUID.randomUUID().toString(),
+    val sessionId: String,
+    val toolName: String,
+    val argsJson: String,
+    val status: String,
+    val startedAt: Long = System.currentTimeMillis(),
+    val endedAt: Long? = null,
+    val result: String? = null,
+    val error: String? = null,
+    val userHint: String = ""
+)
+
+data class ZiCodeRunRecord(
+    val id: String = UUID.randomUUID().toString(),
+    val sessionId: String,
+    val workflow: String,
+    val runId: Long? = null,
+    val status: String,
+    val summary: String = "",
+    val runUrl: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+data class ZiCodeReport(
+    val status: String,
+    val summary: String,
+    val failingStep: String? = null,
+    val errorSummary: String? = null,
+    val fileHints: List<String> = emptyList(),
+    val nextReads: List<String> = emptyList(),
+    val artifacts: List<String> = emptyList(),
+    val pagesUrl: String? = null,
+    val deploymentStatus: String? = null
+)
+
+data class ZiCodeSettings(
+    val pat: String = "",
+    val currentWorkspaceId: String? = null,
+    val autoInitWorkflowTemplates: Boolean = true,
+    val autoMergePullRequest: Boolean = false,
+    val maxSelfHealLoops: Int = 5
+)
