@@ -52,7 +52,7 @@ jobs:
           app/build/tmp/kotlin-classes/release
           app/build/intermediates/javac/release
           app/build/intermediates/compile_and_runtime_not_namespaced_r_class_jar/release
-        key: ${{ runner.os }}-kotlin-incremental-${{ github.ref_name }}-${{ hashFiles('app/build.gradle', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
+        key: ${{ runner.os }}-kotlin-incremental-${{ github.ref_name }}-${{ hashFiles('build.gradle', 'settings.gradle', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
         restore-keys: |
           ${{ runner.os }}-kotlin-incremental-${{ github.ref_name }}-
           ${{ runner.os }}-kotlin-incremental-
