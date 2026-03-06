@@ -76,7 +76,10 @@ class MainActivity : AppCompatActivity() {
                         LocalOAuthClient provides appContainer.oauthClient,
                         LocalProviderAuthManager provides appContainer.providerAuthManager,
                         LocalWebHostingService provides appContainer.webHostingService,
-                        LocalRuntimePackagingService provides appContainer.runtimePackagingService
+                        LocalRuntimePackagingService provides appContainer.runtimePackagingService,
+                        LocalZiCodeRepository provides appContainer.ziCodeRepository,
+                        LocalZiCodeGitHubService provides appContainer.ziCodeGitHubService,
+                        LocalZiCodeAgentRunner provides appContainer.ziCodeAgentRunner
                     ) {
                         val appLanguage by appContainer.repository.appLanguageFlow.collectAsState(initial = "__pending__")
                         LaunchedEffect(appLanguage) {
@@ -161,6 +164,30 @@ class MainActivity : AppCompatActivity() {
                                 AddBotScreen(navController, botId)
                             }
                             composable("apps") { AppsScreen(navController) }
+                            composable("zicode") { ZiCodeRepoListScreen(navController) }
+                            composable(
+                                route = "zicode_repo/{owner}/{repo}",
+                                arguments = listOf(
+                                    navArgument("owner") { defaultValue = "" },
+                                    navArgument("repo") { defaultValue = "" }
+                                )
+                            ) { backStackEntry ->
+                                val owner = backStackEntry.arguments?.getString("owner").orEmpty()
+                                val repo = backStackEntry.arguments?.getString("repo").orEmpty()
+                                ZiCodeConversationScreen(navController, owner, repo)
+                            }
+                            composable(
+                                route = "zicode_files/{owner}/{repo}",
+                                arguments = listOf(
+                                    navArgument("owner") { defaultValue = "" },
+                                    navArgument("repo") { defaultValue = "" }
+                                )
+                            ) { backStackEntry ->
+                                val owner = backStackEntry.arguments?.getString("owner").orEmpty()
+                                val repo = backStackEntry.arguments?.getString("repo").orEmpty()
+                                ZiCodeFileBrowserScreen(navController, owner, repo)
+                            }
+                            composable("zicode_settings") { ZiCodeSettingsScreen(navController) }
                             composable("language") { LanguageScreen(navController) }
                             composable("personalization") { PersonalizationScreen(navController) }
                             composable("memories") { MemoriesScreen(navController) }

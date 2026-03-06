@@ -294,7 +294,14 @@ fun SettingsScreen(navController: NavController) {
                 }
 
                 // Zion Labs 分组
-                SettingsGroup(title = stringResource(R.string.settings_group_zion_labs), itemCount = 1) {
+                SettingsGroup(title = stringResource(R.string.settings_group_zion_labs), itemCount = 2) {
+                    SettingsItem(
+                        icon = { Icon(AppIcons.GitHub, null, Modifier.size(SettingsItemIconSize), tint = TextPrimary) },
+                        label = "ZiCode",
+                        showChevron = true,
+                        showDivider = true,
+                        onClick = { navController.navigate("zicode") }
+                    )
                     SettingsItem(
                         icon = {
                             Icon(

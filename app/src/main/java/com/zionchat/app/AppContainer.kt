@@ -10,6 +10,9 @@ import com.zionchat.app.data.OAuthClient
 import com.zionchat.app.data.ProviderAuthManager
 import com.zionchat.app.data.RuntimePackagingService
 import com.zionchat.app.data.WebHostingService
+import com.zionchat.app.zicode.data.ZiCodeAgentRunner
+import com.zionchat.app.zicode.data.ZiCodeGitHubService
+import com.zionchat.app.zicode.data.ZiCodeRepository
 
 class AppContainer(context: Context) {
     val repository = AppRepository(context)
@@ -18,6 +21,9 @@ class AppContainer(context: Context) {
     val providerAuthManager = ProviderAuthManager(repository, oauthClient)
     val webHostingService: WebHostingService = DisabledWebHostingService()
     val runtimePackagingService: RuntimePackagingService = DisabledRuntimePackagingService()
+    val ziCodeRepository = ZiCodeRepository(context)
+    val ziCodeGitHubService = ZiCodeGitHubService()
+    val ziCodeAgentRunner = ZiCodeAgentRunner(ziCodeRepository, ziCodeGitHubService)
 }
 
 val LocalAppRepository = staticCompositionLocalOf<AppRepository> {
@@ -42,4 +48,16 @@ val LocalWebHostingService = staticCompositionLocalOf<WebHostingService> {
 
 val LocalRuntimePackagingService = staticCompositionLocalOf<RuntimePackagingService> {
     error("LocalRuntimePackagingService not provided")
+}
+
+val LocalZiCodeRepository = staticCompositionLocalOf<ZiCodeRepository> {
+    error("LocalZiCodeRepository not provided")
+}
+
+val LocalZiCodeGitHubService = staticCompositionLocalOf<ZiCodeGitHubService> {
+    error("LocalZiCodeGitHubService not provided")
+}
+
+val LocalZiCodeAgentRunner = staticCompositionLocalOf<ZiCodeAgentRunner> {
+    error("LocalZiCodeAgentRunner not provided")
 }

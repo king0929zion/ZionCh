@@ -1,5 +1,7 @@
-## ZionChat v0.32.0
+## ZionChat v0.33.0
 
-- 移除应用内 `ZiCode` 全部页面、导航入口、设置项、图标资源与数据层实现，主应用结构更聚焦。
-- 新增 `docs/backups/zicode-20260306/` 归档备份，保留原始 `ZiCode` 模块源码与耦合点，便于后续独立迁移。
-- 新增旧版 `ZiCode` 本地存储清理，升级后会自动移除废弃工作区、会话、PAT 和默认模型配置。
+- 全新重做 `ZiCode` 模块，不复用旧实现，改为独立 `zicode` 数据层与 GitHub 服务，结构更清晰、后续更容易继续扩展。
+- 新增 ZiCode 仓库列表页、项目会话页、文件浏览页与设置页，视觉统一贴合主设置页：纯白背景、`#F1F1F1` 容器灰、大圆角、顶部半透明模糊。
+- ZiCode 支持 GitHub Token 配置、仓库拉取、新建仓库、项目内多会话、文件树浏览、文件底部预览，以及带 shimmer 的工具调用状态展示。
+- 侧栏与设置页已重新接入 ZiCode 入口，文件按钮图标同步替换为新的统一规范资源。
+- 优化 GitHub Actions 构建速度：新增并发取消、浅克隆、Gradle 缓存清理与更稳定的 Kotlin 增量缓存 key，同时开启 Gradle configuration cache 与 VFS watch。
