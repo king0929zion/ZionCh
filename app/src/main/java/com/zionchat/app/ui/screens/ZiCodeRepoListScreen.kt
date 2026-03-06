@@ -48,6 +48,7 @@ import com.zionchat.app.LocalZiCodeGitHubService
 import com.zionchat.app.LocalZiCodeRepository
 import com.zionchat.app.ui.components.PageTopBarContentTopPadding
 import com.zionchat.app.ui.components.SettingsPage
+import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.TextPrimary
