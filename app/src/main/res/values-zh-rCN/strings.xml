@@ -387,4 +387,23 @@
     <string name="zicode_status_failed">失败</string>
     <string name="zicode_input_placeholder">继续告诉 ZiCode 你的 GitHub 目标...</string>
     <string name="zicode_send">发送</string>
+
+    <!-- Default model -->
+    <string name="default_model_screen_title">默认模型</string>
+    <string name="default_model_screen_note">为不同任务配置默认模型。对话模型必填，其余模型可按需设置。</string>
+    <string name="default_model_warning_app_builder">APP developer 在生成或修复应用前，需要先配置 App Development 模型。</string>
+    <string name="default_model_warning_zicode">ZiCode 在执行 GitHub Agent 任务前，需要先单独配置自己的默认模型。</string>
+    <string name="default_model_type_chat">对话模型</string>
+    <string name="default_model_type_vision">视觉模型</string>
+    <string name="default_model_type_image">图像生成</string>
+    <string name="default_model_type_title">标题总结</string>
+    <string name="default_model_type_app_builder">应用开发</string>
+    <string name="default_model_type_zicode">ZiCode Agent</string>
+    <string name="default_model_selector_chat">选择对话模型</string>
+    <string name="default_model_selector_vision">选择视觉模型</string>
+    <string name="default_model_selector_image">选择图像生成模型</string>
+    <string name="default_model_selector_title">选择标题总结模型</string>
+    <string name="default_model_selector_app_builder">选择应用开发模型</string>
+    <string name="default_model_selector_zicode">选择 ZiCode Agent 模型</string>
+    <string name="default_model_provider_other">其他</string>
 </resources>

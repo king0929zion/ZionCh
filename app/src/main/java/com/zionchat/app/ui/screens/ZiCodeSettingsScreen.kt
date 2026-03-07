@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,6 +59,7 @@ fun ZiCodeSettingsScreen(navController: NavController) {
     val settings by repository.settingsFlow.collectAsState(initial = ZiCodeSettings())
     val models by appRepository.modelsFlow.collectAsState(initial = emptyList())
     val ziCodeModelId by appRepository.defaultZiCodeModelIdFlow.collectAsState(initial = null)
+    val configuration = LocalConfiguration.current
     val scope = rememberCoroutineScope()
 
     var tokenText by rememberSaveable(settings.githubToken) { mutableStateOf(settings.githubToken) }
@@ -73,7 +75,8 @@ fun ZiCodeSettingsScreen(navController: NavController) {
             val key = ziCodeModelId?.trim().orEmpty()
             if (key.isBlank()) null else models.firstOrNull { it.id == key }?.displayName ?: models.firstOrNull { extractRemoteModelId(it.id) == key }?.displayName
         }
-    val groupedCapabilities = remember { buildZiCodeToolCapabilities().groupBy { it.group } }
+    val useChinese = configuration.locales[0]?.language?.startsWith("zh") == true
+    val groupedCapabilities = remember(useChinese) { buildZiCodeToolCapabilities(useChinese).groupBy { it.group } }
 
     SettingsPage(title = stringResource(R.string.zicode_settings_title), onBack = { navController.navigateUp() }) {
         Column(

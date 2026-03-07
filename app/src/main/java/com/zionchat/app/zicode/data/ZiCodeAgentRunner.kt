@@ -54,6 +54,8 @@ class ZiCodeAgentRunner(
         prompt: String
     ) {
         val normalizedPrompt = prompt.trim()
+        val useChinese = prefersChinese()
+        fun t(zh: String, en: String): String = tr(useChinese, zh, en)
         val tools = mutableListOf<ZiCodeToolCallState>()
 
         suspend fun sync(status: ZiCodeRunStatus = ZiCodeRunStatus.RUNNING) {
@@ -79,75 +81,123 @@ class ZiCodeAgentRunner(
         }
 
         try {
-            val goalIndex = addTool("理解目标", "agent.goal_analyze", "Agent", "正在拆解任务。", normalizedPrompt)
+            val goalIndex = addTool(t("理解目标", "Analyze goal"), "agent.goal_analyze", "Agent", t("正在拆解任务。", "Breaking down the request."), normalizedPrompt)
             delay(120)
-            finishTool(goalIndex, ZiCodeToolStatus.SUCCESS, "任务已拆解，开始接入 GitHub 与模型。", "任务：$normalizedPrompt\n仓库：$repoOwner/$repoName", "进入执行阶段")
+            finishTool(
+                goalIndex,
+                ZiCodeToolStatus.SUCCESS,
+                t("任务已拆解，开始接入 GitHub 与模型。", "Goal parsed. Moving into GitHub and model execution."),
+                "${t("任务", "Goal")}: $normalizedPrompt\n${t("仓库", "Repository")}: $repoOwner/$repoName",
+                t("进入执行阶段", "Execution started")
+            )
 
-            val authIndex = addTool("检查 GitHub 连接", "github.auth", "GitHub", "正在校验 GitHub Token。")
+            val authIndex = addTool(t("检查 GitHub 连接", "Check GitHub access"), "github.auth", "GitHub", t("正在校验 GitHub Token。", "Validating the GitHub token."))
             val token = repository.settingsFlow.first().githubToken.trim()
             if (token.isBlank()) {
-                finishTool(authIndex, ZiCodeToolStatus.FAILED, "缺少 GitHub Token。", "请先在 ZiCode 设置页配置 GitHub Token。", "GitHub 未连接")
-                failTurn(sessionId, turnId, tools, "ZiCode 还没有拿到 GitHub Token。先去设置页完成连接，然后我就能继续执行仓库任务。")
+                finishTool(
+                    authIndex,
+                    ZiCodeToolStatus.FAILED,
+                    t("缺少 GitHub Token。", "GitHub token is missing."),
+                    t("请先在 ZiCode 设置页配置 GitHub Token。", "Configure a GitHub token in ZiCode Settings first."),
+                    t("GitHub 未连接", "GitHub is not connected")
+                )
+                failTurn(sessionId, turnId, tools, t("ZiCode 还没有拿到 GitHub Token。先去设置页完成连接，然后我就能继续执行仓库任务。", "ZiCode cannot continue until a GitHub token is configured in Settings."))
                 return
             }
             val viewerResult = gitHubService.fetchViewer(token)
             val viewer = viewerResult.getOrNull()
             if (viewer == null) {
-                finishTool(authIndex, ZiCodeToolStatus.FAILED, "GitHub Token 校验失败。", viewerResult.exceptionOrNull()?.message.orEmpty(), "认证失败")
-                failTurn(sessionId, turnId, tools, "我没能通过当前 GitHub Token 完成认证。请检查 Token 是否有效，并确认它有访问仓库的权限。")
+                finishTool(
+                    authIndex,
+                    ZiCodeToolStatus.FAILED,
+                    t("GitHub Token 校验失败。", "GitHub token validation failed."),
+                    viewerResult.exceptionOrNull()?.message.orEmpty(),
+                    t("认证失败", "Authentication failed")
+                )
+                failTurn(sessionId, turnId, tools, t("我没能通过当前 GitHub Token 完成认证。请检查 Token 是否有效，并确认它有访问仓库的权限。", "Authentication failed with the current GitHub token. Verify that the token is valid and has repository access."))
                 return
             }
             repository.updateViewer(viewer)
-            finishTool(authIndex, ZiCodeToolStatus.SUCCESS, "GitHub 连接可用。", "账号：${viewer.displayName ?: viewer.login}\n登录名：@${viewer.login}", "GitHub 已接通")
+            finishTool(
+                authIndex,
+                ZiCodeToolStatus.SUCCESS,
+                t("GitHub 连接可用。", "GitHub access is ready."),
+                "${t("账号", "Account")}: ${viewer.displayName ?: viewer.login}\n${t("登录名", "Login")}: @${viewer.login}",
+                t("GitHub 已接通", "GitHub connected")
+            )
 
-            val modelIndex = addTool("检查 Agent 模型", "agent.model_resolve", "Agent", "正在读取 ZiCode 默认模型。")
-            val resolvedModelResult = resolveZiCodeModel()
+            val modelIndex = addTool(t("检查 Agent 模型", "Resolve agent model"), "agent.model_resolve", "Agent", t("正在读取 ZiCode 默认模型。", "Resolving the ZiCode default model."))
+            val resolvedModelResult = resolveZiCodeModel(useChinese)
             val resolvedModel = resolvedModelResult.getOrNull()
             if (resolvedModel == null) {
-                finishTool(modelIndex, ZiCodeToolStatus.FAILED, "ZiCode 默认模型不可用。", resolvedModelResult.exceptionOrNull()?.message.orEmpty(), "模型未就绪")
-                failTurn(sessionId, turnId, tools, "ZiCode 默认模型还没有配置完成。请先去“设置 -> 默认模型”里设置 ZiCode Agent 模型，然后再继续执行。")
+                finishTool(
+                    modelIndex,
+                    ZiCodeToolStatus.FAILED,
+                    t("ZiCode 默认模型不可用。", "The ZiCode default model is unavailable."),
+                    resolvedModelResult.exceptionOrNull()?.message.orEmpty(),
+                    t("模型未就绪", "Model is not ready")
+                )
+                failTurn(sessionId, turnId, tools, t("ZiCode 默认模型还没有配置完成。请先去“设置 -> 默认模型”里设置 ZiCode Agent 模型，然后再继续执行。", "ZiCode needs its own default model before GitHub agent tasks can run. Set it in Settings -> Default model first."))
                 return
             }
-            finishTool(modelIndex, ZiCodeToolStatus.SUCCESS, "ZiCode 默认模型已锁定。", "模型：${resolvedModel.model.displayName}\nProvider：${resolvedModel.provider.name}\n远端模型：${resolvedModel.remoteModelId}", "推理链路已接通")
+            finishTool(
+                modelIndex,
+                ZiCodeToolStatus.SUCCESS,
+                t("ZiCode 默认模型已锁定。", "The ZiCode default model is locked in."),
+                "${t("模型", "Model")}: ${resolvedModel.model.displayName}\n${t("提供商", "Provider")}: ${resolvedModel.provider.name}\n${t("远端模型", "Remote model")}: ${resolvedModel.remoteModelId}",
+                t("推理链路已接通", "Model pipeline connected")
+            )
 
-            val repoIndex = addTool("读取仓库信息", "github.repo_get", "GitHub", "正在拉取仓库元数据。")
+            val repoIndex = addTool(t("读取仓库信息", "Load repository"), "github.repo_get", "GitHub", t("正在拉取仓库元数据。", "Loading repository metadata."))
             val repoResult = gitHubService.fetchRepo(token, repoOwner, repoName)
             val repo = repoResult.getOrNull()
             if (repo == null) {
-                finishTool(repoIndex, ZiCodeToolStatus.FAILED, "仓库读取失败。", repoResult.exceptionOrNull()?.message.orEmpty(), "仓库不可访问")
-                failTurn(sessionId, turnId, tools, "我没有拿到 `$repoOwner/$repoName` 的仓库信息。请确认 Token 对这个仓库有访问权限。")
+                finishTool(
+                    repoIndex,
+                    ZiCodeToolStatus.FAILED,
+                    t("仓库读取失败。", "Repository read failed."),
+                    repoResult.exceptionOrNull()?.message.orEmpty(),
+                    t("仓库不可访问", "Repository is not accessible")
+                )
+                failTurn(sessionId, turnId, tools, t("我没有拿到 `$repoOwner/$repoName` 的仓库信息。请确认 Token 对这个仓库有访问权限。", "ZiCode could not read `$repoOwner/$repoName`. Confirm that the token can access this repository."))
                 return
             }
-            finishTool(repoIndex, ZiCodeToolStatus.SUCCESS, "仓库信息已加载。", "仓库：${repo.fullName}\n默认分支：${repo.defaultBranch}\n可见性：${if (repo.privateRepo) "Private" else "Public"}\n最近更新：${formatTime(repo.updatedAt)}", "仓库上下文已就绪")
+            finishTool(
+                repoIndex,
+                ZiCodeToolStatus.SUCCESS,
+                t("仓库信息已加载。", "Repository metadata loaded."),
+                "${t("仓库", "Repository")}: ${repo.fullName}\n${t("默认分支", "Default branch")}: ${repo.defaultBranch}\n${t("可见性", "Visibility")}: ${if (repo.privateRepo) t("私有", "Private") else t("公开", "Public")}\n${t("最近更新", "Updated at")}: ${formatTime(repo.updatedAt, useChinese)}",
+                t("仓库上下文已就绪", "Repository context is ready")
+            )
 
-            val rootIndex = addTool("扫描根目录", "github.contents_list", "Contents", "正在读取仓库顶层目录。")
+            val rootIndex = addTool(t("扫描根目录", "Scan root tree"), "github.contents_list", "Contents", t("正在读取仓库顶层目录。", "Reading the repository root tree."))
             val rootEntries = gitHubService.listDirectory(token, repoOwner, repoName, "").getOrNull().orEmpty()
             finishTool(
                 rootIndex,
                 if (rootEntries.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
-                if (rootEntries.isNotEmpty()) "已读取 ${rootEntries.size} 个顶层条目。" else "顶层目录暂不可用。",
-                if (rootEntries.isNotEmpty()) rootEntries.take(14).joinToString("\n") { "- ${it.path} [${it.type}]" } else "当前没有拿到根目录条目。",
-                if (rootEntries.isNotEmpty()) "目录结构已同步" else "目录缺失"
+                if (rootEntries.isNotEmpty()) t("已读取 ${rootEntries.size} 个顶层条目。", "Loaded ${rootEntries.size} root entries.") else t("顶层目录暂不可用。", "The root tree is unavailable right now."),
+                if (rootEntries.isNotEmpty()) rootEntries.take(14).joinToString("\n") { "- ${it.path} [${it.type}]" } else t("当前没有拿到根目录条目。", "No root entries were returned."),
+                if (rootEntries.isNotEmpty()) t("目录结构已同步", "Tree structure synced") else t("目录缺失", "Tree data missing")
             )
 
-            val branchIndex = addTool("同步分支", "github.branch_list", "Branches", "正在拉取分支列表。")
+            val branchIndex = addTool(t("同步分支", "Sync branches"), "github.branch_list", "Branches", t("正在拉取分支列表。", "Loading repository branches."))
             val branches = gitHubService.listBranches(token, repoOwner, repoName).getOrNull().orEmpty()
             finishTool(
                 branchIndex,
                 if (branches.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
-                if (branches.isNotEmpty()) "已获取 ${branches.size} 个分支。" else "分支列表暂不可用。",
-                if (branches.isNotEmpty()) branches.take(12).joinToString("\n") { "- ${it.name}${if (it.protectedBranch) " · protected" else ""}" } else "当前没有拿到分支列表。",
-                if (branches.isNotEmpty()) "分支信息已同步" else "分支缺失"
+                if (branches.isNotEmpty()) t("已获取 ${branches.size} 个分支。", "Loaded ${branches.size} branches.") else t("分支列表暂不可用。", "Branch data is unavailable right now."),
+                if (branches.isNotEmpty()) branches.take(12).joinToString("\n") { "- ${it.name}${if (it.protectedBranch) " · ${t("保护", "protected")}" else ""}" } else t("当前没有拿到分支列表。", "No branch list was returned."),
+                if (branches.isNotEmpty()) t("分支信息已同步", "Branch context synced") else t("分支缺失", "Branch data missing")
             )
 
-            val commitIndex = addTool("读取提交历史", "github.commit_list", "Commits", "正在拉取最近提交。")
+            val commitIndex = addTool(t("读取提交历史", "Read commit history"), "github.commit_list", "Commits", t("正在拉取最近提交。", "Loading recent commits."))
             val commits = gitHubService.listCommits(token, repoOwner, repoName, repo.defaultBranch, 8).getOrNull().orEmpty()
             finishTool(
                 commitIndex,
                 if (commits.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
-                if (commits.isNotEmpty()) "已获取 ${commits.size} 条最近提交。" else "最近提交暂不可用。",
-                if (commits.isNotEmpty()) commits.joinToString("\n") { "- ${it.sha.take(7)} · ${it.message}" } else "当前没有拿到提交历史。",
-                if (commits.isNotEmpty()) "提交历史已同步" else "提交数据缺失"
+                if (commits.isNotEmpty()) t("已获取 ${commits.size} 条最近提交。", "Loaded ${commits.size} recent commits.") else t("最近提交暂不可用。", "Commit history is unavailable right now."),
+                if (commits.isNotEmpty()) commits.joinToString("\n") { "- ${it.sha.take(7)} · ${it.message}" } else t("当前没有拿到提交历史。", "No commit history was returned."),
+                if (commits.isNotEmpty()) t("提交历史已同步", "Commit history synced") else t("提交数据缺失", "Commit data missing")
             )
 
             finishRunWithExtendedContext(
@@ -162,32 +212,33 @@ class ZiCodeAgentRunner(
                 rootEntries = rootEntries,
                 branches = branches,
                 commits = commits,
-                resolvedModel = resolvedModel
+                resolvedModel = resolvedModel,
+                useChinese = useChinese
             )
         } catch (throwable: Throwable) {
-            failTurn(sessionId, turnId, tools, throwable.message?.trim().orEmpty().ifBlank { "ZiCode 这次执行被中断了，请稍后再试一次。" })
+            failTurn(sessionId, turnId, tools, throwable.message?.trim().orEmpty().ifBlank { t("ZiCode 这次执行被中断了，请稍后再试一次。", "ZiCode was interrupted this time. Try again in a moment.") })
         } finally {
             activeJobs.remove(turnId)
         }
     }
 
-    private suspend fun resolveZiCodeModel(): Result<ResolvedZiCodeModel> {
+    private suspend fun resolveZiCodeModel(useChinese: Boolean): Result<ResolvedZiCodeModel> {
         return runCatching {
             val selectedId =
                 appRepository.defaultZiCodeModelIdFlow.first()
                     ?.trim()
                     ?.takeIf { it.isNotBlank() }
-                    ?: throw IllegalStateException("还没有设置 ZiCode 默认模型。")
+                    ?: throw IllegalStateException(tr(useChinese, "还没有设置 ZiCode 默认模型。", "ZiCode default model has not been configured yet."))
             val model =
                 appRepository.modelsFlow.first().firstOrNull { candidate ->
                     candidate.enabled && (candidate.id == selectedId || extractRemoteModelId(candidate.id) == selectedId)
-                } ?: throw IllegalStateException("ZiCode 默认模型不存在，或已被禁用。")
+                } ?: throw IllegalStateException(tr(useChinese, "ZiCode 默认模型不存在，或已被禁用。", "The ZiCode default model was not found or is disabled."))
             val providerId =
                 model.providerId?.trim()?.takeIf { it.isNotBlank() }
-                    ?: throw IllegalStateException("ZiCode 默认模型没有关联可用的 Provider。")
+                    ?: throw IllegalStateException(tr(useChinese, "ZiCode 默认模型没有关联可用的 Provider。", "The ZiCode default model does not have a valid provider."))
             val provider =
                 appRepository.providersFlow.first().firstOrNull { it.id == providerId }
-                    ?: throw IllegalStateException("ZiCode 默认模型对应的 Provider 不存在。")
+                    ?: throw IllegalStateException(tr(useChinese, "ZiCode 默认模型对应的 Provider 不存在。", "The provider for the ZiCode default model does not exist."))
             ResolvedZiCodeModel(
                 provider = provider,
                 model = model,
@@ -236,8 +287,10 @@ class ZiCodeAgentRunner(
         rootEntries: List<ZiCodeRepoNode>,
         branches: List<ZiCodeGitHubBranch>,
         commits: List<ZiCodeGitHubCommit>,
-        resolvedModel: ResolvedZiCodeModel
+        resolvedModel: ResolvedZiCodeModel,
+        useChinese: Boolean
     ) {
+        fun t(zh: String, en: String): String = tr(useChinese, zh, en)
         suspend fun sync() = updateTurn(sessionId, turnId, tools.toList(), ZiCodeRunStatus.RUNNING)
 
         suspend fun addTool(label: String, toolName: String, group: String, summary: String, inputSummary: String = ""): Int {
@@ -259,75 +312,287 @@ class ZiCodeAgentRunner(
         }
 
         val readmeNode = rootEntries.firstOrNull { it.type == "file" && it.name.startsWith("README", ignoreCase = true) }
-        val readmeIndex = addTool("读取 README", "github.file_read", "Contents", "正在提取项目说明。", readmeNode?.path.orEmpty().ifBlank { "README*" })
+        val readmeIndex = addTool(t("读取 README", "Read README"), "github.file_read", "Contents", t("正在提取项目说明。", "Extracting project guidance."), readmeNode?.path.orEmpty().ifBlank { "README*" })
         val readmeResult = readmeNode?.let { gitHubService.readFile(token, repoOwner, repoName, it.path) }
         val readmePreview = readmeResult?.getOrNull()
-        finishTool(readmeIndex, if (readmePreview != null) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED, if (readmePreview != null) "README 已读取。" else "README 暂不可用。", readmePreview?.content?.take(680) ?: readmeResult?.exceptionOrNull()?.message.orEmpty(), if (readmePreview != null) "项目说明已加入上下文" else "无 README")
+        finishTool(
+            readmeIndex,
+            if (readmePreview != null) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+            if (readmePreview != null) t("README 已读取。", "README loaded.") else t("README 暂不可用。", "README is unavailable right now."),
+            readmePreview?.content?.take(680) ?: readmeResult?.exceptionOrNull()?.message.orEmpty(),
+            if (readmePreview != null) t("项目说明已加入上下文", "README added to context") else t("无 README", "No README")
+        )
 
-        val workflowIndex = addTool("同步工作流", "github.workflow_list", "Actions", "正在读取 GitHub Actions 工作流。")
+        val issuesIndex = addTool(t("同步 Issues", "Sync issues"), "github.issue_list", "Issues", t("正在读取仓库 Issues。", "Loading repository issues."))
+        val issues = gitHubService.listIssues(token, repoOwner, repoName).getOrNull().orEmpty()
+        finishTool(
+            issuesIndex,
+            if (issues.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+            if (issues.isNotEmpty()) t("已获取 ${issues.size} 条 Issue。", "Loaded ${issues.size} issues.") else t("当前没有可见 Issue。", "No visible issues were returned."),
+            if (issues.isNotEmpty()) {
+                issues.take(8).joinToString("\n") { issue ->
+                    "- #${issue.number} · ${issue.title} · ${issue.state}"
+                }
+            } else {
+                t("仓库里没有读取到可见 Issue。", "No visible issues were found in this repository.")
+            },
+            if (issues.isNotEmpty()) t("Issue 上下文已同步", "Issue context synced") else t("无 Issue 数据", "No issue data")
+        )
+
+        var createdIssue: ZiCodeGitHubIssue? = null
+        if (wantsCreateIssue(prompt)) {
+            val issueTitle = extractRequestedIssueTitle(prompt) ?: t("ZiCode 任务：", "ZiCode task: ") + prompt.take(72)
+            val index = addTool(t("创建 Issue", "Create issue"), "github.issue_create", "Issues", t("正在创建新的 Issue。", "Creating a new issue."), issueTitle)
+            val result =
+                gitHubService.createIssue(
+                    token = token,
+                    owner = repoOwner,
+                    repo = repoName,
+                    title = issueTitle,
+                    body = buildString {
+                        appendLine(t("由 ZiCode 根据以下目标创建：", "Created by ZiCode for the following goal:"))
+                        appendLine(prompt)
+                        appendLine()
+                        appendLine("${t("仓库", "Repository")}: ${repo.fullName}")
+                    }
+                )
+            createdIssue = result.getOrNull()
+            finishTool(
+                index,
+                if (createdIssue != null) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+                if (createdIssue != null) t("Issue #${createdIssue.number} 已创建。", "Issue #${createdIssue.number} was created.") else t("Issue 创建失败。", "Issue creation failed."),
+                result.exceptionOrNull()?.message.orEmpty(),
+                createdIssue?.htmlUrl?.takeIf { it.isNotBlank() } ?: t("Issue 未创建", "Issue was not created")
+            )
+        }
+
+        val pullRequestIndex = addTool(t("同步 Pull Requests", "Sync pull requests"), "github.pull_request_list", "Pull Requests", t("正在读取当前 PR 列表。", "Loading current pull requests."))
+        val pullRequests = gitHubService.listPullRequests(token, repoOwner, repoName).getOrNull().orEmpty()
+        finishTool(
+            pullRequestIndex,
+            if (pullRequests.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+            if (pullRequests.isNotEmpty()) t("已获取 ${pullRequests.size} 个 PR。", "Loaded ${pullRequests.size} pull requests.") else t("当前没有可见 PR。", "No visible pull requests were returned."),
+            if (pullRequests.isNotEmpty()) {
+                pullRequests.take(8).joinToString("\n") { pullRequest ->
+                    "- #${pullRequest.number} · ${pullRequest.title} · ${pullRequest.state}${if (pullRequest.draft) " · draft" else ""}"
+                }
+            } else {
+                t("仓库里没有读取到可见 PR。", "No visible pull requests were found in this repository.")
+            },
+            if (pullRequests.isNotEmpty()) t("PR 上下文已同步", "Pull request context synced") else t("无 PR 数据", "No pull request data")
+        )
+
+        val workflowIndex = addTool(t("同步工作流", "Sync workflows"), "github.workflow_list", "Actions", t("正在读取 GitHub Actions 工作流。", "Loading GitHub Actions workflows."))
         val workflows = gitHubService.listWorkflows(token, repoOwner, repoName).getOrNull().orEmpty()
-        finishTool(workflowIndex, if (workflows.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED, if (workflows.isNotEmpty()) "检测到 ${workflows.size} 个工作流。" else "没有拿到工作流列表。", if (workflows.isNotEmpty()) workflows.joinToString("\n") { "- ${it.name} · ${it.path}" } else "仓库里没有检测到可见的 Actions 工作流。", if (workflows.isNotEmpty()) "工作流上下文已同步" else "无可见工作流")
+        finishTool(
+            workflowIndex,
+            if (workflows.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+            if (workflows.isNotEmpty()) t("检测到 ${workflows.size} 个工作流。", "Detected ${workflows.size} workflows.") else t("没有拿到工作流列表。", "Workflow data was not returned."),
+            if (workflows.isNotEmpty()) workflows.joinToString("\n") { "- ${it.name} · ${it.path}" } else t("仓库里没有检测到可见的 Actions 工作流。", "No visible Actions workflows were found in the repository."),
+            if (workflows.isNotEmpty()) t("工作流上下文已同步", "Workflow context synced") else t("无可见工作流", "No visible workflows")
+        )
 
         var createdBranch: ZiCodeGitHubBranch? = null
         extractRequestedBranchName(prompt)?.let { branchName ->
             val sourceSha = branches.firstOrNull { it.name.equals(repo.defaultBranch, true) }?.sha ?: branches.firstOrNull()?.sha
             if (!sourceSha.isNullOrBlank() && wantsCreateBranch(prompt)) {
-                val index = addTool("创建分支", "github.branch_create", "Branches", "正在创建新分支。", branchName)
+                val index = addTool(t("创建分支", "Create branch"), "github.branch_create", "Branches", t("正在创建新分支。", "Creating a new branch."), branchName)
                 val result = gitHubService.createBranch(token, repoOwner, repoName, branchName, sourceSha)
                 createdBranch = result.getOrNull()
-                finishTool(index, if (createdBranch != null) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED, if (createdBranch != null) "分支 `$branchName` 已创建。" else "分支创建失败。", result.exceptionOrNull()?.message.orEmpty(), createdBranch?.sha ?: "创建失败")
+                finishTool(
+                    index,
+                    if (createdBranch != null) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+                    if (createdBranch != null) t("分支 `$branchName` 已创建。", "Branch `$branchName` was created.") else t("分支创建失败。", "Branch creation failed."),
+                    result.exceptionOrNull()?.message.orEmpty(),
+                    createdBranch?.sha ?: t("创建失败", "Creation failed")
+                )
+            }
+        }
+
+        val prHeadBranch =
+            createdBranch?.name ?: extractRequestedBranchName(prompt)?.takeIf { requested ->
+                branches.any { it.name.equals(requested, ignoreCase = true) }
+            }
+        var createdPullRequest: ZiCodeGitHubPullRequest? = null
+        if (wantsCreatePullRequest(prompt)) {
+            if (prHeadBranch.isNullOrBlank()) {
+                val index = addTool(t("创建 Pull Request", "Create pull request"), "github.pull_request_create", "Pull Requests", t("正在准备创建 PR。", "Preparing to create a pull request."))
+                finishTool(
+                    index,
+                    ZiCodeToolStatus.FAILED,
+                    t("当前没有可用工作分支。", "No working branch is available."),
+                    t("这轮没有新建分支，也没有在提示词里识别到可直接发起 PR 的现有分支。", "This turn did not create a branch and no existing PR source branch could be inferred from the prompt."),
+                    t("PR 未创建", "Pull request was not created")
+                )
+            } else {
+                val pullRequestTitle = extractRequestedPullRequestTitle(prompt) ?: t("ZiCode 更新：", "ZiCode update: ") + prHeadBranch
+                val index = addTool(t("创建 Pull Request", "Create pull request"), "github.pull_request_create", "Pull Requests", t("正在创建新的 PR。", "Creating a new pull request."), pullRequestTitle)
+                val result =
+                    gitHubService.createPullRequest(
+                        token = token,
+                        owner = repoOwner,
+                        repo = repoName,
+                        title = pullRequestTitle,
+                        head = prHeadBranch,
+                        base = repo.defaultBranch,
+                        body = buildString {
+                            appendLine(t("由 ZiCode 根据以下目标创建：", "Created by ZiCode for the following goal:"))
+                            appendLine(prompt)
+                            appendLine()
+                            appendLine("${t("来源分支", "Source branch")}: $prHeadBranch")
+                            appendLine("${t("目标分支", "Base branch")}: ${repo.defaultBranch}")
+                        }
+                    )
+                createdPullRequest = result.getOrNull()
+                finishTool(
+                    index,
+                    if (createdPullRequest != null) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+                    if (createdPullRequest != null) t("PR #${createdPullRequest.number} 已创建。", "Pull request #${createdPullRequest.number} was created.") else t("PR 创建失败。", "Pull request creation failed."),
+                    result.exceptionOrNull()?.message.orEmpty(),
+                    createdPullRequest?.htmlUrl?.takeIf { it.isNotBlank() } ?: t("PR 未创建", "Pull request was not created")
+                )
             }
         }
 
         var dispatchedWorkflowName: String? = null
         if (wantsWorkflowDispatch(prompt) && workflows.isNotEmpty()) {
             resolveWorkflowDispatchTarget(prompt, workflows)?.let { workflow ->
-                val index = addTool("触发工作流", "github.workflow_dispatch", "Actions", "正在触发工作流执行。", workflow.name)
+                val index = addTool(t("触发工作流", "Dispatch workflow"), "github.workflow_dispatch", "Actions", t("正在触发工作流执行。", "Dispatching workflow execution."), workflow.name)
                 val result = gitHubService.dispatchWorkflow(token, repoOwner, repoName, workflow.id.toString(), createdBranch?.name ?: repo.defaultBranch)
                 if (result.isSuccess) {
                     dispatchedWorkflowName = workflow.name
                     delay(1200)
                 }
-                finishTool(index, if (result.isSuccess) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED, if (result.isSuccess) "工作流 `${workflow.name}` 已触发。" else "工作流触发失败。", result.exceptionOrNull()?.message.orEmpty(), if (result.isSuccess) createdBranch?.name ?: repo.defaultBranch else "触发失败")
+                finishTool(
+                    index,
+                    if (result.isSuccess) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+                    if (result.isSuccess) t("工作流 `${workflow.name}` 已触发。", "Workflow `${workflow.name}` was dispatched.") else t("工作流触发失败。", "Workflow dispatch failed."),
+                    result.exceptionOrNull()?.message.orEmpty(),
+                    if (result.isSuccess) createdBranch?.name ?: repo.defaultBranch else t("触发失败", "Dispatch failed")
+                )
             }
         }
 
-        val runIndex = addTool("读取运行记录", "github.workflow_runs", "Actions", "正在同步工作流运行状态。")
+        val runIndex = addTool(t("读取运行记录", "Read workflow runs"), "github.workflow_runs", "Actions", t("正在同步工作流运行状态。", "Syncing workflow run status."))
         val workflowRuns = gitHubService.listWorkflowRuns(token, repoOwner, repoName).getOrNull().orEmpty()
-        finishTool(runIndex, if (workflowRuns.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED, if (workflowRuns.isNotEmpty()) "已获取 ${workflowRuns.size} 条运行记录。" else "当前没有工作流运行记录。", if (workflowRuns.isNotEmpty()) workflowRuns.take(8).joinToString("\n") { "- ${it.name} · ${it.status}${it.conclusion?.let { c -> " · $c" } ?: ""}" } else "还没有可见的 workflow run。", if (workflowRuns.isNotEmpty()) "Actions 运行状态已同步" else "无运行记录")
+        finishTool(
+            runIndex,
+            if (workflowRuns.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+            if (workflowRuns.isNotEmpty()) t("已获取 ${workflowRuns.size} 条运行记录。", "Loaded ${workflowRuns.size} workflow runs.") else t("当前没有工作流运行记录。", "No workflow runs are visible right now."),
+            if (workflowRuns.isNotEmpty()) workflowRuns.take(8).joinToString("\n") { "- ${it.name} · ${it.status}${it.conclusion?.let { c -> " · $c" } ?: ""}" } else t("还没有可见的 workflow run。", "No visible workflow run was returned."),
+            if (workflowRuns.isNotEmpty()) t("Actions 运行状态已同步", "Actions run status synced") else t("无运行记录", "No workflow runs")
+        )
 
-        val traceIndex = addTool("展开运行日志", "github.workflow_trace", "Actions", "正在读取最新运行作业详情。", workflowRuns.firstOrNull()?.id?.toString().orEmpty())
+        val traceIndex = addTool(t("展开运行日志", "Expand workflow trace"), "github.workflow_trace", "Actions", t("正在读取最新运行作业详情。", "Reading the latest workflow job trace."), workflowRuns.firstOrNull()?.id?.toString().orEmpty())
         val workflowTrace = workflowRuns.firstOrNull()?.let { gitHubService.readWorkflowRunTrace(token, repoOwner, repoName, it.id).getOrNull().orEmpty() }.orEmpty()
-        finishTool(traceIndex, if (workflowTrace.isNotBlank()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED, if (workflowTrace.isNotBlank()) "运行详情已展开。" else "运行详情暂不可用。", workflowTrace.take(900).ifBlank { "没有拿到作业步骤。" }, if (workflowTrace.isNotBlank()) "运行日志已加入上下文" else "日志缺失")
+        finishTool(
+            traceIndex,
+            if (workflowTrace.isNotBlank()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+            if (workflowTrace.isNotBlank()) t("运行详情已展开。", "Workflow trace expanded.") else t("运行详情暂不可用。", "Workflow trace is unavailable right now."),
+            workflowTrace.take(900).ifBlank { t("没有拿到作业步骤。", "No job steps were returned.") },
+            if (workflowTrace.isNotBlank()) t("运行日志已加入上下文", "Workflow trace added to context") else t("日志缺失", "Trace missing")
+        )
 
-        val releaseIndex = addTool("同步发布", "github.release_list", "Release", "正在读取 Release 列表。")
+        val artifactsIndex = addTool(t("读取构建产物", "Read artifacts"), "github.artifact_list", "Artifacts", t("正在同步最近构建产物。", "Syncing recent workflow artifacts."), workflowRuns.firstOrNull()?.id?.toString().orEmpty())
+        val artifacts = gitHubService.listArtifacts(token, repoOwner, repoName, workflowRuns.firstOrNull()?.id).getOrNull().orEmpty()
+        finishTool(
+            artifactsIndex,
+            if (artifacts.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+            if (artifacts.isNotEmpty()) t("已获取 ${artifacts.size} 个构建产物。", "Loaded ${artifacts.size} workflow artifacts.") else t("当前没有可见构建产物。", "No visible workflow artifacts were returned."),
+            if (artifacts.isNotEmpty()) {
+                artifacts.take(8).joinToString("\n") { artifact ->
+                    "- ${artifact.name} · ${artifact.sizeInBytes} bytes${if (artifact.expired) " · expired" else ""}"
+                }
+            } else {
+                t("最近一次运行没有暴露可见产物。", "The latest run did not expose visible artifacts.")
+            },
+            if (artifacts.isNotEmpty()) t("构建产物已同步", "Artifacts synced") else t("无构建产物", "No artifacts")
+        )
+
+        val releaseIndex = addTool(t("同步发布", "Sync releases"), "github.release_list", "Release", t("正在读取 Release 列表。", "Loading releases."))
         val releases = gitHubService.listReleases(token, repoOwner, repoName).getOrNull().orEmpty()
-        finishTool(releaseIndex, if (releases.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED, if (releases.isNotEmpty()) "检测到 ${releases.size} 个 Release。" else "当前没有 Release 数据。", if (releases.isNotEmpty()) releases.take(6).joinToString("\n") { "- ${it.tagName}${it.name.takeIf { name -> name.isNotBlank() }?.let { name -> " · $name" } ?: ""}" } else "仓库里还没有可见 Release。", if (releases.isNotEmpty()) "发布历史已同步" else "无发布数据")
+        finishTool(
+            releaseIndex,
+            if (releases.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+            if (releases.isNotEmpty()) t("检测到 ${releases.size} 个 Release。", "Detected ${releases.size} releases.") else t("当前没有 Release 数据。", "No release data is available right now."),
+            if (releases.isNotEmpty()) releases.take(6).joinToString("\n") { "- ${it.tagName}${it.name.takeIf { name -> name.isNotBlank() }?.let { name -> " · $name" } ?: ""}" } else t("仓库里还没有可见 Release。", "No visible releases were found in the repository."),
+            if (releases.isNotEmpty()) t("发布历史已同步", "Release history synced") else t("无发布数据", "No release data")
+        )
 
-        val pagesIndex = addTool("检查 Pages", "github.pages_get", "Pages", "正在检查 GitHub Pages 状态。")
+        val pagesIndex = addTool(t("检查 Pages", "Check Pages"), "github.pages_get", "Pages", t("正在检查 GitHub Pages 状态。", "Checking GitHub Pages status."))
         val pagesInfo = gitHubService.fetchPagesInfo(token, repoOwner, repoName).getOrNull()
         val pagesDetail =
             when {
-                pagesInfo == null -> "没有拿到 Pages 信息。"
-                pagesInfo.status == "not_configured" -> "当前仓库没有启用 GitHub Pages。"
+                pagesInfo == null -> t("没有拿到 Pages 信息。", "Pages data was not returned.")
+                pagesInfo.status == "not_configured" -> t("当前仓库没有启用 GitHub Pages。", "GitHub Pages is not configured for this repository.")
                 else -> buildString {
-                    appendLine("状态：${pagesInfo.status}")
-                    pagesInfo.htmlUrl?.let { appendLine("地址：$it") }
-                    pagesInfo.sourceBranch?.let { appendLine("来源分支：$it") }
-                    pagesInfo.sourcePath?.let { append("来源路径：$it") }
+                    appendLine("${t("状态", "Status")}: ${pagesInfo.status}")
+                    pagesInfo.htmlUrl?.let { appendLine("${t("地址", "URL")}: $it") }
+                    pagesInfo.sourceBranch?.let { appendLine("${t("来源分支", "Source branch")}: $it") }
+                    pagesInfo.sourcePath?.let { append("${t("来源路径", "Source path")}: $it") }
                 }
             }
-        finishTool(pagesIndex, if (pagesInfo != null && pagesInfo.status != "not_configured") ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED, if (pagesInfo == null) "GitHub Pages 状态不可用。" else if (pagesInfo.status == "not_configured") "GitHub Pages 尚未配置。" else "GitHub Pages 状态已同步。", pagesDetail, if (pagesInfo == null) "Pages 状态缺失" else if (pagesInfo.status == "not_configured") "Pages 未启用" else "Pages 已接入上下文")
+        finishTool(
+            pagesIndex,
+            if (pagesInfo != null && pagesInfo.status != "not_configured") ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+            if (pagesInfo == null) t("GitHub Pages 状态不可用。", "GitHub Pages status is unavailable.") else if (pagesInfo.status == "not_configured") t("GitHub Pages 尚未配置。", "GitHub Pages has not been configured.") else t("GitHub Pages 状态已同步。", "GitHub Pages status synced."),
+            pagesDetail,
+            if (pagesInfo == null) t("Pages 状态缺失", "Pages status missing") else if (pagesInfo.status == "not_configured") t("Pages 未启用", "Pages not configured") else t("Pages 已接入上下文", "Pages added to context")
+        )
 
-        val summaryIndex = addTool("生成 Agent 结论", "agent.summary_build", "Agent", "正在使用 ZiCode 默认模型整理结论。")
-        val fallback = buildFallbackSummary(repo, prompt, rootEntries, branches, commits, workflows, workflowRuns, workflowTrace, releases, pagesInfo, readmePreview, createdBranch, dispatchedWorkflowName)
+        val summaryIndex = addTool(t("生成 Agent 结论", "Build agent summary"), "agent.summary_build", "Agent", t("正在使用 ZiCode 默认模型整理结论。", "Using the ZiCode default model to build the summary."))
+        val fallback =
+            buildFallbackSummary(
+                repo = repo,
+                prompt = prompt,
+                rootEntries = rootEntries,
+                branches = branches,
+                commits = commits,
+                issues = issues,
+                pullRequests = pullRequests,
+                workflows = workflows,
+                workflowRuns = workflowRuns,
+                workflowTrace = workflowTrace,
+                artifacts = artifacts,
+                releases = releases,
+                pagesInfo = pagesInfo,
+                readmePreview = readmePreview,
+                createdBranch = createdBranch,
+                createdIssue = createdIssue,
+                createdPullRequest = createdPullRequest,
+                dispatchedWorkflowName = dispatchedWorkflowName,
+                useChinese = useChinese
+            )
         val modelResult =
             chatApiClient.chatCompletions(
                 provider = resolvedModel.provider,
                 modelId = resolvedModel.remoteModelId,
                 messages = listOf(
                     Message(role = "system", content = "You are ZiCode, a GitHub execution agent. Respond in the user's language. Be concise, concrete, and never invent repository facts."),
-                    Message(role = "user", content = buildModelContext(repo, prompt, rootEntries, branches, commits, workflows, workflowRuns, workflowTrace, releases, pagesInfo, readmePreview, createdBranch, dispatchedWorkflowName))
+                    Message(
+                        role = "user",
+                        content = buildModelContext(
+                            repo = repo,
+                            prompt = prompt,
+                            rootEntries = rootEntries,
+                            branches = branches,
+                            commits = commits,
+                            issues = issues,
+                            pullRequests = pullRequests,
+                            workflows = workflows,
+                            workflowRuns = workflowRuns,
+                            workflowTrace = workflowTrace,
+                            artifacts = artifacts,
+                            releases = releases,
+                            pagesInfo = pagesInfo,
+                            readmePreview = readmePreview,
+                            createdBranch = createdBranch,
+                            createdIssue = createdIssue,
+                            createdPullRequest = createdPullRequest,
+                            dispatchedWorkflowName = dispatchedWorkflowName,
+                            useChinese = useChinese
+                        )
+                    )
                 ),
                 extraHeaders = resolvedModel.model.headers,
                 reasoningEffort = resolvedModel.model.reasoningEffort,
@@ -335,7 +600,13 @@ class ZiCodeAgentRunner(
                 maxTokens = 1400
             )
         val response = modelResult.getOrNull()?.trim().takeIf { !it.isNullOrBlank() } ?: fallback
-        finishTool(summaryIndex, if (modelResult.isSuccess) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED, if (modelResult.isSuccess) "ZiCode 结果已整理完成。" else "模型总结失败，已退回本地总结。", response.take(900), if (modelResult.isSuccess) "默认模型已返回结论" else "已启用本地回退总结")
+        finishTool(
+            summaryIndex,
+            if (modelResult.isSuccess) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+            if (modelResult.isSuccess) t("ZiCode 结果已整理完成。", "ZiCode summary is ready.") else t("模型总结失败，已退回本地总结。", "Model summarization failed, so ZiCode used a local fallback summary."),
+            response.take(900),
+            if (modelResult.isSuccess) t("默认模型已返回结论", "Default model returned a summary") else t("已启用本地回退总结", "Fallback summary enabled")
+        )
 
         repository.updateTurn(sessionId, turnId) { turn ->
             turn.copy(
@@ -344,10 +615,10 @@ class ZiCodeAgentRunner(
                 toolCalls = tools,
                 resultLink = workflowRuns.firstOrNull()?.htmlUrl?.takeIf { it.isNotBlank() } ?: pagesInfo?.htmlUrl?.takeIf { it.isNotBlank() } ?: repo.homepageUrl?.takeIf { it.isNotBlank() } ?: repo.htmlUrl,
                 resultLabel = when {
-                    workflowRuns.firstOrNull()?.htmlUrl?.isNotBlank() == true -> "Open workflow run"
-                    pagesInfo?.htmlUrl?.isNotBlank() == true -> "Open GitHub Pages"
-                    !repo.homepageUrl.isNullOrBlank() -> "Open project homepage"
-                    else -> "Open GitHub repo"
+                    workflowRuns.firstOrNull()?.htmlUrl?.isNotBlank() == true -> t("打开工作流运行", "Open workflow run")
+                    pagesInfo?.htmlUrl?.isNotBlank() == true -> t("打开 GitHub Pages", "Open GitHub Pages")
+                    !repo.homepageUrl.isNullOrBlank() -> t("打开项目主页", "Open project homepage")
+                    else -> t("打开 GitHub 仓库", "Open GitHub repo")
                 },
                 failureMessage = null
             )
@@ -369,6 +640,30 @@ class ZiCodeAgentRunner(
             prompt.contains("运行工作流")
     }
 
+    private fun wantsCreateIssue(prompt: String): Boolean {
+        return prompt.contains("create issue", ignoreCase = true) ||
+            prompt.contains("open issue", ignoreCase = true) ||
+            prompt.contains("new issue", ignoreCase = true) ||
+            prompt.contains("创建 issue", ignoreCase = true) ||
+            prompt.contains("新建 issue", ignoreCase = true) ||
+            prompt.contains("创建Issue") ||
+            prompt.contains("新建Issue") ||
+            prompt.contains("创建问题")
+    }
+
+    private fun wantsCreatePullRequest(prompt: String): Boolean {
+        return prompt.contains("create pr", ignoreCase = true) ||
+            prompt.contains("open pr", ignoreCase = true) ||
+            prompt.contains("create pull request", ignoreCase = true) ||
+            prompt.contains("open pull request", ignoreCase = true) ||
+            prompt.contains("创建 pr", ignoreCase = true) ||
+            prompt.contains("新建 pr", ignoreCase = true) ||
+            prompt.contains("创建PR") ||
+            prompt.contains("新建PR") ||
+            prompt.contains("创建拉取请求") ||
+            prompt.contains("新建拉取请求")
+    }
+
     private fun extractRequestedBranchName(prompt: String): String? {
         val patterns =
             listOf(
@@ -379,6 +674,32 @@ class ZiCodeAgentRunner(
             .mapNotNull { it.find(prompt)?.groupValues?.getOrNull(1) }
             .map { it.trim() }
             .firstOrNull { it.isNotBlank() }
+    }
+
+    private fun extractRequestedIssueTitle(prompt: String): String? {
+        val patterns =
+            listOf(
+                Regex("""(?i)(?:create|open|new)\s+issue[:：\s"]+([^\n"]+)"""),
+                Regex("""(?:创建|新建)(?:\s*Issue|\s*issue|问题)[:：\s]+([^\n]+)""")
+            )
+        return patterns.asSequence()
+            .mapNotNull { it.find(prompt)?.groupValues?.getOrNull(1) }
+            .map { it.trim().trim('"', '“', '”') }
+            .firstOrNull { it.isNotBlank() }
+            ?.take(120)
+    }
+
+    private fun extractRequestedPullRequestTitle(prompt: String): String? {
+        val patterns =
+            listOf(
+                Regex("""(?i)(?:create|open)\s+(?:pr|pull request)[:：\s"]+([^\n"]+)"""),
+                Regex("""(?:创建|新建)(?:\s*PR|\s*pr|拉取请求)[:：\s]+([^\n]+)""")
+            )
+        return patterns.asSequence()
+            .mapNotNull { it.find(prompt)?.groupValues?.getOrNull(1) }
+            .map { it.trim().trim('"', '“', '”') }
+            .firstOrNull { it.isNotBlank() }
+            ?.take(120)
     }
 
     private fun resolveWorkflowDispatchTarget(
@@ -397,63 +718,81 @@ class ZiCodeAgentRunner(
         rootEntries: List<ZiCodeRepoNode>,
         branches: List<ZiCodeGitHubBranch>,
         commits: List<ZiCodeGitHubCommit>,
+        issues: List<ZiCodeGitHubIssue>,
+        pullRequests: List<ZiCodeGitHubPullRequest>,
         workflows: List<ZiCodeGitHubWorkflow>,
         workflowRuns: List<ZiCodeGitHubWorkflowRun>,
         workflowTrace: String,
+        artifacts: List<ZiCodeGitHubArtifact>,
         releases: List<ZiCodeGitHubRelease>,
         pagesInfo: ZiCodeGitHubPagesInfo?,
         readmePreview: ZiCodeFilePreview?,
         createdBranch: ZiCodeGitHubBranch?,
-        dispatchedWorkflowName: String?
+        createdIssue: ZiCodeGitHubIssue?,
+        createdPullRequest: ZiCodeGitHubPullRequest?,
+        dispatchedWorkflowName: String?,
+        useChinese: Boolean
     ): String {
+        fun t(zh: String, en: String): String = tr(useChinese, zh, en)
         return buildString {
-            appendLine("User goal:")
+            appendLine(t("用户目标：", "User goal:"))
             appendLine(prompt)
             appendLine()
-            appendLine("Repository: ${repo.fullName}")
-            appendLine("Visibility: ${if (repo.privateRepo) "private" else "public"}")
-            appendLine("Default branch: ${repo.defaultBranch}")
-            appendLine("Updated at: ${formatTime(repo.updatedAt)}")
+            appendLine("${t("仓库", "Repository")}: ${repo.fullName}")
+            appendLine("${t("可见性", "Visibility")}: ${if (repo.privateRepo) t("私有", "private") else t("公开", "public")}")
+            appendLine("${t("默认分支", "Default branch")}: ${repo.defaultBranch}")
+            appendLine("${t("最近更新", "Updated at")}: ${formatTime(repo.updatedAt, useChinese)}")
             appendLine()
-            appendLine("Root tree:")
-            if (rootEntries.isEmpty()) appendLine("- No entries.") else rootEntries.take(18).forEach { appendLine("- ${it.path} [${it.type}]") }
+            appendLine(t("根目录结构：", "Root tree:"))
+            if (rootEntries.isEmpty()) appendLine("- ${t("没有条目。", "No entries.")}") else rootEntries.take(18).forEach { appendLine("- ${it.path} [${it.type}]") }
             appendLine()
-            appendLine("Branches:")
-            if (branches.isEmpty()) appendLine("- No branch data.") else branches.take(12).forEach { appendLine("- ${it.name}${if (it.protectedBranch) " (protected)" else ""}") }
-            createdBranch?.let { appendLine("- Created branch: ${it.name}") }
+            appendLine(t("分支：", "Branches:"))
+            if (branches.isEmpty()) appendLine("- ${t("没有分支数据。", "No branch data.")}") else branches.take(12).forEach { appendLine("- ${it.name}${if (it.protectedBranch) " (${t("protected", "protected")})" else ""}") }
+            createdBranch?.let { appendLine("- ${t("本轮新建分支", "Created branch in this run")}: ${it.name}") }
             appendLine()
-            appendLine("Recent commits:")
-            if (commits.isEmpty()) appendLine("- No commits.") else commits.take(8).forEach { appendLine("- ${it.sha.take(7)} · ${it.message}") }
+            appendLine(t("最近提交：", "Recent commits:"))
+            if (commits.isEmpty()) appendLine("- ${t("没有提交数据。", "No commits.")}") else commits.take(8).forEach { appendLine("- ${it.sha.take(7)} · ${it.message}") }
             appendLine()
-            appendLine("Workflows:")
-            if (workflows.isEmpty()) appendLine("- No visible workflows.") else workflows.forEach { appendLine("- ${it.name} · ${it.path}") }
-            dispatchedWorkflowName?.let { appendLine("- Dispatched in this run: $it") }
+            appendLine(t("Issues：", "Issues:"))
+            if (issues.isEmpty()) appendLine("- ${t("没有可见 Issue。", "No visible issues.")}") else issues.take(8).forEach { appendLine("- #${it.number} · ${it.title} · ${it.state}") }
+            createdIssue?.let { appendLine("- ${t("本轮新建 Issue", "Created issue in this run")}: #${it.number} · ${it.title}") }
             appendLine()
-            appendLine("Workflow runs:")
-            if (workflowRuns.isEmpty()) appendLine("- No runs.") else workflowRuns.take(8).forEach { appendLine("- ${it.name} · ${it.status}${it.conclusion?.let { c -> " · $c" } ?: ""}") }
+            appendLine(t("Pull Requests：", "Pull requests:"))
+            if (pullRequests.isEmpty()) appendLine("- ${t("没有可见 PR。", "No visible pull requests.")}") else pullRequests.take(8).forEach { appendLine("- #${it.number} · ${it.title} · ${it.state}${if (it.draft) " · draft" else ""}") }
+            createdPullRequest?.let { appendLine("- ${t("本轮新建 PR", "Created pull request in this run")}: #${it.number} · ${it.title}") }
+            appendLine()
+            appendLine(t("工作流：", "Workflows:"))
+            if (workflows.isEmpty()) appendLine("- ${t("没有可见工作流。", "No visible workflows.")}") else workflows.forEach { appendLine("- ${it.name} · ${it.path}") }
+            dispatchedWorkflowName?.let { appendLine("- ${t("本轮已触发", "Dispatched in this run")}: $it") }
+            appendLine()
+            appendLine(t("工作流运行：", "Workflow runs:"))
+            if (workflowRuns.isEmpty()) appendLine("- ${t("没有运行记录。", "No runs.")}") else workflowRuns.take(8).forEach { appendLine("- ${it.name} · ${it.status}${it.conclusion?.let { c -> " · $c" } ?: ""}") }
             if (workflowTrace.isNotBlank()) {
                 appendLine()
-                appendLine("Latest workflow trace:")
+                appendLine(t("最新运行轨迹：", "Latest workflow trace:"))
                 appendLine(workflowTrace.take(1600))
             }
             appendLine()
-            appendLine("Releases:")
-            if (releases.isEmpty()) appendLine("- No releases.") else releases.take(6).forEach { appendLine("- ${it.tagName}${it.name.takeIf { name -> name.isNotBlank() }?.let { name -> " · $name" } ?: ""}") }
+            appendLine(t("构建产物：", "Artifacts:"))
+            if (artifacts.isEmpty()) appendLine("- ${t("没有可见产物。", "No visible artifacts.")}") else artifacts.take(8).forEach { appendLine("- ${it.name} · ${it.sizeInBytes} bytes${if (it.expired) " · expired" else ""}") }
             appendLine()
-            appendLine("Pages:")
-            if (pagesInfo == null) appendLine("- No pages data.") else {
-                appendLine("- Status: ${pagesInfo.status}")
-                pagesInfo.htmlUrl?.let { appendLine("- URL: $it") }
-                pagesInfo.sourceBranch?.let { appendLine("- Source branch: $it") }
-                pagesInfo.sourcePath?.let { appendLine("- Source path: $it") }
+            appendLine(t("发布：", "Releases:"))
+            if (releases.isEmpty()) appendLine("- ${t("没有 Release。", "No releases.")}") else releases.take(6).forEach { appendLine("- ${it.tagName}${it.name.takeIf { name -> name.isNotBlank() }?.let { name -> " · $name" } ?: ""}") }
+            appendLine()
+            appendLine(t("Pages：", "Pages:"))
+            if (pagesInfo == null) appendLine("- ${t("没有 Pages 数据。", "No pages data.")}") else {
+                appendLine("- ${t("状态", "Status")}: ${pagesInfo.status}")
+                pagesInfo.htmlUrl?.let { appendLine("- ${t("地址", "URL")}: $it") }
+                pagesInfo.sourceBranch?.let { appendLine("- ${t("来源分支", "Source branch")}: $it") }
+                pagesInfo.sourcePath?.let { appendLine("- ${t("来源路径", "Source path")}: $it") }
             }
             readmePreview?.content?.takeIf { it.isNotBlank() }?.let {
                 appendLine()
-                appendLine("README excerpt:")
+                appendLine(t("README 摘要：", "README excerpt:"))
                 appendLine(it.take(1800))
             }
             appendLine()
-            appendLine("Respond with what ZiCode already executed, what the current GitHub state means, and the best next actions.")
+            appendLine(t("请根据以上上下文说明 ZiCode 已执行了什么、当前 GitHub 状态意味着什么，以及下一步最合适的动作。", "Respond with what ZiCode already executed, what the current GitHub state means, and the best next actions."))
         }
     }
 
@@ -463,53 +802,86 @@ class ZiCodeAgentRunner(
         rootEntries: List<ZiCodeRepoNode>,
         branches: List<ZiCodeGitHubBranch>,
         commits: List<ZiCodeGitHubCommit>,
+        issues: List<ZiCodeGitHubIssue>,
+        pullRequests: List<ZiCodeGitHubPullRequest>,
         workflows: List<ZiCodeGitHubWorkflow>,
         workflowRuns: List<ZiCodeGitHubWorkflowRun>,
         workflowTrace: String,
+        artifacts: List<ZiCodeGitHubArtifact>,
         releases: List<ZiCodeGitHubRelease>,
         pagesInfo: ZiCodeGitHubPagesInfo?,
         readmePreview: ZiCodeFilePreview?,
         createdBranch: ZiCodeGitHubBranch?,
-        dispatchedWorkflowName: String?
+        createdIssue: ZiCodeGitHubIssue?,
+        createdPullRequest: ZiCodeGitHubPullRequest?,
+        dispatchedWorkflowName: String?,
+        useChinese: Boolean
     ): String {
-        val folders = rootEntries.filter { it.type == "dir" }.take(6).joinToString("、") { it.name }
-        val files = rootEntries.filter { it.type == "file" }.take(6).joinToString("、") { it.name }
+        fun t(zh: String, en: String): String = tr(useChinese, zh, en)
+        val listSeparator = if (useChinese) "、" else ", "
+        val commitSeparator = if (useChinese) "；" else "; "
+        val folders = rootEntries.filter { it.type == "dir" }.take(6).joinToString(listSeparator) { it.name }
+        val files = rootEntries.filter { it.type == "file" }.take(6).joinToString(listSeparator) { it.name }
         return buildString {
-            appendLine("我已经围绕“$prompt”完成了对 `${repo.fullName}` 的 GitHub Agent 首轮执行。")
+            appendLine(t("我已经围绕“$prompt”完成了对 `${repo.fullName}` 的 GitHub Agent 首轮执行。", "I completed a first GitHub Agent pass on `${repo.fullName}` for \"$prompt\"."))
             appendLine()
-            appendLine("这轮实际执行：")
-            appendLine("- 校验了 GitHub Token 与 ZiCode 默认模型。")
-            appendLine("- 读取了仓库、根目录、分支、提交、工作流、运行记录、Release 和 Pages 状态。")
-            createdBranch?.let { appendLine("- 已创建分支：`${it.name}`。") }
-            dispatchedWorkflowName?.let { appendLine("- 已触发工作流：`$it`。") }
+            appendLine(t("这轮实际执行：", "Executed in this turn:"))
+            appendLine("- ${t("校验了 GitHub Token 与 ZiCode 默认模型。", "Validated the GitHub token and the ZiCode default model.")}")
+            appendLine("- ${t("读取了仓库、根目录、分支、提交、Issues、PR、工作流、运行记录、构建产物、Release 和 Pages 状态。", "Read repository metadata, root contents, branches, commits, issues, pull requests, workflows, workflow runs, artifacts, releases, and Pages status.")}")
+            createdBranch?.let { appendLine("- ${t("已创建分支", "Created branch")}: `${it.name}`${if (useChinese) "。" else "."}") }
+            createdIssue?.let { appendLine("- ${t("已创建 Issue", "Created issue")}: `#${it.number} ${it.title}`${if (useChinese) "。" else "."}") }
+            createdPullRequest?.let { appendLine("- ${t("已创建 PR", "Created pull request")}: `#${it.number} ${it.title}`${if (useChinese) "。" else "."}") }
+            dispatchedWorkflowName?.let { appendLine("- ${t("已触发工作流", "Dispatched workflow")}: `$it`${if (useChinese) "。" else "."}") }
             appendLine()
-            appendLine("仓库现状：")
-            appendLine("- 默认分支：`${repo.defaultBranch}`，最近更新于 ${formatTime(repo.updatedAt)}。")
-            appendLine("- 顶层目录：${folders.ifBlank { "暂未识别到明显目录。" }}")
-            appendLine("- 顶层文件：${files.ifBlank { "暂未识别到明显文件。" }}")
-            if (branches.isNotEmpty()) appendLine("- 当前分支：${branches.take(6).joinToString("、") { it.name }}")
-            if (commits.isNotEmpty()) appendLine("- 最近提交：${commits.take(3).joinToString("；") { "${it.sha.take(7)} ${it.message}" }}")
-            if (workflows.isNotEmpty()) appendLine("- 工作流：${workflows.take(4).joinToString("、") { it.name }}")
-            if (workflowRuns.isNotEmpty()) appendLine("- 最新运行：${workflowRuns.first().name} · ${workflowRuns.first().status}${workflowRuns.first().conclusion?.let { c -> " · $c" } ?: ""}")
-            if (releases.isNotEmpty()) appendLine("- 最新发布：${releases.first().tagName}")
-            pagesInfo?.let { appendLine("- Pages：${if (it.status == "not_configured") "未配置" else it.status}") }
-            readmePreview?.content?.replace(Regex("\\s+"), " ")?.take(160)?.takeIf { it.isNotBlank() }?.let { appendLine("- README 摘要：$it") }
+            appendLine(t("仓库现状：", "Current repository state:"))
+            appendLine(
+                if (useChinese) {
+                    "- 默认分支：`${repo.defaultBranch}`，最近更新于 ${formatTime(repo.updatedAt, true)}。"
+                } else {
+                    "- Default branch: `${repo.defaultBranch}`, updated at ${formatTime(repo.updatedAt, false)}."
+                }
+            )
+            appendLine("- ${t("顶层目录", "Top-level folders")}: ${folders.ifBlank { t("暂未识别到明显目录。", "No obvious folders were identified.") }}")
+            appendLine("- ${t("顶层文件", "Top-level files")}: ${files.ifBlank { t("暂未识别到明显文件。", "No obvious files were identified.") }}")
+            if (branches.isNotEmpty()) appendLine("- ${t("当前分支", "Branches")}: ${branches.take(6).joinToString(listSeparator) { it.name }}")
+            if (commits.isNotEmpty()) appendLine("- ${t("最近提交", "Recent commits")}: ${commits.take(3).joinToString(commitSeparator) { "${it.sha.take(7)} ${it.message}" }}")
+            if (issues.isNotEmpty()) appendLine("- ${t("最近 Issues", "Recent issues")}: ${issues.take(3).joinToString(listSeparator) { "#${it.number} ${it.title}" }}")
+            if (pullRequests.isNotEmpty()) appendLine("- ${t("当前 PR", "Current pull requests")}: ${pullRequests.take(3).joinToString(listSeparator) { "#${it.number} ${it.title}" }}")
+            if (workflows.isNotEmpty()) appendLine("- ${t("工作流", "Workflows")}: ${workflows.take(4).joinToString(listSeparator) { it.name }}")
+            if (workflowRuns.isNotEmpty()) appendLine("- ${t("最新运行", "Latest run")}: ${workflowRuns.first().name} · ${workflowRuns.first().status}${workflowRuns.first().conclusion?.let { c -> " · $c" } ?: ""}")
+            if (artifacts.isNotEmpty()) appendLine("- ${t("最近产物", "Recent artifacts")}: ${artifacts.take(3).joinToString(listSeparator) { it.name }}")
+            if (releases.isNotEmpty()) appendLine("- ${t("最新发布", "Latest release")}: ${releases.first().tagName}")
+            pagesInfo?.let { appendLine("- ${t("Pages", "Pages")}: ${if (it.status == "not_configured") t("未配置", "Not configured") else it.status}") }
+            readmePreview?.content?.replace(Regex("\\s+"), " ")?.take(160)?.takeIf { it.isNotBlank() }?.let { appendLine("- README ${t("摘要", "excerpt")}: $it") }
             if (workflowTrace.isNotBlank()) {
                 appendLine()
-                appendLine("运行细节：")
+                appendLine(t("运行细节：", "Workflow trace:"))
                 appendLine(workflowTrace.take(420))
             }
             appendLine()
-            appendLine("下一步建议：")
-            appendLine("- 如果你要继续改代码，我下一轮可以直接锁定具体目录和文件。")
-            appendLine("- 如果你要继续 CI / 发布，我会优先围绕工作流和 Release 入口继续执行。")
-            appendLine("- 如果你要开始交付任务，我已经具备继续读取文件树、分支和运行记录的上下文。")
+            appendLine(t("下一步建议：", "Suggested next actions:"))
+            appendLine("- ${t("如果你要继续改代码，我下一轮可以直接锁定具体目录和文件。", "If you want to continue editing code, ZiCode can now lock onto specific directories and files next.")}")
+            appendLine("- ${t("如果你要继续 CI / 发布，我会优先围绕工作流、产物和 Release 入口继续执行。", "If you want to continue CI or shipping, ZiCode should continue from workflows, artifacts, and releases.")}")
+            appendLine("- ${t("如果你要开始交付任务，我已经具备继续读取文件树、分支、Issue、PR 和运行记录的上下文。", "If you want to execute delivery work now, ZiCode already has context for files, branches, issues, pull requests, and workflow runs.")}")
         }.trim()
     }
 
-    private fun formatTime(timestamp: Long): String {
-        if (timestamp <= 0L) return "未知时间"
+    private suspend fun prefersChinese(): Boolean {
+        val configured = appRepository.appLanguageFlow.first().trim().lowercase(Locale.ROOT)
+        return when (configured) {
+            "zh" -> true
+            "en" -> false
+            else -> Locale.getDefault().language.lowercase(Locale.ROOT).startsWith("zh")
+        }
+    }
+
+    private fun formatTime(timestamp: Long, useChinese: Boolean): String {
+        if (timestamp <= 0L) return tr(useChinese, "未知时间", "Unknown time")
         return formatter.format(timestamp)
+    }
+
+    private fun tr(useChinese: Boolean, zh: String, en: String): String {
+        return if (useChinese) zh else en
     }
 
     private data class ResolvedZiCodeModel(

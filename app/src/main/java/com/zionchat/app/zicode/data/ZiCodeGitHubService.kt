@@ -138,7 +138,7 @@ class ZiCodeGitHubService {
     ): Result<ZiCodeFilePreview> = withContext(Dispatchers.IO) {
         val normalizedPath = normalizePath(path)
         if (normalizedPath.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("文件路径不能为空。"))
+            return@withContext Result.failure(IllegalArgumentException("File path cannot be empty."))
         }
 
         executeJson(
@@ -230,6 +230,109 @@ class ZiCodeGitHubService {
         }
     }
 
+    suspend fun listIssues(
+        token: String,
+        owner: String,
+        repo: String,
+        state: String = "open",
+        limit: Int = 20
+    ): Result<List<ZiCodeGitHubIssue>> = withContext(Dispatchers.IO) {
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/issues?state=${encodeValue(state.trim().ifBlank { "open" })}&per_page=${limit.coerceIn(1, 50)}")
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonArray.mapNotNull { element ->
+                runCatching {
+                    val root = element.asJsonObject
+                    if (root.has("pull_request")) null else root.toIssue()
+                }.getOrNull()
+            }
+        }
+    }
+
+    suspend fun createIssue(
+        token: String,
+        owner: String,
+        repo: String,
+        title: String,
+        body: String = "",
+        labels: List<String> = emptyList(),
+        assignees: List<String> = emptyList()
+    ): Result<ZiCodeGitHubIssue> = withContext(Dispatchers.IO) {
+        val payload =
+            JsonObject().apply {
+                addProperty("title", title.trim())
+                body.trim().takeIf { it.isNotBlank() }?.let { addProperty("body", it) }
+                if (labels.isNotEmpty()) {
+                    add("labels", JsonArray().apply { labels.filter { it.isNotBlank() }.forEach { add(it.trim()) } })
+                }
+                if (assignees.isNotEmpty()) {
+                    add("assignees", JsonArray().apply { assignees.filter { it.isNotBlank() }.forEach { add(it.trim()) } })
+                }
+            }
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/issues")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonObject.toIssue()
+        }
+    }
+
+    suspend fun listPullRequests(
+        token: String,
+        owner: String,
+        repo: String,
+        state: String = "open",
+        limit: Int = 20
+    ): Result<List<ZiCodeGitHubPullRequest>> = withContext(Dispatchers.IO) {
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/pulls?state=${encodeValue(state.trim().ifBlank { "open" })}&per_page=${limit.coerceIn(1, 50)}")
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonArray.mapNotNull { element ->
+                runCatching { element.asJsonObject.toPullRequest() }.getOrNull()
+            }
+        }
+    }
+
+    suspend fun createPullRequest(
+        token: String,
+        owner: String,
+        repo: String,
+        title: String,
+        head: String,
+        base: String,
+        body: String = "",
+        draft: Boolean = false
+    ): Result<ZiCodeGitHubPullRequest> = withContext(Dispatchers.IO) {
+        val payload =
+            JsonObject().apply {
+                addProperty("title", title.trim())
+                addProperty("head", head.trim())
+                addProperty("base", base.trim())
+                body.trim().takeIf { it.isNotBlank() }?.let { addProperty("body", it) }
+                addProperty("draft", draft)
+            }
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/pulls")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonObject.toPullRequest()
+        }
+    }
+
     suspend fun createOrUpdateFile(
         token: String,
         owner: String,
@@ -242,7 +345,7 @@ class ZiCodeGitHubService {
     ): Result<ZiCodeGitHubCommit> = withContext(Dispatchers.IO) {
         val normalizedPath = normalizePath(path)
         if (normalizedPath.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("文件路径不能为空。"))
+            return@withContext Result.failure(IllegalArgumentException("File path cannot be empty."))
         }
         val payload =
             JsonObject().apply {
@@ -259,7 +362,7 @@ class ZiCodeGitHubService {
                 .build()
         ).mapCatching { body ->
             body.asJsonObject.getAsJsonObject("commit")?.toCommit()
-                ?: throw IllegalStateException("GitHub 没有返回提交结果。")
+                ?: throw IllegalStateException("GitHub did not return commit data.")
         }
     }
 
@@ -274,7 +377,7 @@ class ZiCodeGitHubService {
     ): Result<ZiCodeGitHubCommit> = withContext(Dispatchers.IO) {
         val normalizedPath = normalizePath(path)
         if (normalizedPath.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("文件路径不能为空。"))
+            return@withContext Result.failure(IllegalArgumentException("File path cannot be empty."))
         }
         val payload =
             JsonObject().apply {
@@ -290,7 +393,7 @@ class ZiCodeGitHubService {
                 .build()
         ).mapCatching { body ->
             body.asJsonObject.getAsJsonObject("commit")?.toCommit()
-                ?: throw IllegalStateException("GitHub 没有返回删除提交结果。")
+                ?: throw IllegalStateException("GitHub did not return delete commit data.")
         }
     }
 
@@ -372,6 +475,34 @@ class ZiCodeGitHubService {
         }
     }
 
+    suspend fun listArtifacts(
+        token: String,
+        owner: String,
+        repo: String,
+        runId: Long? = null,
+        limit: Int = 15
+    ): Result<List<ZiCodeGitHubArtifact>> = withContext(Dispatchers.IO) {
+        val url =
+            if (runId != null && runId > 0L) {
+                "$apiBase/repos/${owner.trim()}/${repo.trim()}/actions/runs/$runId/artifacts?per_page=${limit.coerceIn(1, 50)}"
+            } else {
+                "$apiBase/repos/${owner.trim()}/${repo.trim()}/actions/artifacts?per_page=${limit.coerceIn(1, 50)}"
+            }
+        executeJson(
+            Request.Builder()
+                .url(url)
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonObject.getAsJsonArray("artifacts")
+                ?.mapNotNull { element ->
+                    runCatching { element.asJsonObject.toArtifact() }.getOrNull()
+                }
+                .orEmpty()
+        }
+    }
+
     suspend fun readWorkflowRunTrace(
         token: String,
         owner: String,
@@ -387,7 +518,7 @@ class ZiCodeGitHubService {
         ).mapCatching { body ->
             val jobs = body.asJsonObject.getAsJsonArray("jobs").orEmpty()
             if (jobs.size() == 0) {
-                return@mapCatching "当前运行没有可见作业明细。"
+                return@mapCatching "No visible jobs were returned for this workflow run."
             }
             buildString {
                 jobs.forEach { jobElement ->
@@ -536,7 +667,7 @@ class ZiCodeGitHubService {
             if (decoded.isNotBlank()) {
                 decoded
             } else {
-                "GitHub 没有返回可直接预览的文本内容，可能是二进制文件或体积过大。"
+                "GitHub did not return previewable text content. The file may be binary or too large."
             }
 
         val truncated = previewText.length > previewLimit
@@ -651,6 +782,50 @@ class ZiCodeGitHubService {
         )
     }
 
+    private fun JsonObject.toIssue(): ZiCodeGitHubIssue {
+        return ZiCodeGitHubIssue(
+            id = longOrNull("id") ?: 0L,
+            number = longOrNull("number")?.toInt() ?: 0,
+            title = stringOrNull("title").orEmpty(),
+            state = stringOrNull("state").orEmpty(),
+            htmlUrl = stringOrNull("html_url").orEmpty(),
+            bodyPreview = stringOrNull("body")?.take(600),
+            authorLogin = getAsJsonObject("user")?.stringOrNull("login"),
+            createdAt = parseIsoTime(stringOrNull("created_at")),
+            updatedAt = parseIsoTime(stringOrNull("updated_at"))
+        )
+    }
+
+    private fun JsonObject.toPullRequest(): ZiCodeGitHubPullRequest {
+        val head = getAsJsonObject("head")
+        val base = getAsJsonObject("base")
+        return ZiCodeGitHubPullRequest(
+            id = longOrNull("id") ?: 0L,
+            number = longOrNull("number")?.toInt() ?: 0,
+            title = stringOrNull("title").orEmpty(),
+            state = stringOrNull("state").orEmpty(),
+            htmlUrl = stringOrNull("html_url").orEmpty(),
+            draft = booleanOrFalse("draft"),
+            headRef = head?.stringOrNull("ref"),
+            baseRef = base?.stringOrNull("ref"),
+            authorLogin = getAsJsonObject("user")?.stringOrNull("login"),
+            createdAt = parseIsoTime(stringOrNull("created_at")),
+            updatedAt = parseIsoTime(stringOrNull("updated_at"))
+        )
+    }
+
+    private fun JsonObject.toArtifact(): ZiCodeGitHubArtifact {
+        return ZiCodeGitHubArtifact(
+            id = longOrNull("id") ?: 0L,
+            name = stringOrNull("name").orEmpty(),
+            sizeInBytes = longOrNull("size_in_bytes") ?: 0L,
+            expired = booleanOrFalse("expired"),
+            downloadUrl = stringOrNull("archive_download_url"),
+            createdAt = parseIsoTime(stringOrNull("created_at")),
+            updatedAt = parseIsoTime(stringOrNull("updated_at"))
+        )
+    }
+
     private fun JsonObject.string(key: String): String {
         return stringOrNull(key).orEmpty()
     }
@@ -673,6 +848,10 @@ class ZiCodeGitHubService {
         return runCatching { value.asBoolean }.getOrDefault(false)
     }
 
+    private fun JsonObject.has(key: String): Boolean {
+        return get(key) != null
+    }
+
     private fun JsonObject.getAsJsonArray(key: String): JsonArray? {
         val value = get(key) ?: return null
         if (!value.isJsonArray) return null
@@ -691,7 +870,7 @@ class ZiCodeGitHubService {
                     ?.asJsonObject
                     ?.stringOrNull("message")
             }.getOrNull()
-        val suffix = parsed?.takeIf { it.isNotBlank() } ?: "GitHub 请求失败"
+        val suffix = parsed?.takeIf { it.isNotBlank() } ?: "GitHub request failed"
         return "GitHub API ($statusCode): $suffix"
     }
 

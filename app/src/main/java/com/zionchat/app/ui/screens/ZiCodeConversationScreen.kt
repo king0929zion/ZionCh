@@ -58,6 +58,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -423,7 +424,9 @@ private fun ZiCodeSessionSheet(
 
 @Composable
 private fun ZiCodeToolSheet() {
-    val grouped = remember { buildZiCodeToolCapabilities().groupBy { it.group } }
+    val configuration = LocalConfiguration.current
+    val useChinese = configuration.locales[0]?.language?.startsWith("zh") == true
+    val grouped = remember(useChinese) { buildZiCodeToolCapabilities(useChinese).groupBy { it.group } }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(text = stringResource(R.string.zicode_tool_sheet_title), color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = SourceSans3)
         grouped.forEach { (group, items) ->

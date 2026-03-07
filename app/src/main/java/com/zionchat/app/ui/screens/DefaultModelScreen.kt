@@ -27,11 +27,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.zionchat.app.LocalAppRepository
+import com.zionchat.app.R
 import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.data.ModelConfig
 import com.zionchat.app.data.ProviderConfig
@@ -43,17 +45,17 @@ import com.zionchat.app.ui.theme.*
 import kotlinx.coroutines.launch
 
 private enum class DefaultModelType(
-    val title: String,
+    val titleRes: Int,
     val required: Boolean,
-    val selectorTitle: String,
-    val emptyLabel: String = "Not set"
+    val selectorTitleRes: Int,
+    val emptyLabelRes: Int = R.string.not_set
 ) {
-    CHAT(title = "Chat Model", required = true, selectorTitle = "Select Chat Model", emptyLabel = "Not set"),
-    VISION(title = "Vision Model", required = false, selectorTitle = "Select Vision Model"),
-    IMAGE(title = "Image Generation", required = false, selectorTitle = "Select Image Generation"),
-    TITLE(title = "Title Summary", required = false, selectorTitle = "Select Title Summary"),
-    APP_BUILDER(title = "App Development", required = false, selectorTitle = "Select App Development"),
-    ZICODE(title = "ZiCode Agent", required = false, selectorTitle = "Select ZiCode Agent")
+    CHAT(titleRes = R.string.default_model_type_chat, required = true, selectorTitleRes = R.string.default_model_selector_chat),
+    VISION(titleRes = R.string.default_model_type_vision, required = false, selectorTitleRes = R.string.default_model_selector_vision),
+    IMAGE(titleRes = R.string.default_model_type_image, required = false, selectorTitleRes = R.string.default_model_selector_image),
+    TITLE(titleRes = R.string.default_model_type_title, required = false, selectorTitleRes = R.string.default_model_selector_title),
+    APP_BUILDER(titleRes = R.string.default_model_type_app_builder, required = false, selectorTitleRes = R.string.default_model_selector_app_builder),
+    ZICODE(titleRes = R.string.default_model_type_zicode, required = false, selectorTitleRes = R.string.default_model_selector_zicode)
 }
 
 private val NeutralSelectorCard = Color.White
@@ -91,7 +93,7 @@ fun DefaultModelScreen(navController: NavController) {
     }
 
     SettingsPage(
-        title = "Default model",
+        title = stringResource(R.string.default_model_screen_title),
         onBack = { navController.navigateUp() }
     ) {
         Column(
@@ -124,24 +126,24 @@ fun DefaultModelScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Configure default models for different tasks. Chat Model is required, others are optional.",
+                text = stringResource(R.string.default_model_screen_note),
                 fontSize = 13.sp,
                 color = TextSecondary,
                 modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 24.dp)
             )
             if (appBuilderModelId.isNullOrBlank()) {
                 Text(
-                    text = "APP developer requires App Development model. Set it before generating or fixing apps.",
+                    text = stringResource(R.string.default_model_warning_app_builder),
                     fontSize = 13.sp,
-                    color = Color(0xFFB45309),
+                    color = TextSecondary,
                     modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
                 )
             }
             if (ziCodeModelId.isNullOrBlank()) {
                 Text(
-                    text = "ZiCode requires its own default model before GitHub agent tasks can run.",
+                    text = stringResource(R.string.default_model_warning_zicode),
                     fontSize = 13.sp,
-                    color = Color(0xFFB45309),
+                    color = TextSecondary,
                     modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
                 )
             }
@@ -152,7 +154,7 @@ fun DefaultModelScreen(navController: NavController) {
 
     DefaultModelSelectorModal(
         visible = selectorType != null,
-        title = selectorType?.selectorTitle.orEmpty(),
+        title = selectorType?.let { stringResource(it.selectorTitleRes) }.orEmpty(),
         required = selectorType?.required == true,
         providers = providers,
         models = models,
@@ -201,7 +203,7 @@ private fun DefaultModelSection(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = type.title.uppercase(),
+            text = stringResource(type.titleRes).uppercase(),
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             fontFamily = SourceSans3,
@@ -213,7 +215,7 @@ private fun DefaultModelSection(
                 text = "*",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFFFF3B30),
+                color = TextSecondary,
                 modifier = Modifier.padding(start = 4.dp)
             )
         }
@@ -237,7 +239,7 @@ private fun DefaultModelSection(
             val display = resolveDisplayName(selectedModelId)
             val isEmpty = display.isNullOrBlank()
             Text(
-                text = if (isEmpty) type.emptyLabel else display.orEmpty(),
+                text = if (isEmpty) stringResource(type.emptyLabelRes) else display.orEmpty(),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
                 color = if (isEmpty) Color(0xFFC7C7CC) else TextPrimary,
@@ -342,7 +344,10 @@ private fun DefaultModelSelectorModal(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    val grouped = remember(providers, models) { groupModelsByProvider(providers, models) }
+                    val otherProviderLabel = stringResource(R.string.default_model_provider_other)
+                    val grouped = remember(providers, models, otherProviderLabel) {
+                        groupModelsByProvider(providers, models, otherProviderLabel)
+                    }
 
                     Column(
                         modifier = Modifier
@@ -460,7 +465,7 @@ private fun DefaultModelNoneOptionRow(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            text = "Not set",
+            text = stringResource(R.string.not_set),
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
             color = TextPrimary
@@ -478,13 +483,14 @@ private fun DefaultModelNoneOptionRow(
 
 private fun groupModelsByProvider(
     providers: List<ProviderConfig>,
-    models: List<ModelConfig>
+    models: List<ModelConfig>,
+    otherLabel: String
 ): List<Pair<String, List<ModelConfig>>> {
     val providerNameById = providers.associateBy({ it.id }, { it.name })
     return models
         .filter { it.enabled }
         .groupBy { model ->
-            model.providerId?.let { providerNameById[it] } ?: "Other"
+            model.providerId?.let { providerNameById[it] } ?: otherLabel
         }
         .toList()
         .sortedBy { it.first }
