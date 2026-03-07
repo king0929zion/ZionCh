@@ -149,32 +149,403 @@ class ZiCodeGitHubService {
                 .build()
         ).mapCatching { body ->
             val root = body.asJsonObject
-            val encoded = root.stringOrNull("content").orEmpty().replace("\n", "")
-            val size = root.longOrNull("size") ?: 0L
-            val decoded =
-                if (encoded.isNotBlank()) {
-                    runCatching {
-                        String(Base64.decode(encoded, Base64.DEFAULT), Charsets.UTF_8)
-                    }.getOrDefault("")
-                } else {
-                    ""
-                }
+            root.toFilePreview(normalizedPath)
+        }
+    }
 
-            val previewText =
-                if (decoded.isNotBlank()) {
-                    decoded
-                } else {
-                    "GitHub 没有返回可直接预览的文本内容，可能是二进制文件或体积过大。"
-                }
+    suspend fun listBranches(
+        token: String,
+        owner: String,
+        repo: String
+    ): Result<List<ZiCodeGitHubBranch>> = withContext(Dispatchers.IO) {
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/branches?per_page=100")
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonArray.mapNotNull { element ->
+                runCatching {
+                    val root = element.asJsonObject
+                    ZiCodeGitHubBranch(
+                        name = root.string("name"),
+                        sha = root.getAsJsonObject("commit")?.string("sha").orEmpty(),
+                        protectedBranch = root.booleanOrFalse("protected")
+                    )
+                }.getOrNull()
+            }
+        }
+    }
 
-            val truncated = previewText.length > previewLimit
-            ZiCodeFilePreview(
-                path = normalizedPath,
-                content = previewText.take(previewLimit),
-                size = size.coerceAtLeast(previewText.length.toLong()),
-                truncated = truncated
+    suspend fun createBranch(
+        token: String,
+        owner: String,
+        repo: String,
+        newBranchName: String,
+        sourceSha: String
+    ): Result<ZiCodeGitHubBranch> = withContext(Dispatchers.IO) {
+        val payload =
+            JsonObject().apply {
+                addProperty("ref", "refs/heads/${newBranchName.trim()}")
+                addProperty("sha", sourceSha.trim())
+            }
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/git/refs")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            val root = body.asJsonObject
+            ZiCodeGitHubBranch(
+                name = root.string("ref").substringAfterLast('/'),
+                sha = root.getAsJsonObject("object")?.string("sha").orEmpty(),
+                protectedBranch = false
             )
         }
+    }
+
+    suspend fun listCommits(
+        token: String,
+        owner: String,
+        repo: String,
+        branch: String? = null,
+        limit: Int = 12
+    ): Result<List<ZiCodeGitHubCommit>> = withContext(Dispatchers.IO) {
+        val refParam =
+            branch?.trim()?.takeIf { it.isNotBlank() }?.let {
+                "&sha=${encodeValue(it)}"
+            }.orEmpty()
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/commits?per_page=${limit.coerceIn(1, 50)}$refParam")
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonArray.mapNotNull { element ->
+                runCatching { element.asJsonObject.toCommit() }.getOrNull()
+            }
+        }
+    }
+
+    suspend fun createOrUpdateFile(
+        token: String,
+        owner: String,
+        repo: String,
+        path: String,
+        content: String,
+        message: String,
+        branch: String? = null,
+        sha: String? = null
+    ): Result<ZiCodeGitHubCommit> = withContext(Dispatchers.IO) {
+        val normalizedPath = normalizePath(path)
+        if (normalizedPath.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("文件路径不能为空。"))
+        }
+        val payload =
+            JsonObject().apply {
+                addProperty("message", message.trim().ifBlank { "Update $normalizedPath" })
+                addProperty("content", Base64.encodeToString(content.toByteArray(Charsets.UTF_8), Base64.NO_WRAP))
+                branch?.trim()?.takeIf { it.isNotBlank() }?.let { addProperty("branch", it) }
+                sha?.trim()?.takeIf { it.isNotBlank() }?.let { addProperty("sha", it) }
+            }
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/contents/${encodePath(normalizedPath)}")
+                .put(payload.toString().toRequestBody(jsonMediaType))
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonObject.getAsJsonObject("commit")?.toCommit()
+                ?: throw IllegalStateException("GitHub 没有返回提交结果。")
+        }
+    }
+
+    suspend fun deleteFile(
+        token: String,
+        owner: String,
+        repo: String,
+        path: String,
+        sha: String,
+        message: String,
+        branch: String? = null
+    ): Result<ZiCodeGitHubCommit> = withContext(Dispatchers.IO) {
+        val normalizedPath = normalizePath(path)
+        if (normalizedPath.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("文件路径不能为空。"))
+        }
+        val payload =
+            JsonObject().apply {
+                addProperty("message", message.trim().ifBlank { "Delete $normalizedPath" })
+                addProperty("sha", sha.trim())
+                branch?.trim()?.takeIf { it.isNotBlank() }?.let { addProperty("branch", it) }
+            }
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/contents/${encodePath(normalizedPath)}")
+                .delete(payload.toString().toRequestBody(jsonMediaType))
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonObject.getAsJsonObject("commit")?.toCommit()
+                ?: throw IllegalStateException("GitHub 没有返回删除提交结果。")
+        }
+    }
+
+    suspend fun listWorkflows(
+        token: String,
+        owner: String,
+        repo: String
+    ): Result<List<ZiCodeGitHubWorkflow>> = withContext(Dispatchers.IO) {
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/actions/workflows?per_page=100")
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonObject.getAsJsonArray("workflows")
+                ?.mapNotNull { element ->
+                    runCatching {
+                        val root = element.asJsonObject
+                        ZiCodeGitHubWorkflow(
+                            id = root.longOrNull("id") ?: 0L,
+                            name = root.string("name"),
+                            path = root.stringOrNull("path").orEmpty(),
+                            state = root.stringOrNull("state").orEmpty()
+                        )
+                    }.getOrNull()
+                }
+                .orEmpty()
+        }
+    }
+
+    suspend fun dispatchWorkflow(
+        token: String,
+        owner: String,
+        repo: String,
+        workflowIdOrFileName: String,
+        ref: String,
+        inputs: Map<String, String> = emptyMap()
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val payload =
+            JsonObject().apply {
+                addProperty("ref", ref.trim())
+                add(
+                    "inputs",
+                    JsonObject().apply {
+                        inputs.forEach { (key, value) ->
+                            if (key.isNotBlank()) addProperty(key.trim(), value)
+                        }
+                    }
+                )
+            }
+        executeEmpty(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/actions/workflows/${workflowIdOrFileName.trim()}/dispatches")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .applyGitHubHeaders(token)
+                .build()
+        )
+    }
+
+    suspend fun listWorkflowRuns(
+        token: String,
+        owner: String,
+        repo: String,
+        limit: Int = 15
+    ): Result<List<ZiCodeGitHubWorkflowRun>> = withContext(Dispatchers.IO) {
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/actions/runs?per_page=${limit.coerceIn(1, 50)}")
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonObject.getAsJsonArray("workflow_runs")
+                ?.mapNotNull { element ->
+                    runCatching { element.asJsonObject.toWorkflowRun() }.getOrNull()
+                }
+                .orEmpty()
+        }
+    }
+
+    suspend fun readWorkflowRunTrace(
+        token: String,
+        owner: String,
+        repo: String,
+        runId: Long
+    ): Result<String> = withContext(Dispatchers.IO) {
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/actions/runs/$runId/jobs?per_page=100")
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            val jobs = body.asJsonObject.getAsJsonArray("jobs").orEmpty()
+            if (jobs.size() == 0) {
+                return@mapCatching "当前运行没有可见作业明细。"
+            }
+            buildString {
+                jobs.forEach { jobElement ->
+                    val job = jobElement.asJsonObject
+                    val jobName = job.string("name").ifBlank { "Job" }
+                    appendLine("$jobName · ${job.stringOrNull("status").orEmpty()} · ${job.stringOrNull("conclusion").orEmpty().ifBlank { "running" }}")
+                    job.getAsJsonArray("steps")?.forEach { stepElement ->
+                        val step = stepElement.asJsonObject
+                        append("  - ")
+                        append(step.string("name"))
+                        append(" · ")
+                        append(step.stringOrNull("status").orEmpty())
+                        step.stringOrNull("conclusion")?.takeIf { it.isNotBlank() }?.let {
+                            append(" · ")
+                            append(it)
+                        }
+                        appendLine()
+                    }
+                }
+            }.trim()
+        }
+    }
+
+    suspend fun cancelWorkflowRun(
+        token: String,
+        owner: String,
+        repo: String,
+        runId: Long
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        executeEmpty(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/actions/runs/$runId/cancel")
+                .post("{}".toRequestBody(jsonMediaType))
+                .applyGitHubHeaders(token)
+                .build()
+        )
+    }
+
+    suspend fun rerunWorkflowRun(
+        token: String,
+        owner: String,
+        repo: String,
+        runId: Long
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        executeEmpty(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/actions/runs/$runId/rerun")
+                .post("{}".toRequestBody(jsonMediaType))
+                .applyGitHubHeaders(token)
+                .build()
+        )
+    }
+
+    suspend fun listReleases(
+        token: String,
+        owner: String,
+        repo: String,
+        limit: Int = 10
+    ): Result<List<ZiCodeGitHubRelease>> = withContext(Dispatchers.IO) {
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/releases?per_page=${limit.coerceIn(1, 30)}")
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonArray.mapNotNull { element ->
+                runCatching { element.asJsonObject.toRelease() }.getOrNull()
+            }
+        }
+    }
+
+    suspend fun createRelease(
+        token: String,
+        owner: String,
+        repo: String,
+        tagName: String,
+        releaseName: String,
+        body: String,
+        draft: Boolean = false,
+        prerelease: Boolean = false,
+        targetCommitish: String? = null
+    ): Result<ZiCodeGitHubRelease> = withContext(Dispatchers.IO) {
+        val payload =
+            JsonObject().apply {
+                addProperty("tag_name", tagName.trim())
+                addProperty("name", releaseName.trim().ifBlank { tagName.trim() })
+                addProperty("body", body)
+                addProperty("draft", draft)
+                addProperty("prerelease", prerelease)
+                targetCommitish?.trim()?.takeIf { it.isNotBlank() }?.let { addProperty("target_commitish", it) }
+            }
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/releases")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonObject.toRelease()
+        }
+    }
+
+    suspend fun fetchPagesInfo(
+        token: String,
+        owner: String,
+        repo: String
+    ): Result<ZiCodeGitHubPagesInfo> = withContext(Dispatchers.IO) {
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/pages")
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            val root = body.asJsonObject
+            val source = root.getAsJsonObject("source")
+            ZiCodeGitHubPagesInfo(
+                status = root.stringOrNull("status").orEmpty().ifBlank { "built" },
+                htmlUrl = root.stringOrNull("html_url"),
+                sourceBranch = source?.stringOrNull("branch"),
+                sourcePath = source?.stringOrNull("path")
+            )
+        }.recoverCatching { throwable ->
+            if (throwable.message.orEmpty().contains("(404)")) {
+                ZiCodeGitHubPagesInfo(status = "not_configured")
+            } else {
+                throw throwable
+            }
+        }
+    }
+
+    private fun JsonObject.toFilePreview(path: String): ZiCodeFilePreview {
+        val encoded = stringOrNull("content").orEmpty().replace("\n", "")
+        val size = longOrNull("size") ?: 0L
+        val decoded =
+            if (encoded.isNotBlank()) {
+                runCatching {
+                    String(Base64.decode(encoded, Base64.DEFAULT), Charsets.UTF_8)
+                }.getOrDefault("")
+            } else {
+                ""
+            }
+
+        val previewText =
+            if (decoded.isNotBlank()) {
+                decoded
+            } else {
+                "GitHub 没有返回可直接预览的文本内容，可能是二进制文件或体积过大。"
+            }
+
+        val truncated = previewText.length > previewLimit
+        return ZiCodeFilePreview(
+            path = path,
+            content = previewText.take(previewLimit),
+            size = size.coerceAtLeast(previewText.length.toLong()),
+            truncated = truncated
+        )
     }
 
     private fun executeJson(request: Request): Result<com.google.gson.JsonElement> {
@@ -188,6 +559,17 @@ class ZiCodeGitHubService {
                     JsonObject()
                 } else {
                     JsonParser.parseString(rawBody)
+                }
+            }
+        }
+    }
+
+    private fun executeEmpty(request: Request): Result<Unit> {
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                val rawBody = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseGitHubError(rawBody, response.code))
                 }
             }
         }
@@ -231,6 +613,44 @@ class ZiCodeGitHubService {
         )
     }
 
+    private fun JsonObject.toCommit(): ZiCodeGitHubCommit {
+        val commitObject = getAsJsonObject("commit") ?: this
+        val authorObject = commitObject.getAsJsonObject("author") ?: getAsJsonObject("author")
+        return ZiCodeGitHubCommit(
+            sha = string("sha"),
+            message = commitObject.stringOrNull("message").orEmpty().lineSequence().firstOrNull().orEmpty(),
+            authorName = authorObject?.stringOrNull("name"),
+            htmlUrl = stringOrNull("html_url"),
+            committedAt = parseIsoTime(authorObject?.stringOrNull("date"))
+        )
+    }
+
+    private fun JsonObject.toWorkflowRun(): ZiCodeGitHubWorkflowRun {
+        return ZiCodeGitHubWorkflowRun(
+            id = longOrNull("id") ?: 0L,
+            name = stringOrNull("name").orEmpty().ifBlank { "Workflow run" },
+            status = stringOrNull("status").orEmpty(),
+            conclusion = stringOrNull("conclusion"),
+            htmlUrl = stringOrNull("html_url").orEmpty(),
+            branch = stringOrNull("head_branch"),
+            event = stringOrNull("event"),
+            createdAt = parseIsoTime(stringOrNull("created_at")),
+            updatedAt = parseIsoTime(stringOrNull("updated_at"))
+        )
+    }
+
+    private fun JsonObject.toRelease(): ZiCodeGitHubRelease {
+        return ZiCodeGitHubRelease(
+            id = longOrNull("id") ?: 0L,
+            name = stringOrNull("name").orEmpty(),
+            tagName = stringOrNull("tag_name").orEmpty(),
+            htmlUrl = stringOrNull("html_url").orEmpty(),
+            draft = booleanOrFalse("draft"),
+            prerelease = booleanOrFalse("prerelease"),
+            publishedAt = parseIsoTime(stringOrNull("published_at"))
+        )
+    }
+
     private fun JsonObject.string(key: String): String {
         return stringOrNull(key).orEmpty()
     }
@@ -251,6 +671,16 @@ class ZiCodeGitHubService {
         val value = get(key) ?: return false
         if (!value.isJsonPrimitive) return false
         return runCatching { value.asBoolean }.getOrDefault(false)
+    }
+
+    private fun JsonObject.getAsJsonArray(key: String): JsonArray? {
+        val value = get(key) ?: return null
+        if (!value.isJsonArray) return null
+        return value.asJsonArray
+    }
+
+    private fun JsonArray?.orEmpty(): JsonArray {
+        return this ?: JsonArray()
     }
 
     private fun parseGitHubError(body: String, statusCode: Int): String {
@@ -281,8 +711,12 @@ class ZiCodeGitHubService {
         return path.split('/')
             .filter { it.isNotBlank() }
             .joinToString("/") { segment ->
-                URLEncoder.encode(segment, Charsets.UTF_8.name()).replace("+", "%20")
+                encodeValue(segment)
             }
+    }
+
+    private fun encodeValue(value: String): String {
+        return URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
     }
 
     companion object {

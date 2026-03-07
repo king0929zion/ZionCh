@@ -23,7 +23,7 @@ class AppContainer(context: Context) {
     val runtimePackagingService: RuntimePackagingService = DisabledRuntimePackagingService()
     val ziCodeRepository = ZiCodeRepository(context)
     val ziCodeGitHubService = ZiCodeGitHubService()
-    val ziCodeAgentRunner = ZiCodeAgentRunner(ziCodeRepository, ziCodeGitHubService)
+    val ziCodeAgentRunner = ZiCodeAgentRunner(ziCodeRepository, ziCodeGitHubService, repository, chatApiClient)
 }
 
 val LocalAppRepository = staticCompositionLocalOf<AppRepository> {

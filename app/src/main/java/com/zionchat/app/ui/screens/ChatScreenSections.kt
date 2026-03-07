@@ -1888,13 +1888,13 @@ fun SidebarContent(
             SidebarMenuItem(
                 icon = {
                     Icon(
-                        imageVector = AppIcons.GitHub,
+                        painter = rememberResourceDrawablePainter(R.drawable.ic_zicode),
                         contentDescription = null,
                         modifier = Modifier.size(24.dp),
-                        tint = TextPrimary
+                        tint = Color.Unspecified
                     )
                 },
-                label = "ZiCode",
+                label = stringResource(R.string.zicode_name),
                 onClick = {
                     onClose()
                     navController.navigate("zicode")

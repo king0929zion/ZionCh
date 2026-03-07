@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.zionchat.app.R
 import com.zionchat.app.data.SecureValueCipher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -123,12 +124,13 @@ class ZiCodeRepository(context: Context) {
         }
     }
 
-    suspend fun createSession(owner: String, repo: String, title: String = "New conversation"): ZiCodeSession {
+    suspend fun createSession(owner: String, repo: String, title: String = defaultSessionTitle()): ZiCodeSession {
+        val fallbackTitle = defaultSessionTitle()
         val session =
             ZiCodeSession(
                 repoOwner = owner.trim(),
                 repoName = repo.trim(),
-                title = title.trim().ifBlank { "New conversation" }
+                title = title.trim().ifBlank { fallbackTitle }
             )
         val sessions = sessionsFlow.first().toMutableList()
         sessions.add(0, session)
@@ -149,7 +151,7 @@ class ZiCodeRepository(context: Context) {
 
     suspend fun renameSession(sessionId: String, title: String) {
         val key = sessionId.trim()
-        val sanitizedTitle = title.trim().ifBlank { "New conversation" }
+        val sanitizedTitle = title.trim().ifBlank { defaultSessionTitle() }
         updateSession(key) { session ->
             session.copy(
                 title = sanitizedTitle.take(48),
@@ -171,8 +173,9 @@ class ZiCodeRepository(context: Context) {
         if (key.isBlank() || cleanPrompt.isBlank()) return null
         val turn = ZiCodeTurn(prompt = cleanPrompt)
         updateSession(key) { session ->
+            val defaultTitle = defaultSessionTitle()
             val nextTitle =
-                if (session.title == "New conversation" || session.title == "新对话") {
+                if (session.title == defaultTitle || session.title == "New conversation" || session.title == "新对话") {
                     buildSessionTitle(cleanPrompt)
                 } else {
                     session.title
@@ -303,7 +306,7 @@ class ZiCodeRepository(context: Context) {
         return session.copy(
             repoOwner = owner,
             repoName = repo,
-            title = session.title.trim().ifBlank { "New conversation" }.take(48),
+            title = session.title.trim().ifBlank { defaultSessionTitle() }.take(48),
             turns = turns,
             createdAt = createdAt,
             updatedAt = updatedAt
@@ -336,8 +339,11 @@ class ZiCodeRepository(context: Context) {
         return call.copy(
             label = label,
             toolName = toolName,
+            group = call.group.trim(),
             summary = call.summary.trim(),
+            inputSummary = call.inputSummary.trim(),
             detailLog = call.detailLog.trim(),
+            resultSummary = call.resultSummary.trim(),
             startedAt = call.startedAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
             finishedAt = call.finishedAt?.takeIf { it > 0 }
         )
@@ -345,6 +351,11 @@ class ZiCodeRepository(context: Context) {
 
     private fun buildSessionTitle(prompt: String): String {
         val compact = prompt.trim().replace(Regex("\\s+"), " ")
-        return compact.take(26).ifBlank { "New conversation" }
+        return compact.take(26).ifBlank { defaultSessionTitle() }
+    }
+
+    private fun defaultSessionTitle(): String {
+        return runCatching { appContext.getString(R.string.zicode_new_conversation) }
+            .getOrElse { "New conversation" }
     }
 }

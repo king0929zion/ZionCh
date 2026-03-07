@@ -15,15 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,24 +81,25 @@ fun ZiCodeFileBrowserScreen(
     var preview by remember { mutableStateOf<ZiCodeFilePreview?>(null) }
     var loadingPreview by remember { mutableStateOf(false) }
     var refreshNonce by remember { mutableIntStateOf(0) }
+    val missingTokenText = stringResource(R.string.zicode_missing_token)
+    val loadFilesFailedText = stringResource(R.string.zicode_files_load_failed)
+    val previewFailedText = stringResource(R.string.zicode_preview_failed)
 
     LaunchedEffect(settings.githubToken, currentPath, owner, repo, refreshNonce) {
         val token = settings.githubToken.trim()
         if (token.isBlank()) {
             entries = emptyList()
-            errorText = "请先配置 GitHub Token。"
+            errorText = missingTokenText
             loading = false
             return@LaunchedEffect
         }
         loading = true
         errorText = null
         gitHubService.listDirectory(token, owner, repo, currentPath)
-            .onSuccess { nodes ->
-                entries = nodes
-            }
+            .onSuccess { entries = it }
             .onFailure { throwable ->
                 entries = emptyList()
-                errorText = throwable.message?.trim().orEmpty().ifBlank { "文件列表读取失败。" }
+                errorText = throwable.message?.trim().orEmpty().ifBlank { loadFilesFailedText }
             }
         loading = false
     }
@@ -110,25 +113,20 @@ fun ZiCodeFileBrowserScreen(
         scope.launch {
             val token = settings.githubToken.trim()
             if (token.isBlank()) {
-                errorText = "请先配置 GitHub Token。"
+                errorText = missingTokenText
                 return@launch
             }
             loadingPreview = true
             gitHubService.readFile(token, owner, repo, node.path)
-                .onSuccess { file ->
-                    preview = file
-                }
+                .onSuccess { preview = it }
                 .onFailure { throwable ->
-                    errorText = throwable.message?.trim().orEmpty().ifBlank { "文件预览失败。" }
+                    errorText = throwable.message?.trim().orEmpty().ifBlank { previewFailedText }
                 }
             loadingPreview = false
         }
     }
 
-    SettingsPage(
-        title = repo,
-        onBack = { navController.navigateUp() }
-    ) {
+    SettingsPage(title = repo, onBack = { navController.navigateUp() }) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -138,27 +136,18 @@ fun ZiCodeFileBrowserScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                ZiCodeSectionTitle(title = stringResource(R.string.zicode_files))
+            }
+            item {
                 ZiCodePanel {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(ZiCodePanelGray, RoundedCornerShape(ZiCodeInnerRadius))
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         ZiCodeMetaText(text = "$owner / $repo")
-                        Text(
-                            text = if (currentPath.isBlank()) "仓库根目录" else currentPath,
-                            color = TextPrimary,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = SourceSans3
-                        )
+                        Text(text = if (currentPath.isBlank()) stringResource(R.string.zicode_repo_root) else currentPath, color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = SourceSans3)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ZiCodeChip(text = "root", selected = currentPath.isBlank(), onClick = { currentPath = "" })
+                            TextButton(onClick = { currentPath = "" }) { Text(stringResource(R.string.zicode_root), color = TextPrimary) }
                             if (currentPath.isNotBlank()) {
-                                ZiCodeChip(text = "返回上级", onClick = ::openParent)
+                                TextButton(onClick = ::openParent) { Text(stringResource(R.string.zicode_back_parent), color = TextPrimary) }
                             }
                         }
                     }
@@ -166,98 +155,49 @@ fun ZiCodeFileBrowserScreen(
             }
 
             when {
-                loading -> {
-                    item {
-                        ZiCodeLoadingPanel(text = "正在读取当前目录…")
-                    }
+                loading -> item { ZiCodeLoadingPanel(text = stringResource(R.string.zicode_loading_files)) }
+                errorText != null -> item {
+                    ZiCodeEmptyPanel(
+                        title = stringResource(R.string.zicode_files_error_title),
+                        body = errorText.orEmpty(),
+                        actionLabel = stringResource(R.string.zicode_retry),
+                        onAction = { refreshNonce += 1 }
+                    )
                 }
-
-                errorText != null -> {
-                    item {
-                        ZiCodeEmptyPanel(
-                            title = "文件读取失败",
-                            body = errorText.orEmpty(),
-                            actionLabel = "重试",
-                            onAction = { refreshNonce += 1 }
-                        )
-                    }
+                entries.isEmpty() -> item {
+                    ZiCodeEmptyPanel(
+                        title = stringResource(R.string.zicode_files_empty_title),
+                        body = stringResource(R.string.zicode_files_empty_body),
+                        actionLabel = stringResource(R.string.zicode_root),
+                        onAction = { currentPath = "" }
+                    )
                 }
-
-                entries.isEmpty() -> {
-                    item {
-                        ZiCodeEmptyPanel(
-                            title = "目录为空",
-                            body = "当前路径下没有可展示的文件或文件夹。",
-                            actionLabel = "返回根目录",
-                            onAction = { currentPath = "" }
-                        )
-                    }
-                }
-
-                else -> {
-                    items(entries, key = { it.path }) { node ->
-                        ZiCodeFileNodeRow(
-                            node = node,
-                            onClick = {
-                                if (node.type == "dir") {
-                                    currentPath = node.path
-                                } else {
-                                    openFile(node)
-                                }
-                            }
-                        )
-                    }
+                else -> items(entries, key = { it.path }) { node ->
+                    ZiCodeFileNodeRow(node = node, onClick = {
+                        if (node.type == "dir") currentPath = node.path else openFile(node)
+                    })
                 }
             }
 
-            item {
-                Spacer(modifier = Modifier.height(24.dp))
-            }
+            item { Spacer(modifier = Modifier.height(24.dp)) }
         }
 
         if (preview != null) {
-            AppModalBottomSheet(
-                onDismissRequest = { preview = null },
-                sheetState = previewSheetState
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 18.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = preview?.path.orEmpty(),
-                        color = TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = SourceSans3
-                    )
-                    ZiCodeMetaText(
-                        text =
-                            buildString {
-                                append("大小 ${preview?.size ?: 0L} bytes")
-                                if (preview?.truncated == true) append(" · 已截断预览")
-                            }
-                    )
-                    Text(
-                        text = preview?.content.orEmpty(),
-                        color = TextPrimary,
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp,
-                        fontFamily = SourceSans3
-                    )
+            AppModalBottomSheet(onDismissRequest = { preview = null }, sheetState = previewSheetState) {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(text = preview?.path.orEmpty(), color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = SourceSans3)
+                    ZiCodeMetaText(text = buildString {
+                        append(stringResource(R.string.zicode_file_size, preview?.size ?: 0L))
+                        if (preview?.truncated == true) append(" · ${stringResource(R.string.zicode_preview_truncated)}")
+                    })
+                    Text(text = preview?.content.orEmpty(), color = TextPrimary, fontSize = 13.sp, lineHeight = 20.sp, fontFamily = SourceSans3)
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }
 
         if (loadingPreview) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = TextPrimary)
             }
         }
@@ -269,54 +209,23 @@ private fun ZiCodeFileNodeRow(
     node: ZiCodeRepoNode,
     onClick: () -> Unit
 ) {
-    ZiCodePanel {
+    ZiCodePanel(onClick = onClick) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(ZiCodePanelGray, RoundedCornerShape(ZiCodeInnerRadius))
-                .pressableScale(pressedScale = 0.98f, onClick = onClick)
                 .padding(horizontal = 18.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .background(Color.White, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (node.type == "dir") "DIR" else "FILE",
-                    color = TextPrimary,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = SourceSans3
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = node.name,
-                    color = TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = SourceSans3
-                )
+            ZiCodeMiniStatusBadge(text = stringResource(if (node.type == "dir") R.string.zicode_dir else R.string.zicode_file))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(text = node.name, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = SourceSans3)
                 ZiCodeMetaText(text = node.path)
             }
             if (node.type == "file") {
-                Icon(
-                    painter = rememberResourceDrawablePainter(R.drawable.ic_files),
-                    contentDescription = null,
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(painter = rememberResourceDrawablePainter(R.drawable.ic_files), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(18.dp))
             } else {
-                Text(
-                    text = ">",
-                    color = ZiCodeSecondaryText,
-                    fontSize = 18.sp,
-                    fontFamily = SourceSans3
-                )
+                Text(text = ">", color = ZiCodeSecondaryText, fontSize = 18.sp, fontFamily = SourceSans3)
             }
         }
     }

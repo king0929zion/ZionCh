@@ -48,6 +48,7 @@ jobs:
       with:
         path: |
           .gradle/configuration-cache
+          .gradle/kotlin
           app/build/kotlin
           app/build/tmp/kotlin-classes/release
           app/build/intermediates/javac/release
@@ -80,14 +81,14 @@ jobs:
     - name: Build APK
       run: |
         if [ "${{ github.event_name }}" = "pull_request" ]; then
-          ./gradlew :app:assembleDebug --stacktrace --max-workers=3 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=true -Pkotlin.incremental.useClasspathSnapshot=true -PCI_FAST_BUILD=true
+          ./gradlew :app:assembleDebug --stacktrace --max-workers=4 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=true -Pkotlin.incremental.useClasspathSnapshot=true -PCI_FAST_BUILD=true
         else
-          ./gradlew :app:assembleRelease --stacktrace --max-workers=3 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=true -Pkotlin.incremental.useClasspathSnapshot=true -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
+          ./gradlew :app:assembleRelease --stacktrace --max-workers=4 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=true -Pkotlin.incremental.useClasspathSnapshot=true -PCI_FAST_BUILD=true -Pandroid.enableResourceOptimizations=false
         fi
 
     - name: Run tests
       if: github.event_name == 'pull_request'
-      run: ./gradlew :app:testDebugUnitTest --stacktrace --max-workers=3 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=true -Pkotlin.incremental.useClasspathSnapshot=true -PCI_FAST_BUILD=true
+      run: ./gradlew :app:testDebugUnitTest --stacktrace --max-workers=4 --build-cache --configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Pkotlin.incremental=true -Pkotlin.incremental.useClasspathSnapshot=true -PCI_FAST_BUILD=true
       continue-on-error: true
 
     - name: Get version from build.gradle

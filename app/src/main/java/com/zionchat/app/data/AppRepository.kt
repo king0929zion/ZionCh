@@ -54,6 +54,7 @@ class AppRepository(context: Context) {
     private val defaultImageModelIdKey = stringPreferencesKey("default_image_model_id")
     private val defaultTitleModelIdKey = stringPreferencesKey("default_title_model_id")
     private val defaultAppBuilderModelIdKey = stringPreferencesKey("default_app_builder_model_id")
+    private val defaultZiCodeModelIdKey = stringPreferencesKey("default_zicode_agent_model_id")
     private val defaultAutoSoulModelIdKey = stringPreferencesKey("default_autosoul_model_id")
     private val chatThinkingEnabledKey = booleanPreferencesKey("chat_thinking_enabled")
     private val webHostingProviderKey = stringPreferencesKey("web_hosting_provider")
@@ -641,6 +642,10 @@ class AppRepository(context: Context) {
         prefs[defaultAppBuilderModelIdKey]
     }
 
+    val defaultZiCodeModelIdFlow: Flow<String?> = prefsFlow.map { prefs ->
+        prefs[defaultZiCodeModelIdKey]
+    }
+
     val defaultAutoSoulModelIdFlow: Flow<String?> = prefsFlow.map { prefs ->
         prefs[defaultAutoSoulModelIdKey]
     }
@@ -752,6 +757,12 @@ class AppRepository(context: Context) {
     suspend fun setDefaultAppBuilderModelId(modelId: String?) {
         dataStore.edit { prefs ->
             if (modelId.isNullOrBlank()) prefs.remove(defaultAppBuilderModelIdKey) else prefs[defaultAppBuilderModelIdKey] = modelId
+        }
+    }
+
+    suspend fun setDefaultZiCodeModelId(modelId: String?) {
+        dataStore.edit { prefs ->
+            if (modelId.isNullOrBlank()) prefs.remove(defaultZiCodeModelIdKey) else prefs[defaultZiCodeModelIdKey] = modelId
         }
     }
 

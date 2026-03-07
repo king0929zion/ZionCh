@@ -13,9 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,55 +30,51 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.zionchat.app.LocalAppRepository
 import com.zionchat.app.LocalZiCodeGitHubService
 import com.zionchat.app.LocalZiCodeRepository
+import com.zionchat.app.R
+import com.zionchat.app.data.extractRemoteModelId
 import com.zionchat.app.ui.components.PageTopBarContentTopPadding
 import com.zionchat.app.ui.components.SettingsPage
+import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.SourceSans3
 import com.zionchat.app.ui.theme.TextPrimary
 import com.zionchat.app.zicode.data.ZiCodeSettings
+import com.zionchat.app.zicode.data.buildZiCodeToolCapabilities
 import kotlinx.coroutines.launch
-
-private data class ZiCodeCapability(
-    val title: String,
-    val description: String,
-    val active: Boolean
-)
 
 @Composable
 fun ZiCodeSettingsScreen(navController: NavController) {
     val repository = LocalZiCodeRepository.current
     val gitHubService = LocalZiCodeGitHubService.current
+    val appRepository = LocalAppRepository.current
     val settings by repository.settingsFlow.collectAsState(initial = ZiCodeSettings())
+    val models by appRepository.modelsFlow.collectAsState(initial = emptyList())
+    val ziCodeModelId by appRepository.defaultZiCodeModelIdFlow.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
 
     var tokenText by rememberSaveable(settings.githubToken) { mutableStateOf(settings.githubToken) }
     var validating by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf<String?>(null) }
+    val tokenSavedText = stringResource(R.string.zicode_token_saved)
+    val enterTokenText = stringResource(R.string.zicode_enter_token)
+    val tokenValidationFailedText = stringResource(R.string.zicode_token_validation_failed)
 
-    val capabilities =
-        remember {
-            listOf(
-                ZiCodeCapability("仓库列表", "读取当前账号可访问仓库，并按最近访问优先排序。", true),
-                ZiCodeCapability("项目会话", "同一仓库支持多会话，围绕项目持续对话。", true),
-                ZiCodeCapability("工具状态流", "每轮任务都展示工具调用、日志和运行中 shimmer。", true),
-                ZiCodeCapability("文件树与预览", "支持查看多层目录，并在底部面板预览文件。", true),
-                ZiCodeCapability("新建仓库", "直接用 GitHub Token 创建新仓库并进入会话。", true),
-                ZiCodeCapability("工作流检查", "读取 `.github/workflows`，帮助判断构建与发布入口。", true),
-                ZiCodeCapability("工作流触发", "下一步会接入真实 dispatch 执行。", false),
-                ZiCodeCapability("仓库写入", "下一步会接入文件创建/编辑型 Agent 操作。", false)
-            )
+    val modelName =
+        remember(models, ziCodeModelId) {
+            val key = ziCodeModelId?.trim().orEmpty()
+            if (key.isBlank()) null else models.firstOrNull { it.id == key }?.displayName ?: models.firstOrNull { extractRemoteModelId(it.id) == key }?.displayName
         }
+    val groupedCapabilities = remember { buildZiCodeToolCapabilities().groupBy { it.group } }
 
-    SettingsPage(
-        title = "ZiCode 设置",
-        onBack = { navController.navigateUp() }
-    ) {
+    SettingsPage(title = stringResource(R.string.zicode_settings_title), onBack = { navController.navigateUp() }) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -86,154 +82,130 @@ fun ZiCodeSettingsScreen(navController: NavController) {
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(top = PageTopBarContentTopPadding)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            ZiCodeSectionTitle("GitHub")
+            ZiCodeSectionTitle(title = stringResource(R.string.zicode_github_section))
             ZiCodePanel {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(ZiCodePanelGray, RoundedCornerShape(ZiCodeInnerRadius))
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = tokenText,
                         onValueChange = { tokenText = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("GitHub Token") },
+                        label = { Text(stringResource(R.string.zicode_token_label)) },
                         placeholder = { Text("ghp_xxx / github_pat_xxx") },
                         singleLine = true,
                         colors = ziCodeFieldColors()
                     )
                     settings.viewer?.let { viewer ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            androidx.compose.foundation.layout.Box(
-                                modifier = Modifier
-                                    .background(Color.White, CircleShape)
-                                    .padding(8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                androidx.compose.material3.Icon(
-                                    imageVector = AppIcons.GitHub,
-                                    contentDescription = null,
-                                    tint = TextPrimary
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = viewer.displayName ?: viewer.login,
-                                    color = TextPrimary,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontFamily = SourceSans3
-                                )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = AppIcons.GitHub, contentDescription = null, tint = TextPrimary)
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(text = viewer.displayName ?: viewer.login, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = SourceSans3)
                                 ZiCodeMetaText(text = "@${viewer.login}")
                             }
                         }
                     }
-                    statusText?.takeIf { it.isNotBlank() }?.let {
-                        ZiCodeMetaText(text = it)
-                    }
+                    statusText?.takeIf { it.isNotBlank() }?.let { ZiCodeMetaText(text = it) }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(
-                            onClick = {
-                                scope.launch {
-                                    repository.setGitHubToken(tokenText)
-                                    statusText = "Token 已保存。"
-                                }
+                        TextButton(onClick = {
+                            scope.launch {
+                                repository.setGitHubToken(tokenText)
+                                statusText = tokenSavedText
                             }
-                        ) {
-                            Text("保存", color = TextPrimary)
-                        }
-                        TextButton(
-                            enabled = !validating,
-                            onClick = {
-                                scope.launch {
-                                    val token = tokenText.trim()
-                                    if (token.isBlank()) {
-                                        statusText = "请先输入 Token。"
-                                        return@launch
+                        }) { Text(stringResource(R.string.common_save), color = TextPrimary) }
+                        TextButton(enabled = !validating, onClick = {
+                            scope.launch {
+                                val token = tokenText.trim()
+                                if (token.isBlank()) {
+                                    statusText = enterTokenText
+                                    return@launch
+                                }
+                                validating = true
+                                gitHubService.fetchViewer(token)
+                                    .onSuccess { viewer ->
+                                        repository.setGitHubToken(token)
+                                        repository.updateViewer(viewer)
+                                        statusText = "${stringResource(R.string.zicode_connection_ready)} ${viewer.login}"
                                     }
-                                    validating = true
-                                    gitHubService.fetchViewer(token)
-                                        .onSuccess { viewer ->
-                                            repository.setGitHubToken(token)
-                                            repository.updateViewer(viewer)
-                                            statusText = "已连接到 GitHub 账号 ${viewer.login}。"
-                                        }
-                                        .onFailure { throwable ->
-                                            statusText = throwable.message?.trim().orEmpty().ifBlank { "Token 校验失败。" }
-                                        }
-                                    validating = false
+                                    .onFailure { throwable ->
+                                        statusText = throwable.message?.trim().orEmpty().ifBlank { tokenValidationFailedText }
+                                    }
+                                validating = false
+                            }
+                        }) { Text(if (validating) stringResource(R.string.zicode_validating) else stringResource(R.string.zicode_validate_connection), color = TextPrimary) }
+                    }
+                }
+            }
+
+            ZiCodeSectionTitle(title = stringResource(R.string.zicode_model_section))
+            ZiCodePanel {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    ZiCodeSettingRow(
+                        title = stringResource(R.string.zicode_default_model_title),
+                        subtitle = modelName ?: stringResource(R.string.zicode_default_model_missing),
+                        trailing = stringResource(R.string.zicode_open_default_model),
+                        onClick = { navController.navigate("default_model") }
+                    )
+                    HorizontalDivider(color = ZiCodeDividerColor)
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(text = stringResource(R.string.zicode_model_note_title), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = SourceSans3)
+                        ZiCodeMetaText(text = stringResource(R.string.zicode_model_note_body))
+                    }
+                }
+            }
+
+            ZiCodeSectionTitle(title = stringResource(R.string.zicode_tools_section))
+            groupedCapabilities.forEach { (group, items) ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ZiCodeSectionTitle(title = group)
+                    ZiCodePanel {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            items.forEachIndexed { index, capability ->
+                                if (index > 0) HorizontalDivider(color = ZiCodeDividerColor)
+                                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(text = capability.title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = SourceSans3)
+                                    ZiCodeMetaText(text = capability.description)
                                 }
                             }
-                        ) {
-                            Text(if (validating) "校验中…" else "校验连接", color = TextPrimary)
                         }
                     }
                 }
             }
 
-            ZiCodeSectionTitle("Tools")
+            ZiCodeSectionTitle(title = stringResource(R.string.zicode_about_section))
             ZiCodePanel {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(ZiCodePanelGray, RoundedCornerShape(ZiCodeInnerRadius))
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    capabilities.forEach { capability ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color.White, RoundedCornerShape(18.dp))
-                                .padding(horizontal = 14.dp, vertical = 14.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ZiCodeMiniStatusBadge(text = if (capability.active) "Live" else "Next")
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = capability.title,
-                                    color = TextPrimary,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontFamily = SourceSans3
-                                )
-                                ZiCodeMetaText(text = capability.description)
-                            }
-                        }
-                    }
-                }
-            }
-
-            ZiCodeSectionTitle("说明")
-            ZiCodePanel {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(ZiCodePanelGray, RoundedCornerShape(ZiCodeInnerRadius))
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "ZiCode 是一个以对话为核心的 GitHub Agent 模块。",
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = SourceSans3
-                    )
-                    ZiCodeMetaText(text = "手机端负责发起目标、查看执行过程、查看文件与结果；GitHub 负责承载真实仓库和工作流能力。")
-                    ZiCodeMetaText(text = "当前版本先把仓库、会话、文件树、工具状态可视化和新建仓库打通，后续会继续接入工作流 dispatch 与文件写入。")
+                Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(text = stringResource(R.string.zicode_about_title), color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = SourceSans3)
+                    ZiCodeMetaText(text = stringResource(R.string.zicode_about_body))
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun ZiCodeSettingRow(
+    title: String,
+    subtitle: String,
+    trailing: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ZiCodePanelGray)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(text = title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = SourceSans3)
+            ZiCodeMetaText(text = subtitle)
+        }
+        TextButton(onClick = onClick) {
+            Text(trailing, color = TextPrimary)
         }
     }
 }
