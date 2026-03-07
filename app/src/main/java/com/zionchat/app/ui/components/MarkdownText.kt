@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zionchat.app.R
 import com.zionchat.app.ui.icons.AppIcons
 import com.zionchat.app.ui.theme.AccentBlue
 import com.zionchat.app.ui.theme.GrayLight
@@ -92,7 +94,8 @@ fun MarkdownText(
     markdown: String,
     modifier: Modifier = Modifier,
     textStyle: TextStyle = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, color = TextPrimary),
-    linkColor: Color = AccentBlue
+    linkColor: Color = AccentBlue,
+    monochrome: Boolean = false
 ) {
     val parser = remember { Parser.builder().build() }
     val segments = remember(markdown) { splitMarkdownSegments(markdown) }
@@ -103,7 +106,7 @@ fun MarkdownText(
                 is MarkdownSegment.Text -> {
                     if (segment.markdown.isNotBlank()) {
                         val document = parser.parse(segment.markdown) as Document
-                        renderChildren(document, textStyle, linkColor)
+                        renderChildren(document, textStyle, linkColor, monochrome = monochrome)
                     }
                 }
 
@@ -182,13 +185,14 @@ private fun renderChildren(
     parent: Node,
     textStyle: TextStyle,
     linkColor: Color,
+    monochrome: Boolean,
     spacing: Dp = 8.dp
 ) {
     var child = parent.firstChild
     if (child == null) return
     Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(spacing)) {
         while (child != null) {
-            MarkdownBlock(child, textStyle, linkColor)
+            MarkdownBlock(child, textStyle, linkColor, monochrome)
             child = child.next
         }
     }
@@ -198,16 +202,17 @@ private fun renderChildren(
 private fun MarkdownBlock(
     node: Node,
     textStyle: TextStyle,
-    linkColor: Color
+    linkColor: Color,
+    monochrome: Boolean
 ) {
     when (node) {
-        is Paragraph -> MarkdownParagraph(node, textStyle, linkColor)
+        is Paragraph -> MarkdownParagraph(node, textStyle, linkColor, monochrome)
         is Heading -> MarkdownHeading(node, textStyle, linkColor)
-        is BulletList -> MarkdownBulletList(node, textStyle, linkColor)
-        is OrderedList -> MarkdownOrderedList(node, textStyle, linkColor)
-        is FencedCodeBlock -> MarkdownCodeBlock(node.literal, textStyle, node.info)
-        is IndentedCodeBlock -> MarkdownCodeBlock(node.literal, textStyle)
-        is BlockQuote -> MarkdownBlockQuote(node, textStyle, linkColor)
+        is BulletList -> MarkdownBulletList(node, textStyle, linkColor, monochrome)
+        is OrderedList -> MarkdownOrderedList(node, textStyle, linkColor, monochrome)
+        is FencedCodeBlock -> MarkdownCodeBlock(node.literal, textStyle, node.info, monochrome)
+        is IndentedCodeBlock -> MarkdownCodeBlock(node.literal, textStyle, monochrome = monochrome)
+        is BlockQuote -> MarkdownBlockQuote(node, textStyle, linkColor, monochrome)
         is ThematicBreak -> HorizontalDivider(color = GrayLight, thickness = 1.dp)
         else -> {
             val literal = (node as? MarkdownTextNode)?.literal.orEmpty()
@@ -222,7 +227,8 @@ private fun MarkdownBlock(
 private fun MarkdownParagraph(
     paragraph: Paragraph,
     textStyle: TextStyle,
-    linkColor: Color
+    linkColor: Color,
+    monochrome: Boolean
 ) {
     val images = remember(paragraph) { collectInlineImages(paragraph) }
     val isOnlyImages = remember(paragraph) { isParagraphOnlyImages(paragraph) }
@@ -325,16 +331,21 @@ private fun MarkdownHeading(
 private fun MarkdownCodeBlock(
     code: String,
     textStyle: TextStyle,
-    language: String? = null
+    language: String? = null,
+    monochrome: Boolean = false
 ) {
     val context = LocalContext.current
     val clipboardManager =
         remember(context) {
             context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         }
+    val copyCodeLabel = stringResource(R.string.markdown_copy_code)
+    val plainTextLabel = stringResource(R.string.markdown_plain_text)
     val normalizedCode = remember(code) { code.trimEnd().ifBlank { " " } }
-    val languageLabel = remember(language) { formatCodeBlockLanguage(language) }
-    val highlightedCode = remember(normalizedCode, language) { buildCodeHighlightedAnnotatedString(normalizedCode, language) }
+    val languageLabel = remember(language, plainTextLabel) { formatCodeBlockLanguage(language, plainTextLabel) }
+    val highlightedCode = remember(normalizedCode, language, monochrome) {
+        buildCodeHighlightedAnnotatedString(normalizedCode, language, monochrome)
+    }
     val shape = RoundedCornerShape(12.dp)
 
     Column(
@@ -373,12 +384,12 @@ private fun MarkdownCodeBlock(
             ) {
                 Icon(
                     imageVector = AppIcons.Copy,
-                    contentDescription = "Copy code",
+                    contentDescription = copyCodeLabel,
                     tint = Color(0xFF121212),
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
-                    text = "Copy code",
+                    text = copyCodeLabel,
                     style = textStyle.copy(
                         fontSize = 13.sp,
                         color = Color(0xFF121212),
@@ -414,7 +425,8 @@ private fun MarkdownCodeBlock(
 private fun MarkdownBlockQuote(
     quote: BlockQuote,
     textStyle: TextStyle,
-    linkColor: Color
+    linkColor: Color,
+    monochrome: Boolean
 ) {
     Row(
         modifier = Modifier
@@ -430,7 +442,7 @@ private fun MarkdownBlockQuote(
         )
         Spacer(modifier = Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
-            renderChildren(quote, textStyle.copy(color = TextSecondary), linkColor, spacing = 6.dp)
+            renderChildren(quote, textStyle.copy(color = TextSecondary), linkColor, monochrome = monochrome, spacing = 6.dp)
         }
     }
 }
@@ -439,7 +451,8 @@ private fun MarkdownBlockQuote(
 private fun MarkdownBulletList(
     list: BulletList,
     textStyle: TextStyle,
-    linkColor: Color
+    linkColor: Color,
+    monochrome: Boolean
 ) {
     Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
         var item = list.firstChild
@@ -456,7 +469,7 @@ private fun MarkdownBulletList(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        renderChildren(item, textStyle, linkColor, spacing = 6.dp)
+                        renderChildren(item, textStyle, linkColor, monochrome = monochrome, spacing = 6.dp)
                     }
                 }
             }
@@ -469,7 +482,8 @@ private fun MarkdownBulletList(
 private fun MarkdownOrderedList(
     list: OrderedList,
     textStyle: TextStyle,
-    linkColor: Color
+    linkColor: Color,
+    monochrome: Boolean
 ) {
     var index = list.startNumber
     Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
@@ -487,7 +501,7 @@ private fun MarkdownOrderedList(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        renderChildren(item, textStyle, linkColor, spacing = 6.dp)
+                        renderChildren(item, textStyle, linkColor, monochrome = monochrome, spacing = 6.dp)
                     }
                 }
                 index += 1
@@ -626,11 +640,14 @@ private fun parseTableAligns(line: String): List<TextAlign> {
     }
 }
 
-private fun formatCodeBlockLanguage(language: String?): String {
+private fun formatCodeBlockLanguage(
+    language: String?,
+    plainTextLabel: String
+): String {
     val raw = extractCodeLanguageToken(language)
-    if (raw.isBlank()) return "Plain text"
+    if (raw.isBlank()) return plainTextLabel
     val normalized = raw.replace('_', '-').trim('-')
-    if (normalized.isBlank()) return "Plain text"
+    if (normalized.isBlank()) return plainTextLabel
     return normalized
         .split('-')
         .filter { it.isNotBlank() }
@@ -639,7 +656,7 @@ private fun formatCodeBlockLanguage(language: String?): String {
                 if (ch.isLowerCase()) ch.titlecase() else ch.toString()
             }
         }
-        .ifBlank { "Plain text" }
+        .ifBlank { plainTextLabel }
 }
 
 private fun extractCodeLanguageToken(language: String?): String {
@@ -659,18 +676,19 @@ private data class CodeHighlightRange(
 
 private fun buildCodeHighlightedAnnotatedString(
     code: String,
-    language: String?
+    language: String?,
+    monochrome: Boolean
 ): AnnotatedString {
     if (code.isBlank()) return AnnotatedString(" ")
 
     val token = extractCodeLanguageToken(language).lowercase()
     val ranges = mutableListOf<CodeHighlightRange>()
 
-    val commentStyle = SpanStyle(color = Color(0xFF6B7280))
-    val stringStyle = SpanStyle(color = Color(0xFFC2410C))
-    val numberStyle = SpanStyle(color = Color(0xFFB45309))
-    val keywordStyle = SpanStyle(color = Color(0xFF0F766E), fontWeight = FontWeight.SemiBold)
-    val functionStyle = SpanStyle(color = Color(0xFFBE123C))
+    val commentStyle = SpanStyle(color = if (monochrome) Color(0xFF6A6A6A) else Color(0xFF6B7280))
+    val stringStyle = SpanStyle(color = if (monochrome) Color(0xFF2D2D2D) else Color(0xFFC2410C))
+    val numberStyle = SpanStyle(color = if (monochrome) Color(0xFF1F1F1F) else Color(0xFFB45309))
+    val keywordStyle = SpanStyle(color = if (monochrome) Color(0xFF111111) else Color(0xFF0F766E), fontWeight = FontWeight.SemiBold)
+    val functionStyle = SpanStyle(color = if (monochrome) Color(0xFF3A3A3A) else Color(0xFFBE123C))
 
     val commentPatterns = mutableListOf(
         Regex("(?m)//.*$"),

@@ -81,7 +81,7 @@ class ZiCodeAgentRunner(
         }
 
         try {
-            val goalIndex = addTool(t("理解目标", "Analyze goal"), "agent.goal_analyze", "Agent", t("正在拆解任务。", "Breaking down the request."), normalizedPrompt)
+            val goalIndex = addTool(t("理解目标", "Analyze goal"), "agent.goal_analyze", "ZiCode", t("正在拆解任务。", "Breaking down the request."), normalizedPrompt)
             delay(120)
             finishTool(
                 goalIndex,
@@ -126,7 +126,7 @@ class ZiCodeAgentRunner(
                 t("GitHub 已接通", "GitHub connected")
             )
 
-            val modelIndex = addTool(t("检查 Agent 模型", "Resolve agent model"), "agent.model_resolve", "Agent", t("正在读取 ZiCode 默认模型。", "Resolving the ZiCode default model."))
+            val modelIndex = addTool(t("检查 ZiCode 模型", "Resolve ZiCode model"), "agent.model_resolve", "ZiCode", t("正在读取 ZiCode 默认模型。", "Resolving the ZiCode default model."))
             val resolvedModelResult = resolveZiCodeModel(useChinese)
             val resolvedModel = resolvedModelResult.getOrNull()
             if (resolvedModel == null) {
@@ -137,7 +137,7 @@ class ZiCodeAgentRunner(
                     resolvedModelResult.exceptionOrNull()?.message.orEmpty(),
                     t("模型未就绪", "Model is not ready")
                 )
-                failTurn(sessionId, turnId, tools, t("ZiCode 默认模型还没有配置完成。请先去“设置 -> 默认模型”里设置 ZiCode Agent 模型，然后再继续执行。", "ZiCode needs its own default model before GitHub agent tasks can run. Set it in Settings -> Default model first."))
+                failTurn(sessionId, turnId, tools, t("ZiCode 默认模型还没有配置完成。请先去“设置 -> 默认模型”里设置 ZiCode 模型，然后再继续执行。", "ZiCode needs its own default model before GitHub execution can run. Set it in Settings -> Default model first."))
                 return
             }
             finishTool(
@@ -409,6 +409,120 @@ class ZiCodeAgentRunner(
             }
         }
 
+        if (createdBranch == null && wantsFileMutation(prompt)) {
+            val defaultBranch = branches.firstOrNull { it.name.equals(repo.defaultBranch, ignoreCase = true) }
+            if (defaultBranch?.protectedBranch == true && defaultBranch.sha.isNotBlank()) {
+                val autoBranchName = buildAutoBranchName()
+                val index = addTool(t("准备工作分支", "Prepare working branch"), "github.branch_prepare", "Branches", t("默认分支受保护，正在准备工作分支。", "The default branch is protected, so ZiCode is preparing a working branch."), autoBranchName)
+                val result = gitHubService.createBranch(token, repoOwner, repoName, autoBranchName, defaultBranch.sha)
+                createdBranch = result.getOrNull()
+                finishTool(
+                    index,
+                    if (createdBranch != null) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+                    if (createdBranch != null) t("已切到工作分支 `${createdBranch?.name}`。", "Working branch `${createdBranch?.name}` is ready.") else t("工作分支创建失败。", "Failed to create a working branch."),
+                    result.exceptionOrNull()?.message.orEmpty(),
+                    createdBranch?.name ?: t("未创建分支", "Branch not created")
+                )
+            }
+        }
+
+        val targetFilePath = extractTargetFilePath(prompt)
+        var latestFileCommit: ZiCodeGitHubCommit? = null
+        if (wantsDeleteFile(prompt) && !targetFilePath.isNullOrBlank()) {
+            val deleteIndex = addTool(t("删除文件", "Delete file"), "github.file_delete", "Contents", t("正在删除仓库文件。", "Deleting repository file."), targetFilePath)
+            val nodeResult = gitHubService.fetchNode(token, repoOwner, repoName, targetFilePath)
+            val node = nodeResult.getOrNull()?.takeIf { it.type == "file" }
+            if (node?.sha.isNullOrBlank()) {
+                finishTool(
+                    deleteIndex,
+                    ZiCodeToolStatus.FAILED,
+                    t("删除失败。", "Delete failed."),
+                    nodeResult.exceptionOrNull()?.message.orEmpty().ifBlank { t("没有找到可删除的文件。", "No deletable file was found.") },
+                    t("文件未删除", "File was not deleted")
+                )
+            } else {
+                val branchName = createdBranch?.name ?: repo.defaultBranch
+                val result =
+                    gitHubService.deleteFile(
+                        token = token,
+                        owner = repoOwner,
+                        repo = repoName,
+                        path = targetFilePath,
+                        sha = node.sha.orEmpty(),
+                        message = buildDeleteCommitMessage(targetFilePath, useChinese),
+                        branch = branchName
+                    )
+                latestFileCommit = result.getOrNull()
+                finishTool(
+                    deleteIndex,
+                    if (latestFileCommit != null) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+                    if (latestFileCommit != null) t("文件 `${targetFilePath}` 已删除。", "File `${targetFilePath}` was deleted.") else t("删除失败。", "Delete failed."),
+                    result.exceptionOrNull()?.message.orEmpty(),
+                    latestFileCommit?.sha ?: t("文件未删除", "File was not deleted")
+                )
+            }
+        } else if (wantsWriteFile(prompt) && !targetFilePath.isNullOrBlank()) {
+            val writeIndex = addTool(t("写入文件", "Write file"), "github.file_write", "Contents", t("正在写入仓库文件。", "Writing repository file."), targetFilePath)
+            val nodeResult = gitHubService.fetchNode(token, repoOwner, repoName, targetFilePath)
+            val existingNode = nodeResult.getOrNull()
+            val existingFileNode = existingNode?.takeIf { it.type == "file" }
+            val existingPreview =
+                if (existingFileNode != null) {
+                    gitHubService.readFile(token, repoOwner, repoName, targetFilePath).getOrNull()
+                } else {
+                    null
+                }
+            val content =
+                extractEmbeddedFileContent(prompt)?.takeIf { it.isNotBlank() }
+                    ?: generateFileContent(
+                        resolvedModel = resolvedModel,
+                        repo = repo,
+                        prompt = prompt,
+                        path = targetFilePath,
+                        existingPreview = existingPreview,
+                        readmePreview = readmePreview,
+                        useChinese = useChinese
+                    ).getOrNull()
+            if (content.isNullOrBlank()) {
+                finishTool(
+                    writeIndex,
+                    ZiCodeToolStatus.FAILED,
+                    t("文件内容生成失败。", "Failed to generate file content."),
+                    t("这轮没有从提示词里拿到可直接写入的内容，模型也没有成功补全文件内容。", "No writable content was found in the prompt, and the model did not generate file content successfully."),
+                    t("文件未写入", "File was not written")
+                )
+            } else {
+                val branchName = createdBranch?.name ?: repo.defaultBranch
+                val result =
+                    gitHubService.createOrUpdateFile(
+                        token = token,
+                        owner = repoOwner,
+                        repo = repoName,
+                        path = targetFilePath,
+                        content = content,
+                        message = buildWriteCommitMessage(targetFilePath, existingFileNode != null, useChinese),
+                        branch = branchName,
+                        sha = existingFileNode?.sha
+                    )
+                latestFileCommit = result.getOrNull()
+                finishTool(
+                    writeIndex,
+                    if (latestFileCommit != null) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+                    if (latestFileCommit != null) {
+                        if (existingFileNode != null) {
+                            t("文件 `${targetFilePath}` 已更新。", "File `${targetFilePath}` was updated.")
+                        } else {
+                            t("文件 `${targetFilePath}` 已创建。", "File `${targetFilePath}` was created.")
+                        }
+                    } else {
+                        t("文件写入失败。", "File write failed.")
+                    },
+                    result.exceptionOrNull()?.message.orEmpty(),
+                    latestFileCommit?.sha ?: t("文件未写入", "File was not written")
+                )
+            }
+        }
+
         val prHeadBranch =
             createdBranch?.name ?: extractRequestedBranchName(prompt)?.takeIf { requested ->
                 branches.any { it.name.equals(requested, ignoreCase = true) }
@@ -474,7 +588,7 @@ class ZiCodeAgentRunner(
         }
 
         val runIndex = addTool(t("读取运行记录", "Read workflow runs"), "github.workflow_runs", "Actions", t("正在同步工作流运行状态。", "Syncing workflow run status."))
-        val workflowRuns = gitHubService.listWorkflowRuns(token, repoOwner, repoName).getOrNull().orEmpty()
+        var workflowRuns = gitHubService.listWorkflowRuns(token, repoOwner, repoName).getOrNull().orEmpty()
         finishTool(
             runIndex,
             if (workflowRuns.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
@@ -482,6 +596,42 @@ class ZiCodeAgentRunner(
             if (workflowRuns.isNotEmpty()) workflowRuns.take(8).joinToString("\n") { "- ${it.name} · ${it.status}${it.conclusion?.let { c -> " · $c" } ?: ""}" } else t("还没有可见的 workflow run。", "No visible workflow run was returned."),
             if (workflowRuns.isNotEmpty()) t("Actions 运行状态已同步", "Actions run status synced") else t("无运行记录", "No workflow runs")
         )
+
+        if (workflowRuns.isNotEmpty() && wantsCancelWorkflow(prompt)) {
+            resolveWorkflowRunTarget(prompt, workflowRuns)?.let { workflowRun ->
+                val index = addTool(t("取消运行", "Cancel workflow run"), "github.workflow_cancel", "Actions", t("正在取消运行中的工作流。", "Cancelling the workflow run."), workflowRun.name)
+                val result = gitHubService.cancelWorkflowRun(token, repoOwner, repoName, workflowRun.id)
+                if (result.isSuccess) {
+                    delay(1000)
+                    workflowRuns = gitHubService.listWorkflowRuns(token, repoOwner, repoName).getOrNull().orEmpty()
+                }
+                finishTool(
+                    index,
+                    if (result.isSuccess) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+                    if (result.isSuccess) t("运行 `${workflowRun.name}` 已请求取消。", "Workflow run `${workflowRun.name}` was asked to cancel.") else t("取消运行失败。", "Failed to cancel the workflow run."),
+                    result.exceptionOrNull()?.message.orEmpty(),
+                    if (result.isSuccess) workflowRun.id.toString() else t("取消失败", "Cancel failed")
+                )
+            }
+        }
+
+        if (workflowRuns.isNotEmpty() && wantsRerunWorkflow(prompt)) {
+            resolveWorkflowRunTarget(prompt, workflowRuns)?.let { workflowRun ->
+                val index = addTool(t("重跑工作流", "Rerun workflow"), "github.workflow_rerun", "Actions", t("正在重新运行工作流。", "Rerunning the workflow."), workflowRun.name)
+                val result = gitHubService.rerunWorkflowRun(token, repoOwner, repoName, workflowRun.id)
+                if (result.isSuccess) {
+                    delay(1200)
+                    workflowRuns = gitHubService.listWorkflowRuns(token, repoOwner, repoName).getOrNull().orEmpty()
+                }
+                finishTool(
+                    index,
+                    if (result.isSuccess) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+                    if (result.isSuccess) t("工作流 `${workflowRun.name}` 已重跑。", "Workflow `${workflowRun.name}` was rerun.") else t("重跑工作流失败。", "Failed to rerun the workflow."),
+                    result.exceptionOrNull()?.message.orEmpty(),
+                    if (result.isSuccess) workflowRun.id.toString() else t("重跑失败", "Rerun failed")
+                )
+            }
+        }
 
         val traceIndex = addTool(t("展开运行日志", "Expand workflow trace"), "github.workflow_trace", "Actions", t("正在读取最新运行作业详情。", "Reading the latest workflow job trace."), workflowRuns.firstOrNull()?.id?.toString().orEmpty())
         val workflowTrace = workflowRuns.firstOrNull()?.let { gitHubService.readWorkflowRunTrace(token, repoOwner, repoName, it.id).getOrNull().orEmpty() }.orEmpty()
@@ -510,7 +660,7 @@ class ZiCodeAgentRunner(
         )
 
         val releaseIndex = addTool(t("同步发布", "Sync releases"), "github.release_list", "Release", t("正在读取 Release 列表。", "Loading releases."))
-        val releases = gitHubService.listReleases(token, repoOwner, repoName).getOrNull().orEmpty()
+        var releases = gitHubService.listReleases(token, repoOwner, repoName).getOrNull().orEmpty()
         finishTool(
             releaseIndex,
             if (releases.isNotEmpty()) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
@@ -518,6 +668,43 @@ class ZiCodeAgentRunner(
             if (releases.isNotEmpty()) releases.take(6).joinToString("\n") { "- ${it.tagName}${it.name.takeIf { name -> name.isNotBlank() }?.let { name -> " · $name" } ?: ""}" } else t("仓库里还没有可见 Release。", "No visible releases were found in the repository."),
             if (releases.isNotEmpty()) t("发布历史已同步", "Release history synced") else t("无发布数据", "No release data")
         )
+
+        var createdRelease: ZiCodeGitHubRelease? = null
+        if (wantsCreateRelease(prompt)) {
+            val tagName = extractReleaseTag(prompt) ?: buildAutoReleaseTag()
+            val releaseName = extractReleaseName(prompt) ?: tagName
+            val index = addTool(t("创建 Release", "Create release"), "github.release_create", "Release", t("正在创建新的 Release。", "Creating a new release."), tagName)
+            val result =
+                gitHubService.createRelease(
+                    token = token,
+                    owner = repoOwner,
+                    repo = repoName,
+                    tagName = tagName,
+                    releaseName = releaseName,
+                    body =
+                        buildString {
+                            appendLine(t("由 ZiCode 依据以下目标创建：", "Created by ZiCode for the following goal:"))
+                            appendLine(prompt)
+                            latestFileCommit?.let {
+                                appendLine()
+                                appendLine("${t("最近提交", "Latest commit")}: ${it.sha.take(7)}")
+                            }
+                        }.trim(),
+                    targetCommitish = createdBranch?.name ?: repo.defaultBranch
+                )
+            createdRelease = result.getOrNull()
+            val release = createdRelease
+            if (release != null) {
+                releases = listOf(release) + releases.filterNot { it.id == release.id }
+            }
+            finishTool(
+                index,
+                if (createdRelease != null) ZiCodeToolStatus.SUCCESS else ZiCodeToolStatus.FAILED,
+                if (createdRelease != null) t("Release `${createdRelease?.tagName}` 已创建。", "Release `${createdRelease?.tagName}` was created.") else t("Release 创建失败。", "Release creation failed."),
+                result.exceptionOrNull()?.message.orEmpty(),
+                createdRelease?.htmlUrl ?: t("Release 未创建", "Release was not created")
+            )
+        }
 
         val pagesIndex = addTool(t("检查 Pages", "Check Pages"), "github.pages_get", "Pages", t("正在检查 GitHub Pages 状态。", "Checking GitHub Pages status."))
         val pagesInfo = gitHubService.fetchPagesInfo(token, repoOwner, repoName).getOrNull()
@@ -540,7 +727,7 @@ class ZiCodeAgentRunner(
             if (pagesInfo == null) t("Pages 状态缺失", "Pages status missing") else if (pagesInfo.status == "not_configured") t("Pages 未启用", "Pages not configured") else t("Pages 已接入上下文", "Pages added to context")
         )
 
-        val summaryIndex = addTool(t("生成 Agent 结论", "Build agent summary"), "agent.summary_build", "Agent", t("正在使用 ZiCode 默认模型整理结论。", "Using the ZiCode default model to build the summary."))
+        val summaryIndex = addTool(t("整理结果", "Build summary"), "agent.summary_build", "ZiCode", t("正在使用 ZiCode 默认模型整理结论。", "Using the ZiCode default model to build the summary."))
         val fallback =
             buildFallbackSummary(
                 repo = repo,
@@ -557,9 +744,11 @@ class ZiCodeAgentRunner(
                 releases = releases,
                 pagesInfo = pagesInfo,
                 readmePreview = readmePreview,
+                latestFileCommit = latestFileCommit,
                 createdBranch = createdBranch,
                 createdIssue = createdIssue,
                 createdPullRequest = createdPullRequest,
+                createdRelease = createdRelease,
                 dispatchedWorkflowName = dispatchedWorkflowName,
                 useChinese = useChinese
             )
@@ -568,7 +757,7 @@ class ZiCodeAgentRunner(
                 provider = resolvedModel.provider,
                 modelId = resolvedModel.remoteModelId,
                 messages = listOf(
-                    Message(role = "system", content = "You are ZiCode, a GitHub execution agent. Respond in the user's language. Be concise, concrete, and never invent repository facts."),
+                    Message(role = "system", content = "You are ZiCode. Use the GitHub context to execute and summarize repository work. Respond in the user's language. Be concise, concrete, and never invent repository facts."),
                     Message(
                         role = "user",
                         content = buildModelContext(
@@ -586,9 +775,11 @@ class ZiCodeAgentRunner(
                             releases = releases,
                             pagesInfo = pagesInfo,
                             readmePreview = readmePreview,
+                            latestFileCommit = latestFileCommit,
                             createdBranch = createdBranch,
                             createdIssue = createdIssue,
                             createdPullRequest = createdPullRequest,
+                            createdRelease = createdRelease,
                             dispatchedWorkflowName = dispatchedWorkflowName,
                             useChinese = useChinese
                         )
@@ -609,12 +800,23 @@ class ZiCodeAgentRunner(
         )
 
         repository.updateTurn(sessionId, turnId) { turn ->
+            val primaryResultLink =
+                createdRelease?.htmlUrl?.takeIf { it.isNotBlank() }
+                    ?: createdPullRequest?.htmlUrl?.takeIf { it.isNotBlank() }
+                    ?: createdIssue?.htmlUrl?.takeIf { it.isNotBlank() }
+                    ?: workflowRuns.firstOrNull()?.htmlUrl?.takeIf { it.isNotBlank() }
+                    ?: pagesInfo?.htmlUrl?.takeIf { it.isNotBlank() }
+                    ?: repo.homepageUrl?.takeIf { it.isNotBlank() }
+                    ?: repo.htmlUrl
             turn.copy(
                 response = response,
                 status = ZiCodeRunStatus.SUCCESS,
                 toolCalls = tools,
-                resultLink = workflowRuns.firstOrNull()?.htmlUrl?.takeIf { it.isNotBlank() } ?: pagesInfo?.htmlUrl?.takeIf { it.isNotBlank() } ?: repo.homepageUrl?.takeIf { it.isNotBlank() } ?: repo.htmlUrl,
+                resultLink = primaryResultLink,
                 resultLabel = when {
+                    createdRelease?.htmlUrl?.isNotBlank() == true -> t("打开 Release", "Open release")
+                    createdPullRequest?.htmlUrl?.isNotBlank() == true -> t("打开 Pull Request", "Open pull request")
+                    createdIssue?.htmlUrl?.isNotBlank() == true -> t("打开 Issue", "Open issue")
                     workflowRuns.firstOrNull()?.htmlUrl?.isNotBlank() == true -> t("打开工作流运行", "Open workflow run")
                     pagesInfo?.htmlUrl?.isNotBlank() == true -> t("打开 GitHub Pages", "Open GitHub Pages")
                     !repo.homepageUrl.isNullOrBlank() -> t("打开项目主页", "Open project homepage")
@@ -664,6 +866,61 @@ class ZiCodeAgentRunner(
             prompt.contains("新建拉取请求")
     }
 
+    private fun wantsWriteFile(prompt: String): Boolean {
+        return prompt.contains("write file", ignoreCase = true) ||
+            prompt.contains("update file", ignoreCase = true) ||
+            prompt.contains("edit file", ignoreCase = true) ||
+            prompt.contains("add file", ignoreCase = true) ||
+            prompt.contains("create file", ignoreCase = true) ||
+            prompt.contains("save file", ignoreCase = true) ||
+            prompt.contains("写入文件") ||
+            prompt.contains("新增文件") ||
+            prompt.contains("更新文件") ||
+            prompt.contains("修改文件") ||
+            prompt.contains("创建文件")
+    }
+
+    private fun wantsDeleteFile(prompt: String): Boolean {
+        return prompt.contains("delete file", ignoreCase = true) ||
+            prompt.contains("remove file", ignoreCase = true) ||
+            prompt.contains("drop file", ignoreCase = true) ||
+            prompt.contains("删除文件") ||
+            prompt.contains("移除文件") ||
+            prompt.contains("删掉文件")
+    }
+
+    private fun wantsFileMutation(prompt: String): Boolean {
+        return wantsWriteFile(prompt) || wantsDeleteFile(prompt)
+    }
+
+    private fun wantsRerunWorkflow(prompt: String): Boolean {
+        return prompt.contains("rerun workflow", ignoreCase = true) ||
+            prompt.contains("rerun run", ignoreCase = true) ||
+            prompt.contains("rerun action", ignoreCase = true) ||
+            prompt.contains("重新运行工作流") ||
+            prompt.contains("重跑工作流") ||
+            prompt.contains("重新跑工作流")
+    }
+
+    private fun wantsCancelWorkflow(prompt: String): Boolean {
+        return prompt.contains("cancel workflow", ignoreCase = true) ||
+            prompt.contains("cancel run", ignoreCase = true) ||
+            prompt.contains("stop workflow", ignoreCase = true) ||
+            prompt.contains("取消工作流") ||
+            prompt.contains("取消运行") ||
+            prompt.contains("停止工作流")
+    }
+
+    private fun wantsCreateRelease(prompt: String): Boolean {
+        return prompt.contains("create release", ignoreCase = true) ||
+            prompt.contains("publish release", ignoreCase = true) ||
+            prompt.contains("new release", ignoreCase = true) ||
+            prompt.contains("创建 release", ignoreCase = true) ||
+            prompt.contains("创建发布") ||
+            prompt.contains("发布版本") ||
+            prompt.contains("发版")
+    }
+
     private fun extractRequestedBranchName(prompt: String): String? {
         val patterns =
             listOf(
@@ -702,6 +959,157 @@ class ZiCodeAgentRunner(
             ?.take(120)
     }
 
+    private fun extractTargetFilePath(prompt: String): String? {
+        val patterns =
+            listOf(
+                Regex("""`([^`\n]+(?:\.[^`\n]+|/[^`\n]+))`"""),
+                Regex("""(?i)(?:create|update|edit|write|delete|remove)\s+(?:the\s+)?file\s+([A-Za-z0-9._/\-]+)"""),
+                Regex("""(?:创建|更新|修改|写入|删除|移除)(?:这个)?文件[:：\s]+([A-Za-z0-9._/\-]+)"""),
+                Regex("""(?i)(?:file|path)[:：\s]+([A-Za-z0-9._/\-]+)"""),
+                Regex("""(?:文件|路径)[:：\s]+([A-Za-z0-9._/\-]+)""")
+            )
+        return patterns.asSequence()
+            .mapNotNull { it.find(prompt)?.groupValues?.getOrNull(1) }
+            .map { it.trim().trim('"', '\'', '`') }
+            .firstOrNull { candidate ->
+                candidate.isNotBlank() && !candidate.contains(' ') && (candidate.contains('/') || candidate.contains('.'))
+            }
+    }
+
+    private fun extractEmbeddedFileContent(prompt: String): String? {
+        return Regex("""(?s)```(?:[A-Za-z0-9_+\-.#]+)?\r?\n(.*?)\r?\n```""")
+            .find(prompt)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim('\r', '\n')
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun extractReleaseTag(prompt: String): String? {
+        val patterns =
+            listOf(
+                Regex("""(?i)(?:tag|release)\s*[:：\s]+(v?[A-Za-z0-9._\-]+)"""),
+                Regex("""(?:标签|版本号|发布标签)[:：\s]+(v?[A-Za-z0-9._\-]+)""")
+            )
+        return patterns.asSequence()
+            .mapNotNull { it.find(prompt)?.groupValues?.getOrNull(1) }
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() }
+    }
+
+    private fun extractReleaseName(prompt: String): String? {
+        val patterns =
+            listOf(
+                Regex("""(?i)(?:release name|release title)[:：\s]+([^\n]+)"""),
+                Regex("""(?:发布名称|发布标题)[:：\s]+([^\n]+)""")
+            )
+        return patterns.asSequence()
+            .mapNotNull { it.find(prompt)?.groupValues?.getOrNull(1) }
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() }
+            ?.take(120)
+    }
+
+    private fun resolveWorkflowRunTarget(
+        prompt: String,
+        workflowRuns: List<ZiCodeGitHubWorkflowRun>
+    ): ZiCodeGitHubWorkflowRun? {
+        val lowerPrompt = prompt.lowercase()
+        return workflowRuns.firstOrNull { workflowRun ->
+            workflowRun.name.lowercase() in lowerPrompt ||
+                workflowRun.branch?.lowercase()?.let { it in lowerPrompt } == true
+        } ?: workflowRuns.firstOrNull()
+    }
+
+    private fun buildAutoBranchName(): String {
+        return "zicode/${autoTagFormatter.format(System.currentTimeMillis())}"
+    }
+
+    private fun buildAutoReleaseTag(): String {
+        return "zicode-${autoTagFormatter.format(System.currentTimeMillis())}"
+    }
+
+    private fun buildWriteCommitMessage(
+        path: String,
+        existed: Boolean,
+        useChinese: Boolean
+    ): String {
+        return if (existed) {
+            tr(useChinese, "通过 ZiCode 更新 $path", "Update $path via ZiCode")
+        } else {
+            tr(useChinese, "通过 ZiCode 创建 $path", "Create $path via ZiCode")
+        }
+    }
+
+    private fun buildDeleteCommitMessage(
+        path: String,
+        useChinese: Boolean
+    ): String {
+        return tr(useChinese, "通过 ZiCode 删除 $path", "Delete $path via ZiCode")
+    }
+
+    private suspend fun generateFileContent(
+        resolvedModel: ResolvedZiCodeModel,
+        repo: ZiCodeRemoteRepo,
+        prompt: String,
+        path: String,
+        existingPreview: ZiCodeFilePreview?,
+        readmePreview: ZiCodeFilePreview?,
+        useChinese: Boolean
+    ): Result<String> {
+        return runCatching {
+            val result =
+                chatApiClient.chatCompletions(
+                    provider = resolvedModel.provider,
+                    modelId = resolvedModel.remoteModelId,
+                    messages = listOf(
+                        Message(
+                            role = "system",
+                            content = if (useChinese) {
+                                "你是 ZiCode。请只输出目标文件的最终内容，不要解释，不要 Markdown 代码块，不要额外前后缀。"
+                            } else {
+                                "You are ZiCode. Return only the final file contents. No explanation, no Markdown fences, and no extra wrapper text."
+                            }
+                        ),
+                        Message(
+                            role = "user",
+                            content =
+                                buildString {
+                                    appendLine("${tr(useChinese, "仓库", "Repository")}: ${repo.fullName}")
+                                    appendLine("${tr(useChinese, "目标文件", "Target file")}: $path")
+                                    appendLine()
+                                    appendLine("${tr(useChinese, "用户目标", "User goal")}:")
+                                    appendLine(prompt)
+                                    existingPreview?.content?.takeIf { it.isNotBlank() }?.let {
+                                        appendLine()
+                                        appendLine("${tr(useChinese, "当前文件内容", "Current file contents")}:")
+                                        appendLine(it.take(2000))
+                                    }
+                                    readmePreview?.content?.takeIf { it.isNotBlank() }?.let {
+                                        appendLine()
+                                        appendLine("README:")
+                                        appendLine(it.take(1200))
+                                    }
+                                }
+                        )
+                    ),
+                    extraHeaders = resolvedModel.model.headers,
+                    reasoningEffort = resolvedModel.model.reasoningEffort,
+                    enableThinking = resolvedModel.enableThinking,
+                    maxTokens = 2200
+                ).getOrThrow()
+            stripMarkdownCodeFences(result).trim()
+        }
+    }
+
+    private fun stripMarkdownCodeFences(raw: String): String {
+        val trimmed = raw.trim()
+        if (!trimmed.startsWith("```")) return trimmed
+        val lines = trimmed.lines()
+        if (lines.size < 3) return trimmed.removePrefix("```").removeSuffix("```").trim()
+        return lines.drop(1).dropLast(1).joinToString("\n").trim()
+    }
+
     private fun resolveWorkflowDispatchTarget(
         prompt: String,
         workflows: List<ZiCodeGitHubWorkflow>
@@ -727,9 +1135,11 @@ class ZiCodeAgentRunner(
         releases: List<ZiCodeGitHubRelease>,
         pagesInfo: ZiCodeGitHubPagesInfo?,
         readmePreview: ZiCodeFilePreview?,
+        latestFileCommit: ZiCodeGitHubCommit?,
         createdBranch: ZiCodeGitHubBranch?,
         createdIssue: ZiCodeGitHubIssue?,
         createdPullRequest: ZiCodeGitHubPullRequest?,
+        createdRelease: ZiCodeGitHubRelease?,
         dispatchedWorkflowName: String?,
         useChinese: Boolean
     ): String {
@@ -752,6 +1162,7 @@ class ZiCodeAgentRunner(
             appendLine()
             appendLine(t("最近提交：", "Recent commits:"))
             if (commits.isEmpty()) appendLine("- ${t("没有提交数据。", "No commits.")}") else commits.take(8).forEach { appendLine("- ${it.sha.take(7)} · ${it.message}") }
+            latestFileCommit?.let { appendLine("- ${t("本轮最新提交", "Latest commit in this run")}: ${it.sha.take(7)} · ${it.message}") }
             appendLine()
             appendLine(t("Issues：", "Issues:"))
             if (issues.isEmpty()) appendLine("- ${t("没有可见 Issue。", "No visible issues.")}") else issues.take(8).forEach { appendLine("- #${it.number} · ${it.title} · ${it.state}") }
@@ -778,6 +1189,7 @@ class ZiCodeAgentRunner(
             appendLine()
             appendLine(t("发布：", "Releases:"))
             if (releases.isEmpty()) appendLine("- ${t("没有 Release。", "No releases.")}") else releases.take(6).forEach { appendLine("- ${it.tagName}${it.name.takeIf { name -> name.isNotBlank() }?.let { name -> " · $name" } ?: ""}") }
+            createdRelease?.let { appendLine("- ${t("本轮新建 Release", "Created release in this run")}: ${it.tagName}") }
             appendLine()
             appendLine(t("Pages：", "Pages:"))
             if (pagesInfo == null) appendLine("- ${t("没有 Pages 数据。", "No pages data.")}") else {
@@ -811,9 +1223,11 @@ class ZiCodeAgentRunner(
         releases: List<ZiCodeGitHubRelease>,
         pagesInfo: ZiCodeGitHubPagesInfo?,
         readmePreview: ZiCodeFilePreview?,
+        latestFileCommit: ZiCodeGitHubCommit?,
         createdBranch: ZiCodeGitHubBranch?,
         createdIssue: ZiCodeGitHubIssue?,
         createdPullRequest: ZiCodeGitHubPullRequest?,
+        createdRelease: ZiCodeGitHubRelease?,
         dispatchedWorkflowName: String?,
         useChinese: Boolean
     ): String {
@@ -823,7 +1237,7 @@ class ZiCodeAgentRunner(
         val folders = rootEntries.filter { it.type == "dir" }.take(6).joinToString(listSeparator) { it.name }
         val files = rootEntries.filter { it.type == "file" }.take(6).joinToString(listSeparator) { it.name }
         return buildString {
-            appendLine(t("我已经围绕“$prompt”完成了对 `${repo.fullName}` 的 GitHub Agent 首轮执行。", "I completed a first GitHub Agent pass on `${repo.fullName}` for \"$prompt\"."))
+            appendLine(t("我已经围绕“$prompt”完成了对 `${repo.fullName}` 的 ZiCode 首轮执行。", "I completed a first ZiCode pass on `${repo.fullName}` for \"$prompt\"."))
             appendLine()
             appendLine(t("这轮实际执行：", "Executed in this turn:"))
             appendLine("- ${t("校验了 GitHub Token 与 ZiCode 默认模型。", "Validated the GitHub token and the ZiCode default model.")}")
@@ -831,6 +1245,7 @@ class ZiCodeAgentRunner(
             createdBranch?.let { appendLine("- ${t("已创建分支", "Created branch")}: `${it.name}`${if (useChinese) "。" else "."}") }
             createdIssue?.let { appendLine("- ${t("已创建 Issue", "Created issue")}: `#${it.number} ${it.title}`${if (useChinese) "。" else "."}") }
             createdPullRequest?.let { appendLine("- ${t("已创建 PR", "Created pull request")}: `#${it.number} ${it.title}`${if (useChinese) "。" else "."}") }
+            createdRelease?.let { appendLine("- ${t("已创建 Release", "Created release")}: `${it.tagName}`${if (useChinese) "。" else "."}") }
             dispatchedWorkflowName?.let { appendLine("- ${t("已触发工作流", "Dispatched workflow")}: `$it`${if (useChinese) "。" else "."}") }
             appendLine()
             appendLine(t("仓库现状：", "Current repository state:"))
@@ -845,6 +1260,7 @@ class ZiCodeAgentRunner(
             appendLine("- ${t("顶层文件", "Top-level files")}: ${files.ifBlank { t("暂未识别到明显文件。", "No obvious files were identified.") }}")
             if (branches.isNotEmpty()) appendLine("- ${t("当前分支", "Branches")}: ${branches.take(6).joinToString(listSeparator) { it.name }}")
             if (commits.isNotEmpty()) appendLine("- ${t("最近提交", "Recent commits")}: ${commits.take(3).joinToString(commitSeparator) { "${it.sha.take(7)} ${it.message}" }}")
+            latestFileCommit?.let { appendLine("- ${t("本轮提交", "Latest commit in this run")}: ${it.sha.take(7)} ${it.message}") }
             if (issues.isNotEmpty()) appendLine("- ${t("最近 Issues", "Recent issues")}: ${issues.take(3).joinToString(listSeparator) { "#${it.number} ${it.title}" }}")
             if (pullRequests.isNotEmpty()) appendLine("- ${t("当前 PR", "Current pull requests")}: ${pullRequests.take(3).joinToString(listSeparator) { "#${it.number} ${it.title}" }}")
             if (workflows.isNotEmpty()) appendLine("- ${t("工作流", "Workflows")}: ${workflows.take(4).joinToString(listSeparator) { it.name }}")
@@ -893,5 +1309,6 @@ class ZiCodeAgentRunner(
 
     companion object {
         private val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
+        private val autoTagFormatter = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
     }
 }

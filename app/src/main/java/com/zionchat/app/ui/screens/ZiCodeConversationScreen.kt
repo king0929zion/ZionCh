@@ -75,6 +75,7 @@ import com.zionchat.app.R
 import com.zionchat.app.ui.components.AppModalBottomSheet
 import com.zionchat.app.ui.components.FooterTranslucentBackdrop
 import com.zionchat.app.ui.components.HeaderTranslucentBackdrop
+import com.zionchat.app.ui.components.MarkdownText
 import com.zionchat.app.ui.components.pressableScale
 import com.zionchat.app.ui.components.rememberResourceDrawablePainter
 import com.zionchat.app.ui.icons.AppIcons
@@ -133,8 +134,9 @@ fun ZiCodeConversationScreen(
     val imeVisible = inputFocused && imeBottomPx > imeThresholdPx
     val imeBottomPadding = with(density) { WindowInsets.ime.getBottom(this).toDp() }
     val navBottomPadding = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
-    val inputBottomInset = if (imeVisible) imeBottomPadding else navBottomPadding
-    val inputBottomSpacing = bottomInputBottomPadding(imeVisible)
+    val restingBottomInset = navBottomPadding.coerceAtMost(6.dp)
+    val inputBottomInset = if (imeVisible) imeBottomPadding else restingBottomInset
+    val inputBottomSpacing = if (imeVisible) 10.dp else 4.dp
     val composerHeightDp = with(density) { composerHeightPx.toDp() }
 
     LaunchedEffect(turns.size) {
@@ -172,7 +174,7 @@ fun ZiCodeConversationScreen(
                 start = 16.dp,
                 end = 16.dp,
                 top = 104.dp,
-                bottom = composerHeightDp + inputBottomInset + inputBottomSpacing + 18.dp
+                bottom = composerHeightDp + inputBottomInset + inputBottomSpacing + 12.dp
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -283,11 +285,16 @@ private fun ZiCodeTurnCard(turn: ZiCodeTurn) {
             Box(modifier = Modifier.fillMaxWidth().padding(18.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = stringResource(R.string.zicode_agent_title), color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = SourceSans3, modifier = Modifier.weight(1f))
+                        Text(text = stringResource(R.string.zicode_name), color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = SourceSans3, modifier = Modifier.weight(1f))
                         ZiCodeMiniStatusBadge(text = stringResource(turn.status.labelRes()))
                     }
                     turn.response.takeIf { it.isNotBlank() }?.let {
-                        Text(text = it, color = TextPrimary, fontSize = 15.sp, lineHeight = 22.sp, fontFamily = SourceSans3)
+                        MarkdownText(
+                            markdown = it,
+                            textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 22.sp, fontFamily = SourceSans3),
+                            linkColor = ZiCodeSecondaryText,
+                            monochrome = true
+                        )
                     }
                     if (turn.toolCalls.isNotEmpty()) {
                         Column {
@@ -336,24 +343,45 @@ private fun BoxScope.ZiCodeComposer(
     modifier: Modifier = Modifier,
     onMeasured: (Int) -> Unit
 ) {
-    Box(modifier = modifier) {
-        FooterTranslucentBackdrop(modifier = Modifier.fillMaxWidth().height(138.dp), containerColor = ZiCodePageBackground, containerAlpha = 0.94f)
+    Box(modifier = modifier, contentAlignment = Alignment.BottomStart) {
+        FooterTranslucentBackdrop(modifier = Modifier.fillMaxWidth().height(92.dp), containerColor = ZiCodePageBackground, containerAlpha = 0.94f)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .onSizeChanged { onMeasured(it.height) }
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.Bottom
         ) {
-            ZiCodeCircleButton(onClick = onToggleTools, size = 46.dp, modifier = Modifier.padding(bottom = 4.dp)) {
+            Box(
+                modifier = Modifier
+                    .padding(bottom = 2.dp)
+                    .size(46.dp)
+                    .shadow(
+                        elevation = 2.dp,
+                        shape = CircleShape,
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.05f),
+                        spotColor = Color.Black.copy(alpha = 0.05f)
+                    )
+                    .clip(CircleShape)
+                    .background(Color.White, CircleShape)
+                    .pressableScale(pressedScale = 0.95f, onClick = onToggleTools),
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(painter = rememberResourceDrawablePainter(R.drawable.ic_zicode), contentDescription = stringResource(R.string.zicode_tool_sheet_title), tint = Color.Unspecified, modifier = Modifier.size(22.dp))
             }
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 46.dp)
-                    .shadow(8.dp, RoundedCornerShape(24.dp), clip = false)
+                    .shadow(
+                        elevation = 2.dp,
+                        shape = RoundedCornerShape(24.dp),
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.05f),
+                        spotColor = Color.Black.copy(alpha = 0.05f)
+                    )
                     .clip(RoundedCornerShape(24.dp))
                     .background(Color.White)
                     .animateContentSize(animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)),

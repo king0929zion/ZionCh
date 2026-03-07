@@ -1,7 +1,7 @@
-## ZionChat v0.38.0
+## ZionChat v0.39.0
 
-- 继续收口 `ZiCode`：默认模型页进一步资源化，补上 `ZiCode Agent` 的完整中英文适配，并把相关提醒文案统一回灰白黑体系，不再出现偏色 warning。
-- `ZiCode` 的 GitHub Agent 再扩一轮：会话执行流新增 `Issues`、`Pull Requests`、`Artifacts` 上下文，支持读取 Issue / PR / 构建产物，并按提示词自动尝试创建 Issue、创建 PR。
-- `ZiCode` 运行态文案完成双语化：工具状态、结果按钮、Agent fallback 总结、工具清单和设置页能力说明都会跟随应用语言切换，不再混杂中英文硬编码。
-- `ZiCode` 的 GitHub 底层错误文案改成中性英文，英文环境下不会再冒出中文异常信息；README、Actions、Pages、Release 等执行摘要也一并收紧为统一语气。
-- 继续优化远端构建体验：补充 `org.gradle.configuration-cache.parallel=true`，进一步压缩重复构建时的配置阶段开销。
+- 继续重做 `ZiCode` 对话页底部输入区：修正了输入框在模糊底板里悬空的问题，让 composer 真正贴底，收掉底部多余留白，同时把阴影压轻，整体更接近主对话页的干净手感。
+- `ZiCode` 现在支持更完整的 Markdown 回复渲染：普通段落、列表、表格、引用、代码块都可直接显示；并为 ZiCode 单独切到灰白黑单色渲染，避免代码高亮和彩色链接破坏整体配色。
+- Markdown 相关交互一并做了双语化：代码块里的“复制代码 / Copy code”“纯文本 / Plain text”会跟随应用语言切换，不再出现英文硬编码突然混入 ZiCode 页面。
+- `ZiCode` 的 GitHub 执行链继续补强：文件写入/删除时会更严格区分真实文件节点，创建 Release 后会优先回填 Release 结果，同时新建 PR、Issue 也会成为结果入口，不再只会回仓库主页。
+- 进一步收紧 `ZiCode` 的用户侧文案：输入框提示改成更短的任务导向文案，减少不必要的 `Agent` 强调，让整个模块更像一个自然的项目执行入口。

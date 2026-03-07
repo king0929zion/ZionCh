@@ -153,6 +153,28 @@ class ZiCodeGitHubService {
         }
     }
 
+    suspend fun fetchNode(
+        token: String,
+        owner: String,
+        repo: String,
+        path: String
+    ): Result<ZiCodeRepoNode> = withContext(Dispatchers.IO) {
+        val normalizedPath = normalizePath(path)
+        if (normalizedPath.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("File path cannot be empty."))
+        }
+
+        executeJson(
+            Request.Builder()
+                .url("$apiBase/repos/${owner.trim()}/${repo.trim()}/contents/${encodePath(normalizedPath)}")
+                .get()
+                .applyGitHubHeaders(token)
+                .build()
+        ).mapCatching { body ->
+            body.asJsonObject.toRepoNode()
+        }
+    }
+
     suspend fun listBranches(
         token: String,
         owner: String,

@@ -352,7 +352,7 @@
     <string name="zicode_model_section">Default model</string>
     <string name="zicode_tools_section">Tools</string>
     <string name="zicode_about_section">About</string>
-    <string name="zicode_about_title">ZiCode is a GitHub execution agent</string>
+    <string name="zicode_about_title">ZiCode runs through GitHub</string>
     <string name="zicode_about_body">ZiCode keeps the mobile app focused on conversation, status, logs, and files, while GitHub handles repository operations, Actions, Pages, and delivery.</string>
     <string name="zicode_token_label">GitHub Token</string>
     <string name="zicode_connection_ready">Connected:</string>
@@ -361,7 +361,7 @@
     <string name="zicode_token_saved">Token saved.</string>
     <string name="zicode_enter_token">Enter a GitHub Token first.</string>
     <string name="zicode_token_validation_failed">Token validation failed.</string>
-    <string name="zicode_default_model_title">ZiCode Agent model</string>
+    <string name="zicode_default_model_title">ZiCode model</string>
     <string name="zicode_default_model_missing">Not set. ZiCode cannot run until this is configured.</string>
     <string name="zicode_open_default_model">Open</string>
     <string name="zicode_model_note_title">Model rule</string>
@@ -404,7 +404,7 @@
     <string name="zicode_conversation_empty_hint">Start with a concrete goal for this repository.</string>
     <string name="zicode_conversation_sessions">Conversations</string>
     <string name="zicode_new_conversation">New conversation</string>
-    <string name="zicode_agent_title">ZiCode Agent</string>
+    <string name="zicode_agent_title">ZiCode</string>
     <string name="zicode_open_result">Open result</string>
     <string name="zicode_tool_sheet_title">GitHub tools</string>
     <string name="zicode_active">Active</string>
@@ -413,25 +413,27 @@
     <string name="zicode_status_running">Running</string>
     <string name="zicode_status_done">Done</string>
     <string name="zicode_status_failed">Failed</string>
-    <string name="zicode_input_placeholder">Continue with the next GitHub goal...</string>
+    <string name="zicode_input_placeholder">Enter task...</string>
     <string name="zicode_send">Send</string>
+    <string name="markdown_copy_code">Copy code</string>
+    <string name="markdown_plain_text">Plain text</string>
 
     <!-- Default model -->
     <string name="default_model_screen_title">Default model</string>
     <string name="default_model_screen_note">Configure default models for different tasks. Chat model is required, the rest are optional.</string>
     <string name="default_model_warning_app_builder">App developer requires App Development model before generating or fixing apps.</string>
-    <string name="default_model_warning_zicode">ZiCode requires its own default model before GitHub agent tasks can run.</string>
+    <string name="default_model_warning_zicode">ZiCode requires its own default model before GitHub execution can run.</string>
     <string name="default_model_type_chat">Chat model</string>
     <string name="default_model_type_vision">Vision model</string>
     <string name="default_model_type_image">Image generation</string>
     <string name="default_model_type_title">Title summary</string>
     <string name="default_model_type_app_builder">App development</string>
-    <string name="default_model_type_zicode">ZiCode agent</string>
+    <string name="default_model_type_zicode">ZiCode</string>
     <string name="default_model_selector_chat">Select chat model</string>
     <string name="default_model_selector_vision">Select vision model</string>
     <string name="default_model_selector_image">Select image generation model</string>
     <string name="default_model_selector_title">Select title summary model</string>
     <string name="default_model_selector_app_builder">Select app development model</string>
-    <string name="default_model_selector_zicode">Select ZiCode agent model</string>
+    <string name="default_model_selector_zicode">Select ZiCode model</string>
     <string name="default_model_provider_other">Other</string>
 </resources>

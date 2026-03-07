@@ -324,7 +324,7 @@
     <string name="zicode_model_section">默认模型</string>
     <string name="zicode_tools_section">工具</string>
     <string name="zicode_about_section">说明</string>
-    <string name="zicode_about_title">ZiCode 是一个 GitHub 执行 Agent</string>
+    <string name="zicode_about_title">ZiCode 通过 GitHub 执行</string>
     <string name="zicode_about_body">ZiCode 让移动端继续保持对话、状态、日志和文件查看体验，而真实仓库操作、Actions、Pages 与交付都交给 GitHub 承载。</string>
     <string name="zicode_token_label">GitHub Token</string>
     <string name="zicode_connection_ready">已连接：</string>
@@ -333,7 +333,7 @@
     <string name="zicode_token_saved">Token 已保存。</string>
     <string name="zicode_enter_token">请先输入 Token。</string>
     <string name="zicode_token_validation_failed">Token 校验失败。</string>
-    <string name="zicode_default_model_title">ZiCode Agent 模型</string>
+    <string name="zicode_default_model_title">ZiCode 模型</string>
     <string name="zicode_default_model_missing">未设置。ZiCode 必须单独配置默认模型后才能运行。</string>
     <string name="zicode_open_default_model">打开</string>
     <string name="zicode_model_note_title">模型规则</string>
@@ -376,7 +376,7 @@
     <string name="zicode_conversation_empty_hint">直接告诉 ZiCode 你希望在这个仓库里完成什么。</string>
     <string name="zicode_conversation_sessions">会话</string>
     <string name="zicode_new_conversation">新对话</string>
-    <string name="zicode_agent_title">ZiCode Agent</string>
+    <string name="zicode_agent_title">ZiCode</string>
     <string name="zicode_open_result">打开结果</string>
     <string name="zicode_tool_sheet_title">GitHub 工具</string>
     <string name="zicode_active">当前</string>
@@ -385,25 +385,27 @@
     <string name="zicode_status_running">运行中</string>
     <string name="zicode_status_done">完成</string>
     <string name="zicode_status_failed">失败</string>
-    <string name="zicode_input_placeholder">继续告诉 ZiCode 你的 GitHub 目标...</string>
+    <string name="zicode_input_placeholder">输入任务...</string>
     <string name="zicode_send">发送</string>
+    <string name="markdown_copy_code">复制代码</string>
+    <string name="markdown_plain_text">纯文本</string>
 
     <!-- Default model -->
     <string name="default_model_screen_title">默认模型</string>
     <string name="default_model_screen_note">为不同任务配置默认模型。对话模型必填，其余模型可按需设置。</string>
     <string name="default_model_warning_app_builder">APP developer 在生成或修复应用前，需要先配置 App Development 模型。</string>
-    <string name="default_model_warning_zicode">ZiCode 在执行 GitHub Agent 任务前，需要先单独配置自己的默认模型。</string>
+    <string name="default_model_warning_zicode">ZiCode 在执行 GitHub 任务前，需要先单独配置自己的默认模型。</string>
     <string name="default_model_type_chat">对话模型</string>
     <string name="default_model_type_vision">视觉模型</string>
     <string name="default_model_type_image">图像生成</string>
     <string name="default_model_type_title">标题总结</string>
     <string name="default_model_type_app_builder">应用开发</string>
-    <string name="default_model_type_zicode">ZiCode Agent</string>
+    <string name="default_model_type_zicode">ZiCode</string>
     <string name="default_model_selector_chat">选择对话模型</string>
     <string name="default_model_selector_vision">选择视觉模型</string>
     <string name="default_model_selector_image">选择图像生成模型</string>
     <string name="default_model_selector_title">选择标题总结模型</string>
     <string name="default_model_selector_app_builder">选择应用开发模型</string>
-    <string name="default_model_selector_zicode">选择 ZiCode Agent 模型</string>
+    <string name="default_model_selector_zicode">选择 ZiCode 模型</string>
     <string name="default_model_provider_other">其他</string>
 </resources>
