@@ -130,8 +130,8 @@ fun ZiCodeConversationScreen(
     val imeBottomPx = WindowInsets.ime.getBottom(density)
     val imeThresholdPx = with(density) { 24.dp.roundToPx() }
     val imeVisible = inputFocused && imeBottomPx > imeThresholdPx
-    val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-    val navBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val imeBottomPadding = with(density) { WindowInsets.ime.getBottom(this).toDp() }
+    val navBottomPadding = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
     val inputBottomInset = if (imeVisible) imeBottomPadding else navBottomPadding
     val inputBottomSpacing = bottomInputBottomPadding(imeVisible)
     val composerHeightDp = with(density) { composerHeightPx.toDp() }

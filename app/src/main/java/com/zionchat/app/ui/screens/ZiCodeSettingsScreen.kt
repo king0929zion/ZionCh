@@ -66,6 +66,7 @@ fun ZiCodeSettingsScreen(navController: NavController) {
     val tokenSavedText = stringResource(R.string.zicode_token_saved)
     val enterTokenText = stringResource(R.string.zicode_enter_token)
     val tokenValidationFailedText = stringResource(R.string.zicode_token_validation_failed)
+    val connectionReadyText = stringResource(R.string.zicode_connection_ready)
 
     val modelName =
         remember(models, ziCodeModelId) {
@@ -125,7 +126,7 @@ fun ZiCodeSettingsScreen(navController: NavController) {
                                     .onSuccess { viewer ->
                                         repository.setGitHubToken(token)
                                         repository.updateViewer(viewer)
-                                        statusText = "${stringResource(R.string.zicode_connection_ready)} ${viewer.login}"
+                                        statusText = "$connectionReadyText ${viewer.login}"
                                     }
                                     .onFailure { throwable ->
                                         statusText = throwable.message?.trim().orEmpty().ifBlank { tokenValidationFailedText }
