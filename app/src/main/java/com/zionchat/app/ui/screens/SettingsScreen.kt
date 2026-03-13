@@ -978,81 +978,79 @@ fun AppearanceMenu(
                     }
             ) {
                 val shape = RoundedCornerShape(28.dp)
-                val itemShape = RoundedCornerShape(20.dp)
                 Box(
                     modifier = Modifier
                         .widthIn(max = 220.dp)
                         .shadow(
-                            elevation = 18.dp,
+                            elevation = 16.dp,
                             shape = shape,
                             clip = false,
-                            ambientColor = Color.Black.copy(alpha = 0.05f),
-                            spotColor = Color.Black.copy(alpha = 0.03f)
+                            ambientColor = Color.Black.copy(alpha = 0.045f),
+                            spotColor = Color.Black.copy(alpha = 0.025f)
                         )
                         .background(Color.White, shape)
                         .border(width = 1.dp, color = Color.Black.copy(alpha = 0.05f), shape = shape)
                 ) {
                     Column(
-                        modifier = Modifier.padding(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        modifier = Modifier.padding(vertical = 8.dp)
                     ) {
-                        appearanceOptions.forEach { option ->
+                        appearanceOptions.forEachIndexed { index, option ->
                             val key = option.key
                             val isSelected = key == selected
-                            Box(
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(itemShape)
-                                    .background(if (isSelected) SettingsItemPressedColor else SettingsItemContainerColor)
                                     .clickable {
                                         onSelect(key)
                                         onDismiss()
                                     }
-                                    .padding(horizontal = 14.dp, vertical = 14.dp)
+                                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = option.icon,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                            tint = TextPrimary
-                                        )
-                                        Text(
-                                            text = stringResource(option.labelRes),
-                                            fontSize = 15.sp,
-                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                                            color = TextPrimary
-                                        )
-                                    }
-
-                                    // 选中打勾 - 带动画
-                                    androidx.compose.animation.AnimatedVisibility(
-                                        visible = isSelected,
-                                        enter = androidx.compose.animation.scaleIn(
-                                            initialScale = 0f,
-                                            animationSpec = tween(200, easing = androidx.compose.animation.core.EaseOutBack)
-                                        ),
-                                        exit = androidx.compose.animation.scaleOut(
-                                            targetScale = 0f,
-                                            animationSpec = tween(150)
-                                        )
-                                    ) {
-                                        Icon(
-                                            imageVector = AppIcons.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                            tint = TextPrimary
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = option.icon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = TextPrimary
+                                    )
+                                    Text(
+                                        text = stringResource(option.labelRes),
+                                        fontSize = 15.sp,
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = TextPrimary
+                                    )
                                 }
+
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = isSelected,
+                                    enter = androidx.compose.animation.scaleIn(
+                                        initialScale = 0f,
+                                        animationSpec = tween(200, easing = androidx.compose.animation.core.EaseOutBack)
+                                    ),
+                                    exit = androidx.compose.animation.scaleOut(
+                                        targetScale = 0f,
+                                        animationSpec = tween(150)
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = TextPrimary
+                                    )
+                                }
+                            }
+                            if (index < appearanceOptions.lastIndex) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 18.dp),
+                                    color = Color.Black.copy(alpha = 0.06f),
+                                    thickness = 1.dp
+                                )
                             }
                         }
                     }
@@ -1076,9 +1074,9 @@ fun AccentColorMenu(
     val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
     val topOffsetPx = with(density) { 20.dp.toPx() }
     val screenMarginPx = with(density) { 8.dp.toPx() }
-    val optionHeightPx = with(density) { 40.dp.toPx() }
-    val optionSpacingPx = with(density) { 2.dp.toPx() }
-    val contentPaddingPx = with(density) { 12.dp.toPx() }
+    val optionHeightPx = with(density) { 48.dp.toPx() }
+    val optionSpacingPx = 0f
+    val contentPaddingPx = with(density) { 16.dp.toPx() }
     val optionCount = accentColorOptions.size
     val menuHeightPx =
         contentPaddingPx +
@@ -1135,84 +1133,80 @@ fun AccentColorMenu(
                     }
             ) {
                 val shape = RoundedCornerShape(28.dp)
-                val itemShape = RoundedCornerShape(20.dp)
                 Box(
                     modifier = Modifier
                         .widthIn(max = 220.dp)
                         .shadow(
-                            elevation = 18.dp,
+                            elevation = 16.dp,
                             shape = shape,
                             clip = false,
-                            ambientColor = Color.Black.copy(alpha = 0.05f),
-                            spotColor = Color.Black.copy(alpha = 0.03f)
+                            ambientColor = Color.Black.copy(alpha = 0.045f),
+                            spotColor = Color.Black.copy(alpha = 0.025f)
                         )
                         .background(Color.White, shape)
                         .border(width = 1.dp, color = Color.Black.copy(alpha = 0.05f), shape = shape)
                 ) {
                     Column(
-                        modifier = Modifier.padding(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        modifier = Modifier.padding(vertical = 8.dp)
                     ) {
-                        accentColorOptions.forEach { option ->
+                        accentColorOptions.forEachIndexed { index, option ->
                             val key = option.key
                             val color = option.color
                             val isSelected = key == selected
-                            Box(
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(itemShape)
-                                    .background(if (isSelected) SettingsItemPressedColor else SettingsItemContainerColor)
                                     .clickable {
                                         onSelect(key)
                                         onDismiss()
                                     }
-                                    .padding(horizontal = 14.dp, vertical = 14.dp)
+                                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        // 颜色圆点
-                                        Box(
-                                            modifier = Modifier
-                                                .size(14.dp)
-                                                .clip(CircleShape)
-                                                .background(color)
-                                        )
-
-                                        Text(
-                                            text = stringResource(option.labelRes),
-                                            fontSize = 15.sp,
-                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                                            color = TextPrimary
-                                        )
-                                    }
-
-                                    // 选中打勾 - 带动画
-                                    androidx.compose.animation.AnimatedVisibility(
-                                        visible = isSelected,
-                                        enter = androidx.compose.animation.scaleIn(
-                                            initialScale = 0f,
-                                            animationSpec = tween(200, easing = androidx.compose.animation.core.EaseOutBack)
-                                        ),
-                                        exit = androidx.compose.animation.scaleOut(
-                                            targetScale = 0f,
-                                            animationSpec = tween(150)
-                                        )
-                                    ) {
-                                        Icon(
-                                            imageVector = AppIcons.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                            tint = color
-                                        )
-                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clip(CircleShape)
+                                            .background(color)
+                                    )
+                                    Text(
+                                        text = stringResource(option.labelRes),
+                                        fontSize = 15.sp,
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = TextPrimary
+                                    )
                                 }
+
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = isSelected,
+                                    enter = androidx.compose.animation.scaleIn(
+                                        initialScale = 0f,
+                                        animationSpec = tween(200, easing = androidx.compose.animation.core.EaseOutBack)
+                                    ),
+                                    exit = androidx.compose.animation.scaleOut(
+                                        targetScale = 0f,
+                                        animationSpec = tween(150)
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = TextPrimary
+                                    )
+                                }
+                            }
+                            if (index < accentColorOptions.lastIndex) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 18.dp),
+                                    color = Color.Black.copy(alpha = 0.06f),
+                                    thickness = 1.dp
+                                )
                             }
                         }
                     }

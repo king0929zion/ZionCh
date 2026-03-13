@@ -50,10 +50,14 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -76,14 +80,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.zIndex
 import androidx.navigation.NavController
 import com.zionchat.app.R
 import com.zionchat.app.LocalAppRepository
@@ -243,6 +247,7 @@ fun MessageItem(
     onDelete: (conversationId: String, messageId: String) -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var messageBounds by remember { mutableStateOf<Rect?>(null) }
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
 
@@ -277,6 +282,9 @@ fun MessageItem(
                 Box(
                     modifier = Modifier
                         .padding(start = 60.dp)
+                        .onGloballyPositioned { coordinates ->
+                            messageBounds = coordinates.boundsInWindow()
+                        }
                         .then(
                             if (userBubbleSecondaryColor != null) {
                                 Modifier
@@ -339,6 +347,9 @@ fun MessageItem(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .onGloballyPositioned { coordinates ->
+                    messageBounds = coordinates.boundsInWindow()
+                }
                 .then(assistantContentModifier)
                 .combinedClickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -533,8 +544,9 @@ fun MessageItem(
     }
 
     // Long-press menu
-    if (showMenu) {
+    if (showMenu && messageBounds != null) {
         MessageOptionsDialog(
+            anchorBounds = messageBounds,
             isUser = isUser,
             onCopy = {
                 clipboardManager.setText(AnnotatedString(stripMcpTagMarkers(message.content)))
@@ -1670,63 +1682,94 @@ internal fun ToolDetailCodeCard(
 
 @Composable
 fun MessageOptionsDialog(
+    anchorBounds: Rect?,
     isUser: Boolean,
     onCopy: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val cardShape = RoundedCornerShape(28.dp)
-    Dialog(
+    val bounds = anchorBounds ?: return
+    val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    val popupWidthPx = with(density) { 208.dp.roundToPx() }
+    val rowHeightPx = with(density) { 54.dp.roundToPx() }
+    val popupVerticalPaddingPx = with(density) { 12.dp.roundToPx() }
+    val marginPx = with(density) { 12.dp.roundToPx() }
+    val gapPx = with(density) { 8.dp.roundToPx() }
+    val optionCount = if (isUser) 3 else 2
+    val popupHeightPx = popupVerticalPaddingPx * 2 + (optionCount * rowHeightPx)
+    val preferredX =
+        if (isUser) {
+            bounds.right.toInt() - popupWidthPx
+        } else {
+            bounds.left.toInt()
+        }
+    val clampedX = preferredX.coerceIn(marginPx, (screenWidthPx - popupWidthPx - marginPx).coerceAtLeast(marginPx))
+    val belowY = bounds.bottom.toInt() + gapPx
+    val aboveY = bounds.top.toInt() - popupHeightPx - gapPx
+    val clampedY =
+        if (belowY + popupHeightPx <= screenHeightPx - marginPx || aboveY < marginPx) {
+            belowY
+        } else {
+            aboveY
+        }.coerceIn(marginPx, (screenHeightPx - popupHeightPx - marginPx).coerceAtLeast(marginPx))
+
+    val cardShape = RoundedCornerShape(26.dp)
+    Popup(
+        alignment = Alignment.TopStart,
+        offset = IntOffset(clampedX, clampedY),
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = PopupProperties(
+            focusable = true,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            clippingEnabled = false
+        )
     ) {
-        Box(
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
-            contentAlignment = Alignment.Center
+                .width(208.dp)
+                .shadow(
+                    elevation = 15.dp,
+                    shape = cardShape,
+                    ambientColor = Color.Black.copy(alpha = 0.045f),
+                    spotColor = Color.Black.copy(alpha = 0.025f)
+                )
+                .clip(cardShape)
+                .background(Color.White, cardShape)
+                .border(1.dp, Color.Black.copy(alpha = 0.05f), cardShape)
+                .padding(vertical = 6.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(
-                        elevation = 18.dp,
-                        shape = cardShape,
-                        ambientColor = Color.Black.copy(alpha = 0.05f),
-                        spotColor = Color.Black.copy(alpha = 0.03f)
-                    )
-                    .clip(cardShape)
-                    .background(Color.White, cardShape)
-                    .border(1.dp, Color.Black.copy(alpha = 0.05f), cardShape)
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                MessageOptionRow(
-                    icon = AppIcons.Copy,
-                    text = stringResource(R.string.message_option_copy),
-                    onClick = onCopy
-                )
-                if (isUser) {
-                    MessageOptionRow(
-                        icon = AppIcons.Edit,
-                        text = stringResource(R.string.message_option_edit),
-                        onClick = onEdit
-                    )
-                }
-                MessageOptionRow(
-                    icon = AppIcons.Trash,
-                    text = stringResource(R.string.common_delete),
-                    onClick = onDelete,
-                    isDestructive = true
+            MessageOptionRow(
+                icon = AppIcons.Copy,
+                text = stringResource(R.string.message_option_copy),
+                onClick = onCopy
+            )
+            if (isUser) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                    color = Color.Black.copy(alpha = 0.06f),
+                    thickness = 1.dp
                 )
                 MessageOptionRow(
-                    icon = AppIcons.Close,
-                    text = stringResource(R.string.common_cancel),
-                    onClick = onDismiss,
-                    secondary = true
+                    icon = AppIcons.Edit,
+                    text = stringResource(R.string.message_option_edit),
+                    onClick = onEdit
                 )
             }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 18.dp),
+                color = Color.Black.copy(alpha = 0.06f),
+                thickness = 1.dp
+            )
+            MessageOptionRow(
+                icon = AppIcons.Trash,
+                text = stringResource(R.string.common_delete),
+                onClick = onDelete
+            )
         }
     }
 }
@@ -1735,57 +1778,36 @@ fun MessageOptionsDialog(
 private fun MessageOptionRow(
     icon: ImageVector,
     text: String,
-    onClick: () -> Unit,
-    isDestructive: Boolean = false,
-    secondary: Boolean = false
+    onClick: () -> Unit
 ) {
-    val itemShape = RoundedCornerShape(22.dp)
-    val contentColor =
-        when {
-            isDestructive -> Color(0xFF8A1C1C)
-            secondary -> TextSecondary
-            else -> TextPrimary
-        }
-    val backgroundColor =
-        when {
-            isDestructive -> Color(0xFFF7EAEA)
-            secondary -> Color(0xFFF7F7F7)
-            else -> Color(0xFFF1F1F1)
-        }
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(itemShape)
-            .background(backgroundColor, itemShape)
             .pressableScale(pressedScale = 0.98f, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 16.dp)
+            .padding(horizontal = 18.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.Black.copy(alpha = 0.04f)),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White.copy(alpha = 0.94f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = contentColor,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Text(
-                text = text,
-                fontSize = 16.sp,
-                color = contentColor,
-                fontWeight = FontWeight.SemiBold
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = TextPrimary,
+                modifier = Modifier.size(18.dp)
             )
         }
+        Text(
+            text = text,
+            fontSize = 16.sp,
+            color = TextPrimary,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 

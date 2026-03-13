@@ -339,7 +339,7 @@ private data class UpdateInfo(
 
 private suspend fun checkGitHubRelease(): UpdateInfo? = withContext(Dispatchers.IO) {
     try {
-        val url = URL("https://api.github.com/repos/king0929zion/ZionChat/releases/latest")
+        val url = URL("https://api.github.com/repos/king0929zion/ZionCh/releases/latest")
         val connection = url.openConnection()
         connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
         connection.connectTimeout = 10000
@@ -397,7 +397,7 @@ private fun isNewerVersion(newVersion: String, currentVersion: String): Boolean 
 
 private fun openGitHub(context: Context) {
     try {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/king0929zion/ZionChat"))
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/king0929zion/ZionCh"))
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
     } catch (e: Exception) {
