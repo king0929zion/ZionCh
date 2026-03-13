@@ -417,6 +417,8 @@
     <string name="zicode_send">Send</string>
     <string name="markdown_copy_code">Copy code</string>
     <string name="markdown_plain_text">Plain text</string>
+    <string name="message_option_copy">Copy</string>
+    <string name="message_option_edit">Edit</string>
 
     <!-- Default model -->
     <string name="default_model_screen_title">Default model</string>

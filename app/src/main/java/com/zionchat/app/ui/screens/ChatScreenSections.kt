@@ -70,16 +70,20 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavController
 import com.zionchat.app.R
 import com.zionchat.app.LocalAppRepository
@@ -1672,43 +1676,116 @@ fun MessageOptionsDialog(
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Surface)
+    val cardShape = RoundedCornerShape(28.dp)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                DialogOption(text = "Copy", onClick = onCopy)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(
+                        elevation = 18.dp,
+                        shape = cardShape,
+                        ambientColor = Color.Black.copy(alpha = 0.05f),
+                        spotColor = Color.Black.copy(alpha = 0.03f)
+                    )
+                    .clip(cardShape)
+                    .background(Color.White, cardShape)
+                    .border(1.dp, Color.Black.copy(alpha = 0.05f), cardShape)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                MessageOptionRow(
+                    icon = AppIcons.Copy,
+                    text = stringResource(R.string.message_option_copy),
+                    onClick = onCopy
+                )
                 if (isUser) {
-                    DialogOption(text = "Edit", onClick = onEdit)
+                    MessageOptionRow(
+                        icon = AppIcons.Edit,
+                        text = stringResource(R.string.message_option_edit),
+                        onClick = onEdit
+                    )
                 }
-                DialogOption(text = "Delete", onClick = onDelete, isDestructive = true)
-                DialogOption(text = "Cancel", onClick = onDismiss)
+                MessageOptionRow(
+                    icon = AppIcons.Trash,
+                    text = stringResource(R.string.common_delete),
+                    onClick = onDelete,
+                    isDestructive = true
+                )
+                MessageOptionRow(
+                    icon = AppIcons.Close,
+                    text = stringResource(R.string.common_cancel),
+                    onClick = onDismiss,
+                    secondary = true
+                )
             }
         }
     }
 }
 
 @Composable
-fun DialogOption(
+private fun MessageOptionRow(
+    icon: ImageVector,
     text: String,
     onClick: () -> Unit,
-    isDestructive: Boolean = false
+    isDestructive: Boolean = false,
+    secondary: Boolean = false
 ) {
+    val itemShape = RoundedCornerShape(22.dp)
+    val contentColor =
+        when {
+            isDestructive -> Color(0xFF8A1C1C)
+            secondary -> TextSecondary
+            else -> TextPrimary
+        }
+    val backgroundColor =
+        when {
+            isDestructive -> Color(0xFFF7EAEA)
+            secondary -> Color(0xFFF7F7F7)
+            else -> Color(0xFFF1F1F1)
+        }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .pressableScale(onClick = onClick)
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
+            .clip(itemShape)
+            .background(backgroundColor, itemShape)
+            .pressableScale(pressedScale = 0.98f, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
-        Text(
-            text = text,
-            fontSize = 17.sp,
-            color = if (isDestructive) Color(0xFFFF3B30) else TextPrimary,
-            fontWeight = FontWeight.Medium
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.94f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Text(
+                text = text,
+                fontSize = 16.sp,
+                color = contentColor,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
 }
 
@@ -4793,6 +4870,7 @@ internal fun BottomInputArea(
     isStreaming: Boolean = false,
     imeVisible: Boolean = false,
     onInputFocusChanged: (Boolean) -> Unit = {},
+    inputFocusRequester: FocusRequester? = null,
     actionActiveColor: Color = TextPrimary
 ) {
     val hasText = messageText.trim().isNotEmpty()
@@ -5038,6 +5116,13 @@ internal fun BottomInputArea(
                         onValueChange = onMessageChange,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .then(
+                                if (inputFocusRequester != null) {
+                                    Modifier.focusRequester(inputFocusRequester)
+                                } else {
+                                    Modifier
+                                }
+                            )
                             .onFocusChanged { state -> onInputFocusChanged(state.isFocused) }
                             .heightIn(min = 24.dp, max = maxTextHeight),
                         textStyle = TextStyle(

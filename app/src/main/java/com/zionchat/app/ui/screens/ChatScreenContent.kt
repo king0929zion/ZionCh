@@ -41,6 +41,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -62,6 +63,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -288,7 +290,10 @@ internal fun ChatScreenContent(
     val enabledMcpServers = remember(mcpList) { mcpList.filter { it.enabled } }
     val mcpServerPickerItems = remember(enabledMcpServers) { buildMcpServerPickerItems(enabledMcpServers) }
     val chatModelGroups = remember(providers, models) { groupEnabledModelsByProvider(providers, models) }
-    var lastAutoDispatchedTaskId by remember { mutableStateOf<String?>(null) }
+    val inputFocusRequester = remember { FocusRequester() }
+    var lastAutoDispatchKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var lastDispatchedFingerprint by rememberSaveable { mutableStateOf<String?>(null) }
+    var lastDispatchedAtMs by rememberSaveable { mutableStateOf(0L) }
 
     // Avoid IME restore loops on cold start/resume.
     LaunchedEffect(Unit) {
@@ -1461,12 +1466,35 @@ internal fun ChatScreenContent(
                 !explicitAutoBrowserRequest &&
                 !confirmationMatched &&
                 shouldEnableAppBuilderForPrompt(trimmed)
+        val dispatchFingerprint =
+            buildString {
+                append(
+                    effectiveConversationId?.trim().takeIf { !it.isNullOrBlank() }
+                        ?: currentConversationId?.trim().takeIf { !it.isNullOrBlank() }
+                        ?: "draft"
+                )
+                append('|')
+                append(selectedToolSnapshot ?: "none")
+                append('|')
+                append(attachmentsSnapshot.size)
+                append('|')
+                append(trimmed)
+            }
+        val dispatchStartedAtMs = System.currentTimeMillis()
+        if (
+            dispatchFingerprint == lastDispatchedFingerprint &&
+            dispatchStartedAtMs - lastDispatchedAtMs < 900L
+        ) {
+            return
+        }
+        lastDispatchedFingerprint = dispatchFingerprint
+        lastDispatchedAtMs = dispatchStartedAtMs
 
         stopRequestedByUser = false
         sendInFlight = true
         streamingJob = chatStreamingExecutionScope.launch {
             try {
-                val nowMs = System.currentTimeMillis()
+                val nowMs = dispatchStartedAtMs
                 val provisionalTitle = trimmed.lineSequence().firstOrNull().orEmpty().trim().take(24)
                 val initialConversations = repository.conversationsFlow.first()
 
@@ -3918,10 +3946,22 @@ internal fun ChatScreenContent(
 
     LaunchedEffect(pendingAppAutomationTask?.id, isStreaming) {
         val task = pendingAppAutomationTask ?: return@LaunchedEffect
-        if (task.id == lastAutoDispatchedTaskId) return@LaunchedEffect
+        val autoDispatchKey =
+            buildString {
+                append(task.id)
+                append('|')
+                append(task.mode)
+                append('|')
+                append(task.appId)
+                append('|')
+                append(task.createdAt)
+                append('|')
+                append(task.request.trim())
+            }
+        if (autoDispatchKey == lastAutoDispatchKey) return@LaunchedEffect
         if (isStreaming) return@LaunchedEffect
         val automationPrompt = buildPendingAppAutomationPrompt(task)
-        lastAutoDispatchedTaskId = task.id
+        lastAutoDispatchKey = autoDispatchKey
         repository.clearPendingAppAutomationTask()
         if (automationPrompt.isBlank()) return@LaunchedEffect
         showToolMenu = false
@@ -4082,24 +4122,42 @@ internal fun ChatScreenContent(
                                     tagSheetTagId = tagId
                                 }
                             },
-                            onDownloadAppDevTag = { messageId, tag ->
-                                hideKeyboardIfNeeded(force = true)
-                                showToolMenu = false
-                                handleAppDevTagDownload(
-                                    conversationId = effectiveConversationId,
+                        onDownloadAppDevTag = { messageId, tag ->
+                            hideKeyboardIfNeeded(force = true)
+                            showToolMenu = false
+                            handleAppDevTagDownload(
+                                conversationId = effectiveConversationId,
                                     messageId = messageId,
                                     tag = tag
                                 )
-                            },
-                            userBubbleColor = accentPalette.bubbleColor,
-                            userBubbleSecondaryColor = accentPalette.bubbleColorSecondary,
-                            userBubbleTextColor = accentPalette.bubbleTextColor,
-                            onEdit = { },
-                            onDelete = { convoId, messageId ->
-                                scope.launch { repository.deleteMessage(convoId, messageId) }
+                        },
+                        userBubbleColor = accentPalette.bubbleColor,
+                        userBubbleSecondaryColor = accentPalette.bubbleColorSecondary,
+                        userBubbleTextColor = accentPalette.bubbleTextColor,
+                        onEdit = {
+                            showThinkingSheet = false
+                            thinkingSheetText = null
+                            tagSheetMessageId = null
+                            tagSheetTagId = null
+                            appWorkspaceMessageId = null
+                            appWorkspaceTagId = null
+                            showToolMenu = false
+                            toolMenuPage = ToolMenuPage.Tools
+                            selectedTool = null
+                            imageAttachments = emptyList()
+                            messageText = message.content
+                            scrollToBottomToken++
+                            scope.launch {
+                                delay(80)
+                                inputFocusRequester.requestFocus()
+                                keyboardController?.show()
                             }
-                        )
-                    }
+                        },
+                        onDelete = { convoId, messageId ->
+                            scope.launch { repository.deleteMessage(convoId, messageId) }
+                        }
+                    )
+                }
                 }
             }
 
@@ -4392,6 +4450,7 @@ internal fun ChatScreenContent(
                                 toolMenuPage = ToolMenuPage.Tools
                             }
                         },
+                        inputFocusRequester = inputFocusRequester,
                         actionActiveColor = accentPalette.actionColor
                     )
                 }

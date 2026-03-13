@@ -977,17 +977,24 @@ fun AppearanceMenu(
                         translationY = anchorY - 20
                     }
             ) {
-                val shape = RoundedCornerShape(16.dp)
+                val shape = RoundedCornerShape(28.dp)
+                val itemShape = RoundedCornerShape(20.dp)
                 Box(
                     modifier = Modifier
-                        .widthIn(max = 200.dp)
-                        .shadow(elevation = 10.dp, shape = shape, clip = false)
+                        .widthIn(max = 220.dp)
+                        .shadow(
+                            elevation = 18.dp,
+                            shape = shape,
+                            clip = false,
+                            ambientColor = Color.Black.copy(alpha = 0.05f),
+                            spotColor = Color.Black.copy(alpha = 0.03f)
+                        )
                         .background(Color.White, shape)
-                        .border(width = 1.dp, color = Color(0xFFE2E2E2), shape = shape)
+                        .border(width = 1.dp, color = Color.Black.copy(alpha = 0.05f), shape = shape)
                 ) {
                     Column(
-                        modifier = Modifier.padding(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                        modifier = Modifier.padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         appearanceOptions.forEach { option ->
                             val key = option.key
@@ -995,13 +1002,13 @@ fun AppearanceMenu(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFFFFFFFF))
+                                    .clip(itemShape)
+                                    .background(if (isSelected) SettingsItemPressedColor else SettingsItemContainerColor)
                                     .clickable {
                                         onSelect(key)
                                         onDismiss()
                                     }
-                                    .padding(horizontal = 10.dp, vertical = 10.dp)
+                                    .padding(horizontal = 14.dp, vertical = 14.dp)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -1127,17 +1134,24 @@ fun AccentColorMenu(
                         translationY = targetTranslationY
                     }
             ) {
-                val shape = RoundedCornerShape(16.dp)
+                val shape = RoundedCornerShape(28.dp)
+                val itemShape = RoundedCornerShape(20.dp)
                 Box(
                     modifier = Modifier
-                        .widthIn(max = 200.dp)
-                        .shadow(elevation = 10.dp, shape = shape, clip = false)
+                        .widthIn(max = 220.dp)
+                        .shadow(
+                            elevation = 18.dp,
+                            shape = shape,
+                            clip = false,
+                            ambientColor = Color.Black.copy(alpha = 0.05f),
+                            spotColor = Color.Black.copy(alpha = 0.03f)
+                        )
                         .background(Color.White, shape)
-                        .border(width = 1.dp, color = Color(0xFFE2E2E2), shape = shape)
+                        .border(width = 1.dp, color = Color.Black.copy(alpha = 0.05f), shape = shape)
                 ) {
                     Column(
-                        modifier = Modifier.padding(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                        modifier = Modifier.padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         accentColorOptions.forEach { option ->
                             val key = option.key
@@ -1146,13 +1160,13 @@ fun AccentColorMenu(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFFFFFFFF))
+                                    .clip(itemShape)
+                                    .background(if (isSelected) SettingsItemPressedColor else SettingsItemContainerColor)
                                     .clickable {
                                         onSelect(key)
                                         onDismiss()
                                     }
-                                    .padding(horizontal = 10.dp, vertical = 10.dp)
+                                    .padding(horizontal = 14.dp, vertical = 14.dp)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
